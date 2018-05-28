@@ -70,15 +70,32 @@ def count_matches(rule: Rule, target_class, examples) -> Tuple[int, int, int, in
 class SeCoImplementation(ABC):
     """The callbacks needed by _BinarySeCoEstimator"""
 
-    @abstractmethod
-    def set_context(self, classes_: np.ndarray,
-                    all_feature_values: Callable[[int], Iterable[Any]]):
+    # TODO: optimize?
+    @lru_cache(maxsize=None)
+    def all_feature_values(self, feature_index: int):
+        """:return: All distinct values of feature (in examples) with given index
+        """
+        return np.unique(self._examples[:, feature_index])
+
+    def set_context(self, estimator: '_BinarySeCoEstimator', examples):
         """New invocation of `_BinarySeCoEstimator._find_best_rule`.
 
-        :param all_feature_values: A callable returning for each feature index
-         (in examples) a generator of all values of that feature.
+        Use this hook if you need to keep state across all invocations of the
+        callbacks from one find_best_rule run, e.g. (candidate) rule evaluations
+        for their future refinement.
         """
-        pass
+
+        # depends on examples, which change each iteration
+        self.all_feature_values.cache_clear()
+        self.target_class = estimator.classes_[0]  # TODO: order implicit?
+        self._examples = examples
+
+    def unset_context(self):
+        """Called after the last invocation of
+        `_BinarySeCoEstimator._find_best_rule`.
+        """
+        self.all_feature_values.cache_clear()
+        self._examples = None
 
     @abstractmethod
     def init_rule(self, examples) -> Rule:
@@ -201,17 +218,7 @@ class _BinarySeCoEstimator(BaseEstimator):
         # main loop
         theory = list()
         while np.any(examples[:, -1] == self.classes_[0]):
-
-            # TODO: optimize
-            @lru_cache(maxsize=None)
-            def all_values(feature_index: int):
-                """:return: all possible values of feature with given index"""
-                return np.unique(examples[:, feature_index])
-            # depends on examples, which change each iteration
-            all_values.cache_clear()
-
-            self.implementation.set_context(self.classes_,
-                                            all_values)
+            self.implementation.set_context(self, examples)
             rule = find_best_rule(examples)
             if rule_stopping_criterion(theory, rule, examples):
                 break
@@ -234,7 +241,6 @@ class _BinarySeCoEstimator(BaseEstimator):
                     return pos
             return neg  # TODO: default rule
         return np.apply_along_axis(predict_sample, 1, X)
-
 
     def predict_proba(self, X):
         X = check_array(X)
@@ -300,9 +306,6 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin, ABC):
 
 
 class SimpleSeCoImplementation(SeCoImplementation):
-    def set_context(self, classes_: np.ndarray, all_feature_values):
-        self.target_class = classes_[0]  # TODO: order implicit?
-        self.all_feature_values = all_feature_values
 
     def init_rule(self, examples) -> Rule:
         return frozenset()
@@ -353,10 +356,6 @@ class CN2Implementation(SeCoImplementation):
     def __init__(self, LRS_threshold: float):
         self.LRS_threshold = LRS_threshold
 
-    def set_context(self, classes_: np.ndarray, all_feature_values):
-        self.target_class = classes_[0]  # TODO: order implicit?
-        self.all_feature_values = all_feature_values
-
     def init_rule(self, examples) -> Rule:
         return frozenset()
 
@@ -403,5 +402,7 @@ class CN2Estimator(SeCoEstimator):
 
 
 if __name__ == "__main__":
+    print("check_estimator(SimpleSeCoEstimator)")
     check_estimator(SimpleSeCoEstimator)
+    print("check_estimator(CN2Estimator)")
     check_estimator(CN2Estimator)
