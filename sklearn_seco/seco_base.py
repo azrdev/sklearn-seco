@@ -399,10 +399,3 @@ class CN2Implementation(SeCoImplementation):
 class CN2Estimator(SeCoEstimator):
     def __init__(self, LRS_threshold: float=1.0, multi_class="one_vs_rest", n_jobs=1):
         super().__init__(CN2Implementation(LRS_threshold), multi_class, n_jobs)
-
-
-if __name__ == "__main__":
-    print("check_estimator(SimpleSeCoEstimator)")
-    check_estimator(SimpleSeCoEstimator)
-    print("check_estimator(CN2Estimator)")
-    check_estimator(CN2Estimator)
