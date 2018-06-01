@@ -7,7 +7,7 @@ Assumptions:
 
 from abc import ABC, abstractmethod
 from functools import lru_cache
-from typing import Tuple, Iterable, List, NamedTuple
+from typing import Iterable, List, NamedTuple, Dict, MutableMapping
 
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
@@ -72,9 +72,11 @@ def match_rule(X: np.ndarray,
 
 # TODO: cache result, esp. P,N are the same for all refinements
 # TODO: only calculate values when needed
-def count_matches(rule: Rule, target_class, categorical_mask, X, y
-                  ) -> Tuple[int, int, int, int]:
-    """Return (p, n, P, N) where:
+def count_matches(metrics: Dict[str, int] or Iterable[str],
+                  rule: Rule, target_class, categorical_mask, X, y
+                  ) -> Dict[str, int]:
+    """Return `metrics` where for the following keys, if present the
+     corresponding values are calculated:
 
     returns
     -------
@@ -87,19 +89,27 @@ def count_matches(rule: Rule, target_class, categorical_mask, X, y
     N : int
         The count of negative examples
     """
+    if not isinstance(metrics, MutableMapping):
+        metrics = dict(zip(metrics, [None]*len(metrics)))
 
     # the following three are np.arrays of bool
     covered = match_rule(X, rule, categorical_mask)
     positives = y == target_class
     negatives = ~positives
     # NOTE: nonzero() is test for True
-    p = np.count_nonzero(covered & positives)
-    n = np.count_nonzero(covered & negatives)
-    P = np.count_nonzero(positives)
-    N = np.count_nonzero(negatives)
-    assert P + N == len(y) == X.shape[0]
-    assert p+n == np.count_nonzero(covered)
-    return (p, n, P, N)
+    if 'p' in metrics:
+        metrics['p'] = np.count_nonzero(covered & positives)
+    if 'n' in metrics:
+        metrics['n'] = np.count_nonzero(covered & negatives)
+    if 'P' in metrics:
+        metrics['P'] = np.count_nonzero(positives)
+    if 'N' in metrics:
+        metrics['N'] = np.count_nonzero(negatives)
+    if 'P' in metrics and 'N' in metrics:
+        assert metrics['P'] + metrics['N'] == len(y) == X.shape[0]
+    if 'p' in metrics and 'n' in metrics:
+        assert metrics['p']+metrics['n'] == np.count_nonzero(covered)
+    return metrics
 
 
 class SeCoBaseImplementation(ABC):
@@ -403,8 +413,10 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
         return self.empty_rule
 
     def evaluate_rule(self, rule: Rule, X, y) -> float:
-        p, n, P, N = count_matches(rule, self.target_class,
-                                   self.categorical_mask, X, y)
+        metrics = count_matches(('p', 'n'), rule, self.target_class,
+                                self.categorical_mask, X, y)
+        p = metrics['p']
+        n = metrics['n']
         if p+n == 0:
             return 0
         purity = p / (p+n)
@@ -458,8 +470,10 @@ class CN2Implementation(SimpleSeCoImplementation):
 
     def evaluate_rule(self, rule: Rule, X, y) -> float:
         # laplace heuristic
-        p, n, P, N = count_matches(rule, self.target_class,
-                                   self.categorical_mask, X, y)
+        metrics = count_matches(('p', 'n'), rule, self.target_class,
+                                self.categorical_mask, X, y)
+        p = metrics['p']
+        n = metrics['n']
         LPA = (p + 1) / (p + n + 2)
         return LPA
 
@@ -469,8 +483,8 @@ class CN2Implementation(SimpleSeCoImplementation):
 
     def rule_stopping_criterion(self, theory: Theory, rule: Rule, X, y) -> bool:
         # return True iff rule covers no examples
-        p, n, P, N = count_matches(rule, self.target_class,
-                                   self.categorical_mask, X, y)
+        p = count_matches({'p'}, rule, self.target_class,
+                          self.categorical_mask, X, y)['p']
         return p == 0
 
 
