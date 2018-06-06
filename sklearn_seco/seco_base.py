@@ -3,11 +3,12 @@
 Assumptions:
 
 - numerical features are ordinal
+- we only implement operator <= for numerical features (`sample <= rule.threshold`)
 """
 
 from abc import ABC, abstractmethod
 from functools import lru_cache
-from typing import Iterable, List, NamedTuple, Dict, MutableMapping
+from typing import Iterable, List, NamedTuple, Dict, MutableMapping, Tuple
 
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
@@ -30,7 +31,7 @@ Theory = List[Rule]
 # TODO: default rule
 
 RatedRule = NamedTuple('RatedRule', [
-    ('rating', float),
+    ('rating', float or Tuple[float, float]),
     ('rule', Rule)])
 RuleQueue = List[RatedRule]
 
@@ -49,7 +50,7 @@ def match_rule(X: np.ndarray,
     :return: An array of shape `(n_samples,)` and type bool, telling for each
         sample whether it matched `rule`.
 
-    pseudocode for a single sample/row:
+    pseudocode for a single sample/row::
         for condition in rule:
             if condition is np.NaN:
                 return True
@@ -61,17 +62,17 @@ def match_rule(X: np.ndarray,
     """
 
     rule_mask = ~np.isnan(rule)
-    # workaround for <https://github.com/numpy/numpy/issues/11208>
-    buffer = np.ones_like(X, dtype=np.bool_)
-
+    # TODO: use binary operators and get rid of allocating out-buffer twice?
     return np.where(categorical_mask,
-                    np.equal(X, rule, where=rule_mask, out=buffer),
-                    np.less_equal(X, rule, where=rule_mask, out=buffer)
+                    np.equal(X, rule, where=rule_mask,
+                             # allocate with default value True (if rule=NaN)
+                             out=np.ones_like(X, dtype=np.bool_)),
+                    np.less_equal(X, rule, where=rule_mask,
+                             out=np.ones_like(X, dtype=np.bool_)),
                     ).all(axis=1)  # per-row conjunction
 
 
 # TODO: cache result, esp. P,N are the same for all refinements
-# TODO: only calculate values when needed
 def count_matches(metrics: Dict[str, int] or Iterable[str],
                   rule: Rule, target_class, categorical_mask, X, y
                   ) -> Dict[str, int]:
@@ -132,9 +133,10 @@ class SeCoBaseImplementation(ABC):
     @lru_cache(maxsize=None)
     def all_feature_values(self, feature_index: int):
         """
-        :return: All distinct values of feature (in examples) with given index.
+        :return: All distinct values of feature (in examples) with given index,
+             sorted.
         """
-        # TODO: optimize?
+        # unique also sorts
         return np.unique(self._X[:, feature_index])
 
     def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
@@ -150,7 +152,7 @@ class SeCoBaseImplementation(ABC):
         self.categorical_mask = estimator.categorical_mask_
         self.empty_rule = np.repeat(np.NaN, estimator.n_features_)
         self.n_features = estimator.n_features_
-        self.target_class = estimator.classes_[0]  # TODO: order implicit?
+        self.target_class = estimator.target_class_
         # depend on examples, which change each iteration
         self.all_feature_values.cache_clear()
         self._X = X
@@ -172,10 +174,9 @@ class SeCoBaseImplementation(ABC):
         """Create a new rule to be refined before added to the theory."""
         pass
 
-    # XXX: make metric(s) of previous rule available
-    # TODO: API for tie-breaking rules
+    # FIXME: make metric(s) of previous rule available (also in stop criteria)
     @abstractmethod
-    def evaluate_rule(self, rule: Rule, X, y) -> float:
+    def evaluate_rule(self, rule: Rule, X, y) -> float or Tuple[float, float]:
         """Rate rule to allow comparison & finding the best refinement
         (using operator `>`).
         """
@@ -223,7 +224,8 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         super().__init__()
         self.implementation = implementation
 
-    def fit(self, X, y, categorical_features='all'):
+    # TODO: propagate `categorical_features` from SeCoEstimator
+    def fit(self, X, y, categorical_features=None):
         """Build the decision rule list from training data `X` with labels `y`.
 
         :param categorical_features: None or “all” or array of indices or mask.
@@ -259,13 +261,13 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         # prepare  attributes / features / X
         self.n_features_ = X.shape[1]
         # categorical_features modeled after OneHotEncoder
-        if not categorical_features: # this covers the array cases when len == 0
+        if (categorical_features is None) or not len(categorical_features):
             self.categorical_mask_ = np.zeros(self.n_features_, dtype=bool)
-        elif categorical_features == 'all':
-            self.categorical_mask_ = np.ones(self.n_features_, dtype=bool)
         elif isinstance(categorical_features, np.ndarray):
             self.categorical_mask_ = np.zeros(self.n_features_, dtype=bool)
             self.categorical_mask_[np.asarray(categorical_features)] = True
+        elif categorical_features == 'all':
+            self.categorical_mask_ = np.ones(self.n_features_, dtype=bool)
         else:
             raise ValueError("categorical_features must be one of: None, 'all',"
                              " np.ndarray of dtype bool or integer,"
@@ -335,11 +337,11 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         unset_context()
         return post_process(theory)
 
-    def predict(self, X):
+    def predict(self, X: np.ndarray) -> np.ndarray:
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
         X = check_array(X)
         target_class = self.target_class_
-        result = np.repeat(self.classes_[1], # negative class
+        result = np.repeat(self.classes_[1],  # negative class
                            X.shape[0])
 
         for rule in self.theory_:
@@ -349,7 +351,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                 result)
         return result
 
-    def predict_proba(self, X):
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
         prediction = self.predict(X) == self.target_class_
         return np.where(prediction[:, np.newaxis],
                         np.array([[1, 0]]),
@@ -412,15 +414,15 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
     def init_rule(self, X, y) -> Rule:
         return self.empty_rule
 
-    def evaluate_rule(self, rule: Rule, X, y) -> float:
+    def evaluate_rule(self, rule: Rule, X, y) -> Tuple[float, float]:
         metrics = count_matches(('p', 'n'), rule, self.target_class,
                                 self.categorical_mask, X, y)
         p = metrics['p']
         n = metrics['n']
         if p+n == 0:
-            return 0
+            return (0, 0)
         purity = p / (p+n)
-        return purity
+        return (purity, p)  # tie-breaking by positive coverage
 
     def select_candidate_rules(self, rules: RuleQueue, X, y) -> Iterable[Rule]:
         last = rules.pop()
@@ -440,9 +442,20 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
                 specialization = rule.copy()
                 specialization[index] = value
                 yield specialization
-        for index in np.argwhere(~self.categorical_mask):
-            # FIXME: find optimal split threshold, this needs evaluation already
-            pass
+
+        for feature_index in np.nonzero(~self.categorical_mask)[0]:
+            previous_value = None
+            for value in self.all_feature_values(feature_index):
+                if previous_value is not None:
+                    specialization = rule.copy()
+                    old_threshold = specialization[feature_index]
+                    new_threshold = (value + previous_value) / 2
+                    # override is collation of upper bounds for <= operator
+                    if np.isnan(old_threshold) or new_threshold < old_threshold:
+                        specialization[feature_index] = new_threshold
+                        yield specialization
+                previous_value = value
+        # TODO: mark constant features for exclusion in future specializations
 
     def inner_stopping_criterion(self, rule: Rule, X, y) -> bool:
         return False  # TODO: java NoNegativesCoveredStop
@@ -462,20 +475,19 @@ class SimpleSeCoEstimator(SeCoEstimator):
         super().__init__(SimpleSeCoImplementation(), multi_class, n_jobs)
 
 
-# TODO: CN2 incomplete
 class CN2Implementation(SimpleSeCoImplementation):
-    def __init__(self, LRS_threshold: float = 1.0):
+    def __init__(self, LRS_threshold: float):
         super().__init__()
         self.LRS_threshold = LRS_threshold
 
-    def evaluate_rule(self, rule: Rule, X, y) -> float:
+    def evaluate_rule(self, rule: Rule, X, y) -> Tuple[float, float]:
         # laplace heuristic
         metrics = count_matches(('p', 'n'), rule, self.target_class,
                                 self.categorical_mask, X, y)
         p = metrics['p']
         n = metrics['n']
         LPA = (p + 1) / (p + n + 2)
-        return LPA
+        return (LPA, p)  # tie-breaking by positive coverage
 
     def inner_stopping_criterion(self, rule: Rule, X, y) -> bool:
         # TODO: return LRS(rule) <= self.LRS_threshold
@@ -494,3 +506,5 @@ class CN2Estimator(SeCoEstimator):
                  multi_class="one_vs_rest",
                  n_jobs=1):
         super().__init__(CN2Implementation(LRS_threshold), multi_class, n_jobs)
+        # needed for test `check_parameters_default_constructible`:
+        self.LRS_threshold = LRS_threshold
