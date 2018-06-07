@@ -458,13 +458,23 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
         # TODO: mark constant features for exclusion in future specializations
 
     def inner_stopping_criterion(self, rule: Rule, X, y) -> bool:
-        return False  # TODO: java NoNegativesCoveredStop
+        # TODO: java NoNegativesCoveredStop:
+        # n = count_matches(('n',), rule, self.target_class,
+        #                   self.categorical_mask, X, y)['n']
+        # return n == 0
+        return False
 
     def filter_rules(self, rules: RuleQueue, X, y) -> RuleQueue:
         return rules[-1:]  # only the best one
 
     def rule_stopping_criterion(self, theory: Theory, rule: Rule, X, y) -> bool:
-        return False  # TODO: java CoverageRuleStop
+        # TODO: java CoverageRuleStop;
+        # metrics = count_matches(('p', 'n'), rule, self.target_class,
+        #                         self.categorical_mask, X, y)
+        # p = metrics['p']
+        # n = metrics['n']
+        # return n >= p
+        return False
 
     def post_process(self, theory: Theory) -> Theory:
         return theory
@@ -490,7 +500,20 @@ class CN2Implementation(SimpleSeCoImplementation):
         return (LPA, p)  # tie-breaking by positive coverage
 
     def inner_stopping_criterion(self, rule: Rule, X, y) -> bool:
-        # TODO: return LRS(rule) <= self.LRS_threshold
+        # TODO: compare LRS with Java & papers
+        # metrics = count_matches(('p', 'n', 'P', 'N'), rule, self.target_class,
+        #                         self.categorical_mask, X, y)
+        # p = metrics['p']
+        # n = metrics['n']
+        # P = metrics['P']
+        # N = metrics['N']
+        # purity = p / (p+n)
+        # impurity = n / (p+n)
+        # CE = -purity * np.log(purity / (P/(P+N))) \
+        #     -impurity * np.log(impurity / (N/P+N))
+        # J = p * CE
+        # LRS = 2*(P+N)*J
+        # return LRS <= self.LRS_threshold
         return False
 
     def rule_stopping_criterion(self, theory: Theory, rule: Rule, X, y) -> bool:
@@ -502,7 +525,7 @@ class CN2Implementation(SimpleSeCoImplementation):
 
 class CN2Estimator(SeCoEstimator):
     def __init__(self,
-                 LRS_threshold: float=1.0,
+                 LRS_threshold: float = 0.9,
                  multi_class="one_vs_rest",
                  n_jobs=1):
         super().__init__(CN2Implementation(LRS_threshold), multi_class, n_jobs)
