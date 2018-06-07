@@ -1,6 +1,6 @@
 import numpy as np
 from numpy.testing import assert_array_equal, assert_equal
-from sklearn.utils.estimator_checks import check_estimator, _yield_all_checks, \
+from sklearn.utils.estimator_checks import _yield_all_checks, \
     check_parameters_default_constructible, check_no_fit_attributes_set_in_init
 from sklearn_seco.seco_base import \
     SimpleSeCoEstimator, CN2Estimator, _BinarySeCoEstimator, \

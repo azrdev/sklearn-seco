@@ -1,9 +1,23 @@
-"""Implementation of SeCo / Covering algorithm
+"""Implementation of SeCo / Covering algorithm.
 
-Assumptions:
+Limitations (TODO)
+=====
+
+- only one test per feature and rule
+- no sparse input
+- no missing values
+- binary estimator, applies binarization to multi-class problems
+- first class always assumed to be positive
+- only ordered rule list, implicit default rule
+- limited operator set:
+    - for categorical only ==
+    - for numerical only <=
+
+Assumptions
+=====
 
 - numerical features are ordinal
-- we only implement operator <= for numerical features (`sample <= rule.threshold`)
+- first in `sklearn.utils.unique_labels()` (i.e. lowest) is positive class
 """
 
 from abc import ABC, abstractmethod
@@ -28,7 +42,7 @@ or comparison thresholds (for numerical features).
 # TODO: ordered list / unordered set/tree
 
 Theory = List[Rule]
-# TODO: default rule
+# TODO: document default rule
 
 RatedRule = NamedTuple('RatedRule', [
     ('rating', float or Tuple[float, float]),
@@ -68,7 +82,7 @@ def match_rule(X: np.ndarray,
                              # allocate with default value True (if rule=NaN)
                              out=np.ones_like(X, dtype=np.bool_)),
                     np.less_equal(X, rule, where=rule_mask,
-                             out=np.ones_like(X, dtype=np.bool_)),
+                                  out=np.ones_like(X, dtype=np.bool_)),
                     ).all(axis=1)  # per-row conjunction
 
 
@@ -109,7 +123,7 @@ def count_matches(metrics: Dict[str, int] or Iterable[str],
     if 'P' in metrics and 'N' in metrics:
         assert metrics['P'] + metrics['N'] == len(y) == X.shape[0]
     if 'p' in metrics and 'n' in metrics:
-        assert metrics['p']+metrics['n'] == np.count_nonzero(covered)
+        assert metrics['p'] + metrics['n'] == np.count_nonzero(covered)
     return metrics
 
 
