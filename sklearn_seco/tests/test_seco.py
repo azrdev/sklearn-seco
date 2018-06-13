@@ -13,25 +13,30 @@ def test_match_rule():
     categorical_mask = np.array([True, True, False, False])
     X = np.array([[1, 2, 3.0, 4.0]])
 
-    def assert_match(rule, expected_result, X=X):
+    def am(rule, expected_result, X=X):
         assert_array_equal(match_rule(X, np.asarray(rule), categorical_mask),
                            expected_result)
 
-    assert_match([NaN, NaN, NaN, NaN], [True])
-    assert_match([1,   2,   NaN, NaN], [True])  # categorical ==
-    assert_match([0,   2,   NaN, NaN], [False])
-    assert_match([11,   2,   NaN, NaN], [False])
-    assert_match([NaN, NaN, 13.0, 14.0], [True])  # numerical <=
-    assert_match([NaN, NaN, -3.0, -4.0], [False])
-    assert_match([NaN, NaN, 3.0, NaN], [True])
-    assert_match([1, 2, 10.0, 10.0], [True])
+    am([[NaN, NaN, NaN, NaN], [NaN, NaN, NaN, NaN]], [True])
+    # categorical: upper unused
+    am([[NaN, NaN, NaN, NaN], [7, 7, NaN, NaN]], [True])
+    # categorical ==
+    am([[1,   2,   NaN, NaN], [NaN, NaN, NaN, NaN]], [True])
+    am([[0,   2,   NaN, NaN], [NaN, NaN, NaN, NaN]], [False])
+    am([[11,   2,   NaN, NaN], [NaN, NaN, NaN, NaN]], [False])
+    # numerical <= upper
+    am([[NaN, NaN, NaN, NaN], [NaN, NaN, 13.0, 14.0]], [True])
+    am([[NaN, NaN, NaN, NaN], [NaN, NaN, -3.0, -4.0]], [False])
+    am([[NaN, NaN, NaN, NaN], [NaN, NaN, 3.0, NaN]], [True])
+    am([[NaN, NaN, NaN, NaN], [1, 2, 10.0, 10.0]], [True])
 
     # test broadcasting using 4 samples, 4 features
     X4 = np.array([[1, 2, 3.0, 4.0],
                    [1, 2, 30.0, 40.0],
                    [1, 2, 0.0,  0.0],
                    [0, 0, 2.0, 3.0]])
-    assert_match([1, NaN, 3.0, 4.0], [True, False, True, False], X=X4)
+    am([[  1, NaN, NaN, NaN],
+       [NaN, NaN, 3.0, 4.0]], [True, False, True, False], X=X4)
 
     # TODO: define & test NaN in X (missing values)
 
@@ -49,8 +54,8 @@ def test_base_easyrules():
 
     assert_equal(est.target_class_, 1)
     assert_equal(len(est.theory_), 2)
-    assert_array_equal(est.theory_[0], np.array([NaN, -1.5]))
-    assert_array_equal(est.theory_[1], np.array([0, 0]))
+    assert_array_equal(est.theory_[0], np.array([[NaN, NaN], [NaN, -1.5]]))
+    assert_array_equal(est.theory_[1], np.array([[0, NaN], [NaN, 0]]))
 
     assert_array_equal(est.predict(X_train), y_train)
 
@@ -95,6 +100,3 @@ def test_check_CN2():
 
 
 # TODO: check estimator vs. classifier in <https://github.com/scikit-learn-contrib/project-template/blob/master/skltemplate/template.py>
-# TODO: failing sklearn checks:
-# - check_classifiers_classes misses 1/3 classes in the prediction
-# - check_classifiers_train due to low accuracy

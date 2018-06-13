@@ -3,7 +3,7 @@
 Limitations (TODO)
 =====
 
-- only one test per feature and rule
+- at most two tests per feature and rule
 - no sparse input
 - no missing values
 - binary estimator, applies binarization to multi-class problems
@@ -11,7 +11,7 @@ Limitations (TODO)
 - only ordered rule list, implicit default rule
 - limited operator set:
     - for categorical only ==
-    - for numerical only <=
+    - for numerical only <= and >=
 
 Assumptions
 =====
@@ -44,15 +44,21 @@ def pairwise(iterable):
 Rule = np.ndarray
 """Represents a conjunction of conditions.
 
-array of dtype float, shape `(n_features,)`.
-contains categories (for categorical features),
-or comparison thresholds (for numerical features).
+array of dtype float, shape `(2, n_features)`
+
+- first row "lower"
+    - categorical features: contains categories to be matched with "equals"
+    - numerical features: contains lower bound (`rule[lower] <= X`)
+- second row "upper"
+    - categorical features: invalid (TODO: unequal operator ?)
+    - numerical features: contains upper bound (`rule[upper] >= X`)
 """
-# FIXME: each feature can be matched only once, so only one operator is possible for numeric features
+lower = 0
+upper = 1
 
 
 def make_empty_rule(n_features: int) -> Rule:
-    return np.repeat(np.NaN, n_features)
+    return np.repeat(np.NaN, n_features * 2).reshape((2, n_features))
 
 
 # TODO: ordered list / unordered set/tree
@@ -79,26 +85,30 @@ def match_rule(X: np.ndarray,
     :return: An array of shape `(n_samples,)` and type bool, telling for each
         sample whether it matched `rule`.
 
-    pseudocode for a single sample/row::
-        for condition in rule:
-            if condition is np.NaN:
-                return True
+    pseudocode::
+        conjugate for all features:
+            if feature is categorical:
+                return rule[lower] is NaN  or  rule[lower] == X
             else:
-                if feature is categorical:
-                    return X == condition
-                else:
-                    return X <= condition
+                return  rule[lower] is NaN  or  rule[lower] <= X
+                     && rule[upper] is NaN  or  rule[upper] >= X
     """
 
-    rule_mask = ~np.isnan(rule)
-    # TODO: use binary operators and get rid of allocating out-buffer twice?
-    return np.where(categorical_mask,
-                    np.equal(X, rule, where=rule_mask,
-                             # allocate with default value True (if rule=NaN)
-                             out=np.ones_like(X, dtype=np.bool_)),
-                    np.less_equal(X, rule, where=rule_mask,
-                                  out=np.ones_like(X, dtype=np.bool_)),
-                    ).all(axis=1)  # per-row conjunction
+    def mkbuf():
+        """allocate buffer with default value True (if rule=NaN)"""
+        return np.ones_like(X, dtype=np.bool_)
+
+    no_lower = np.isnan(rule[lower])
+    no_upper = np.isnan(rule[upper])
+    return (categorical_mask
+               & (no_lower
+                  | np.equal(X, rule[lower], where=~no_lower, out=mkbuf()))
+            | ~categorical_mask
+               & (no_lower
+                  | np.less_equal(rule[lower], X, where=~no_lower, out=mkbuf()))
+               & (no_upper
+                  | np.greater_equal(rule[upper], X, where=~no_upper, out=mkbuf()))
+            ).all(axis=1)
 
 
 # TODO: cache result, esp. P,N are the same for all refinements
@@ -464,29 +474,29 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
         all_feature_values = self.all_feature_values
         # TODO: mark constant features for exclusion in future specializations
 
-        # used_features = frozenset((cond.attribute_index for cond in rule))
-        # all_features = range(self.n_features - 1)
-        # for feature in used_features.symmetric_difference(all_features):
-        #     for value in self.all_feature_values(feature):
-        #         specialization = Condition(feature, value)
-        #         yield rule.union([specialization])
         for index in np.argwhere(self.categorical_mask
-                                 & np.isnan(rule)  # unused features
+                                 & np.isnan(rule[lower])  # unused features
                                  ).ravel():
             # argwhere returns each index in separate list, ravel() unpacks
             for value in all_feature_values(index):
                 specialization = rule.copy()
-                specialization[index] = value
+                specialization[lower, index] = value
                 yield specialization
 
         for feature_index in np.nonzero(~self.categorical_mask)[0]:
             for value1, value2 in pairwise(all_feature_values(feature_index)):
-                old_threshold = rule[feature_index]
                 new_threshold = (value1 + value2) / 2
-                # override is collation of upper bounds for <= operator
+                # override is collation of lower bounds
+                old_threshold = rule[lower, feature_index]
+                if np.isnan(old_threshold) or new_threshold > old_threshold:
+                    specialization = rule.copy()
+                    specialization[lower, feature_index] = new_threshold
+                    yield specialization
+                # override is collation of upper bounds
+                old_threshold = rule[upper, feature_index]
                 if np.isnan(old_threshold) or new_threshold < old_threshold:
                     specialization = rule.copy()
-                    specialization[feature_index] = new_threshold
+                    specialization[upper, feature_index] = new_threshold
                     yield specialization
 
     def inner_stopping_criterion(self, rule: Rule, X, y) -> bool:
