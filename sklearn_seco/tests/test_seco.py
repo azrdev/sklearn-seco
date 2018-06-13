@@ -5,7 +5,7 @@ from sklearn.utils.estimator_checks import _yield_all_checks, \
 from sklearn_seco.seco_base import \
     SimpleSeCoEstimator, CN2Estimator, _BinarySeCoEstimator, \
     SimpleSeCoImplementation, \
-    match_rule
+    match_rule, Rule
 
 
 def test_match_rule():
@@ -14,7 +14,7 @@ def test_match_rule():
     X = np.array([[1, 2, 3.0, 4.0]])
 
     def assert_match(rule, expected_result, X=X):
-        assert_array_equal(match_rule(X, np.array(rule), categorical_mask),
+        assert_array_equal(match_rule(X, np.asarray(rule), categorical_mask),
                            expected_result)
 
     assert_match([NaN, NaN, NaN, NaN], [True])
@@ -33,10 +33,11 @@ def test_match_rule():
                    [0, 0, 2.0, 3.0]])
     assert_match([1, NaN, 3.0, 4.0], [True, False, True, False], X=X4)
 
-    # TODO: define & test NaN in X
+    # TODO: define & test NaN in X (missing values)
 
 
 def test_base_easyrules():
+    from numpy import NaN
     categorical_mask = np.array([True, False])
     X_train = np.array([[0, -1.0],
                         [0, -2.0],
@@ -48,7 +49,7 @@ def test_base_easyrules():
 
     assert_equal(est.target_class_, 1)
     assert_equal(len(est.theory_), 2)
-    assert_array_equal(est.theory_[0], np.array([np.NaN, -1.5]))
+    assert_array_equal(est.theory_[0], np.array([NaN, -1.5]))
     assert_array_equal(est.theory_[1], np.array([0, 0]))
 
     assert_array_equal(est.predict(X_train), y_train)

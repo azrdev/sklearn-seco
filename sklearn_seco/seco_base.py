@@ -31,6 +31,16 @@ from sklearn.utils import check_X_y, check_array
 from sklearn.utils.multiclass import unique_labels, check_classification_targets
 from sklearn.utils.validation import check_is_fitted
 
+
+# copied from itertools docs
+def pairwise(iterable):
+    """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
+    from itertools import tee
+    a, b = tee(iterable)
+    next(b, None)
+    return zip(a, b)
+
+
 Rule = np.ndarray
 """Represents a conjunction of conditions.
 
@@ -39,8 +49,13 @@ contains categories (for categorical features),
 or comparison thresholds (for numerical features).
 """
 # FIXME: each feature can be matched only once, so only one operator is possible for numeric features
-# TODO: ordered list / unordered set/tree
 
+
+def make_empty_rule(n_features: int) -> Rule:
+    return np.repeat(np.NaN, n_features)
+
+
+# TODO: ordered list / unordered set/tree
 Theory = List[Rule]
 # TODO: document default rule
 
@@ -51,7 +66,7 @@ RuleQueue = List[RatedRule]
 
 
 def match_rule(X: np.ndarray,
-               rule: np.ndarray,
+               rule: Rule,
                categorical_mask: np.ndarray) -> np.ndarray:
     """Apply `rule` to all samples in `X`.
 
@@ -127,6 +142,7 @@ def count_matches(metrics: Dict[str, int] or Iterable[str],
     return metrics
 
 
+# noinspection PyAttributeOutsideInit
 class SeCoBaseImplementation(ABC):
     """The callbacks needed by _BinarySeCoEstimator, subclasses represent
     concrete algorithms.
@@ -164,7 +180,7 @@ class SeCoBaseImplementation(ABC):
 
         # actually don't change, but rewriting them is cheap
         self.categorical_mask = estimator.categorical_mask_
-        self.empty_rule = np.repeat(np.NaN, estimator.n_features_)
+        self.empty_rule = make_empty_rule(estimator.n_features_)
         self.n_features = estimator.n_features_
         self.target_class = estimator.target_class_
         # depend on examples, which change each iteration
@@ -233,6 +249,7 @@ class SeCoBaseImplementation(ABC):
         pass
 
 
+# noinspection PyAttributeOutsideInit
 class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     def __init__(self, implementation: SeCoBaseImplementation):
         super().__init__()
@@ -311,7 +328,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         rules: RuleQueue = [best_rule]
         while len(rules):
             for candidate in select_candidate_rules(rules, X, y):
-                for refinement in refine_rule(candidate, X, y):
+                for refinement in refine_rule(candidate, X, y):  # TODO: parallelize here?
                     new_rule = rate_rule(refinement, X, y)
                     if not inner_stopping_criterion(refinement, X, y):
                         rules.append(new_rule)
@@ -353,7 +370,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
-        X = check_array(X)
+        X: np.ndarray = check_array(X)
         target_class = self.target_class_
         result = np.repeat(self.classes_[1],  # negative class
                            X.shape[0])
@@ -372,6 +389,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                         np.array([[0, 1]]))
 
 
+# noinspection PyAttributeOutsideInit
 class SeCoEstimator(BaseEstimator, ClassifierMixin):
     """Wrap the base SeCo to provide class label binarization."""
     def __init__(self, implementation: SeCoBaseImplementation,
@@ -443,33 +461,33 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
         return [last.rule]
 
     def refine_rule(self, rule: Rule, X, y) -> Iterable[Rule]:
+        all_feature_values = self.all_feature_values
+        # TODO: mark constant features for exclusion in future specializations
+
         # used_features = frozenset((cond.attribute_index for cond in rule))
         # all_features = range(self.n_features - 1)
         # for feature in used_features.symmetric_difference(all_features):
         #     for value in self.all_feature_values(feature):
         #         specialization = Condition(feature, value)
         #         yield rule.union([specialization])
-        for index in np.argwhere(np.isnan(rule)  # unused features
-                                 & self.categorical_mask)\
-                                .ravel():  # argwhere returns each index in separate list
-            for value in self.all_feature_values(index):
+        for index in np.argwhere(self.categorical_mask
+                                 & np.isnan(rule)  # unused features
+                                 ).ravel():
+            # argwhere returns each index in separate list, ravel() unpacks
+            for value in all_feature_values(index):
                 specialization = rule.copy()
                 specialization[index] = value
                 yield specialization
 
         for feature_index in np.nonzero(~self.categorical_mask)[0]:
-            previous_value = None
-            for value in self.all_feature_values(feature_index):
-                if previous_value is not None:
+            for value1, value2 in pairwise(all_feature_values(feature_index)):
+                old_threshold = rule[feature_index]
+                new_threshold = (value1 + value2) / 2
+                # override is collation of upper bounds for <= operator
+                if np.isnan(old_threshold) or new_threshold < old_threshold:
                     specialization = rule.copy()
-                    old_threshold = specialization[feature_index]
-                    new_threshold = (value + previous_value) / 2
-                    # override is collation of upper bounds for <= operator
-                    if np.isnan(old_threshold) or new_threshold < old_threshold:
-                        specialization[feature_index] = new_threshold
-                        yield specialization
-                previous_value = value
-        # TODO: mark constant features for exclusion in future specializations
+                    specialization[feature_index] = new_threshold
+                    yield specialization
 
     def inner_stopping_criterion(self, rule: Rule, X, y) -> bool:
         # TODO: java NoNegativesCoveredStop:
