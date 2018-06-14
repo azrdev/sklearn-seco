@@ -157,6 +157,11 @@ class SeCoBaseImplementation(ABC):
     """The callbacks needed by _BinarySeCoEstimator, subclasses represent
     concrete algorithms.
 
+    `set_context` will have been called before any other callback. After the
+    abstract_seco main loop, `unset_context` is called once, where all state
+    ought to be removed that is not needed after fitting (e.g. copies of
+    training data X, y).
+
     A few members are maintained by the base class, and can be used by
     implementations:
 
@@ -177,7 +182,7 @@ class SeCoBaseImplementation(ABC):
              sorted.
         """
         # unique also sorts
-        return np.unique(self._X[:, feature_index])
+        return np.unique(self.X[:, feature_index])
 
     def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
         """New invocation of `_BinarySeCoEstimator._find_best_rule`.
@@ -195,59 +200,60 @@ class SeCoBaseImplementation(ABC):
         self.target_class = estimator.target_class_
         # depend on examples, which change each iteration
         self.all_feature_values.cache_clear()
-        self._X = X
+        self.X = X
+        self.y = y
 
     def unset_context(self):
         """Called after the last invocation of
         `_BinarySeCoEstimator._find_best_rule`.
         """
         self.all_feature_values.cache_clear()
-        self._X = None
+        self.X = None
+        self.y = None
 
-    def rate_rule(self, rule: Rule, X, y) -> RatedRule:
-        return RatedRule(self.evaluate_rule(rule, X, y), rule)
+    def rate_rule(self, rule: Rule) -> RatedRule:
+        return RatedRule(self.evaluate_rule(rule), rule)
 
     # abstract interface
 
     @abstractmethod
-    def init_rule(self, X, y) -> Rule:
+    def init_rule(self) -> Rule:
         """Create a new rule to be refined before added to the theory."""
         pass
 
     # FIXME: make metric(s) of previous rule available (also in stop criteria)
     @abstractmethod
-    def evaluate_rule(self, rule: Rule, X, y) -> float or Tuple[float, float]:
+    def evaluate_rule(self, rule: Rule) -> float or Tuple[float, float]:
         """Rate rule to allow comparison & finding the best refinement
         (using operator `>`).
         """
         pass
 
     @abstractmethod
-    def select_candidate_rules(self, rules: RuleQueue, X, y
-                               ) -> Iterable[Rule]:
+    def select_candidate_rules(self, rules: RuleQueue) -> Iterable[Rule]:
         """Remove and return those Rules from `rules` which should be refined.
         """
         pass
 
     @abstractmethod
-    def refine_rule(self, rule: Rule, X, y) -> Iterable[Rule]:
+    def refine_rule(self, rule: Rule) -> Iterable[Rule]:
         """Create all refinements from `rule`."""
         pass
 
     @abstractmethod
-    def inner_stopping_criterion(self, rule: Rule, X, y) -> bool:
+    def inner_stopping_criterion(self, rule: Rule) -> bool:
         """return `True` to stop refining `rule`."""
         pass
 
     @abstractmethod
-    def filter_rules(self, rules: RuleQueue, X, y) -> RuleQueue:
+    def filter_rules(self, rules: RuleQueue) -> RuleQueue:
         """After one refinement iteration, filter the candidate `rules` (may be
         empty) for the next one.
         """
         pass
 
     @abstractmethod
-    def rule_stopping_criterion(self, theory: Theory, rule: Rule, X, y) -> bool:
+    def rule_stopping_criterion(self, theory: Theory, rule: Rule) -> bool:
         """return `True` to stop finding more rules, given `rule` was the
         best Rule found.
         """
@@ -255,7 +261,11 @@ class SeCoBaseImplementation(ABC):
 
     @abstractmethod
     def post_process(self, theory: Theory) -> Theory:
-        """Modify `theory` after it has been learned."""
+        """Modify `theory` after it has been learned.
+
+        *NOTE*: contrary to all other hooks, this is called after
+        `unset_context`.
+        """
         pass
 
 
@@ -334,18 +344,18 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         filter_rules = self.implementation.filter_rules
 
         # algorithm
-        best_rule = rate_rule(init_rule(X, y), X, y)
+        best_rule = rate_rule(init_rule())
         rules: RuleQueue = [best_rule]
         while len(rules):
-            for candidate in select_candidate_rules(rules, X, y):
-                for refinement in refine_rule(candidate, X, y):  # TODO: parallelize here?
-                    new_rule = rate_rule(refinement, X, y)
-                    if not inner_stopping_criterion(refinement, X, y):
+            for candidate in select_candidate_rules(rules):
+                for refinement in refine_rule(candidate):  # TODO: parallelize here?
+                    new_rule = rate_rule(refinement)
+                    if not inner_stopping_criterion(refinement):
                         rules.append(new_rule)
                         if new_rule[0] > best_rule[0]:
                             best_rule = new_rule
             rules.sort(key=lambda rr: rr.rating)
-            rules = filter_rules(rules, X, y)
+            rules = filter_rules(rules)
         return best_rule[1]
 
     def _abstract_seco(self, X: np.ndarray, y: np.ndarray) -> Theory:
@@ -368,12 +378,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         while np.any(y == target_class):
             set_context(self, X, y)
             rule = find_best_rule(X, y)
-            if rule_stopping_criterion(theory, rule, X, y):
+            if rule_stopping_criterion(theory, rule):
                 break
             # ignore the rest of theory, because it already covered
-            covered = match_rule(X, rule, self.categorical_mask_)
-            X = X[~covered]  # TODO: use mask array instead of copy?
-            y = y[~covered]
+            uncovered = ~ match_rule(X, rule, self.categorical_mask_)
+            X = X[uncovered]  # TODO: use mask array instead of copy?
+            y = y[uncovered]
             theory.append(rule)
         unset_context()
         return post_process(theory)
@@ -453,12 +463,12 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
 class SimpleSeCoImplementation(SeCoBaseImplementation):
 
-    def init_rule(self, X, y) -> Rule:
+    def init_rule(self) -> Rule:
         return self.empty_rule
 
-    def evaluate_rule(self, rule: Rule, X, y) -> Tuple[float, float]:
+    def evaluate_rule(self, rule: Rule) -> Tuple[float, float]:
         metrics = count_matches(('p', 'n'), rule, self.target_class,
-                                self.categorical_mask, X, y)
+                                self.categorical_mask, self.X, self.y)
         p = metrics['p']
         n = metrics['n']
         if p+n == 0:
@@ -466,11 +476,11 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
         purity = p / (p+n)
         return (purity, p)  # tie-breaking by positive coverage
 
-    def select_candidate_rules(self, rules: RuleQueue, X, y) -> Iterable[Rule]:
+    def select_candidate_rules(self, rules: RuleQueue) -> Iterable[Rule]:
         last = rules.pop()
         return [last.rule]
 
-    def refine_rule(self, rule: Rule, X, y) -> Iterable[Rule]:
+    def refine_rule(self, rule: Rule) -> Iterable[Rule]:
         all_feature_values = self.all_feature_values
         # TODO: mark constant features for exclusion in future specializations
 
@@ -499,20 +509,20 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
                     specialization[upper, feature_index] = new_threshold
                     yield specialization
 
-    def inner_stopping_criterion(self, rule: Rule, X, y) -> bool:
+    def inner_stopping_criterion(self, rule: Rule) -> bool:
         # TODO: java NoNegativesCoveredStop:
         # n = count_matches(('n',), rule, self.target_class,
-        #                   self.categorical_mask, X, y)['n']
+        #                   self.categorical_mask, self.X, self.y)['n']
         # return n == 0
         return False
 
-    def filter_rules(self, rules: RuleQueue, X, y) -> RuleQueue:
+    def filter_rules(self, rules: RuleQueue) -> RuleQueue:
         return rules[-1:]  # only the best one
 
-    def rule_stopping_criterion(self, theory: Theory, rule: Rule, X, y) -> bool:
+    def rule_stopping_criterion(self, theory: Theory, rule: Rule) -> bool:
         # TODO: java CoverageRuleStop;
         # metrics = count_matches(('p', 'n'), rule, self.target_class,
-        #                         self.categorical_mask, X, y)
+        #                         self.categorical_mask, self.X, self.y)
         # p = metrics['p']
         # n = metrics['n']
         # return n >= p
@@ -532,19 +542,19 @@ class CN2Implementation(SimpleSeCoImplementation):
         super().__init__()
         self.LRS_threshold = LRS_threshold
 
-    def evaluate_rule(self, rule: Rule, X, y) -> Tuple[float, float]:
+    def evaluate_rule(self, rule: Rule) -> Tuple[float, float]:
         # laplace heuristic
         metrics = count_matches(('p', 'n'), rule, self.target_class,
-                                self.categorical_mask, X, y)
+                                self.categorical_mask, self.X, self.y)
         p = metrics['p']
         n = metrics['n']
         LPA = (p + 1) / (p + n + 2)
         return (LPA, p)  # tie-breaking by positive coverage
 
-    def inner_stopping_criterion(self, rule: Rule, X, y) -> bool:
+    def inner_stopping_criterion(self, rule: Rule) -> bool:
         # TODO: compare LRS with Java & papers
         # metrics = count_matches(('p', 'n', 'P', 'N'), rule, self.target_class,
-        #                         self.categorical_mask, X, y)
+        #                         self.categorical_mask, self.X, self.y)
         # p = metrics['p']
         # n = metrics['n']
         # P = metrics['P']
@@ -558,10 +568,10 @@ class CN2Implementation(SimpleSeCoImplementation):
         # return LRS <= self.LRS_threshold
         return False
 
-    def rule_stopping_criterion(self, theory: Theory, rule: Rule, X, y) -> bool:
+    def rule_stopping_criterion(self, theory: Theory, rule: Rule) -> bool:
         # return True iff rule covers no examples
         p = count_matches({'p'}, rule, self.target_class,
-                          self.categorical_mask, X, y)['p']
+                          self.categorical_mask, self.X, self.y)['p']
         return p == 0
 
 

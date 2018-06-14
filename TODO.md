@@ -12,6 +12,7 @@
     - `setup.py`
     - autochecks flake8, `nosetest --with-coverage`
 - optimization <http://www.scipy-lectures.org/advanced/optimizing/index.html>
+- common building blocks (e.g n-beam search, heuristics) as Mixins
 
 - rule visualization
 - regression?
