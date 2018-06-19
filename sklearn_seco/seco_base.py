@@ -1,28 +1,24 @@
 """Implementation of SeCo / Covering algorithm.
 
-Limitations (TODO)
+Limitations / Assumptions (TODO)
 =====
 
 - at most two tests per feature and rule
 - no sparse input
 - no missing values
 - binary estimator, applies binarization to multi-class problems
-- first class always assumed to be positive
+- first class (in `sklearn.utils.unique_labels()`, i.e. the lowest class)
+    always assumed to be positive
 - only ordered rule list, implicit default rule
 - limited operator set:
     - for categorical only ==
     - for numerical only <= and >=
-
-Assumptions
-=====
-
-- numerical features are ordinal
-- first in `sklearn.utils.unique_labels()` (i.e. lowest) is positive class
+- numerical features always assumed to be ordinal
 """
 
 from abc import ABC, abstractmethod
-from functools import lru_cache
-from typing import Iterable, List, NamedTuple, Dict, MutableMapping, Tuple
+from functools import lru_cache, total_ordering
+from typing import Iterable, List, Tuple, NewType
 
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
@@ -32,43 +28,110 @@ from sklearn.utils.multiclass import unique_labels, check_classification_targets
 from sklearn.utils.validation import check_is_fitted
 
 
-# copied from itertools docs
 def pairwise(iterable):
     """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
+    # copied from itertools docs
     from itertools import tee
     a, b = tee(iterable)
     next(b, None)
     return zip(a, b)
 
 
-Rule = np.ndarray
-"""Represents a conjunction of conditions.
+Rule = NewType('Rule', np.ndarray)
+Rule.__doc__ = """Represents a conjunction of conditions.
 
-array of dtype float, shape `(2, n_features)`
+:type: array of dtype float, shape `(2, n_features)`
 
-- first row "lower"
-    - categorical features: contains categories to be matched with "equals"
-    - numerical features: contains lower bound (`rule[lower] <= X`)
-- second row "upper"
-    - categorical features: invalid (TODO: unequal operator ?)
-    - numerical features: contains upper bound (`rule[upper] >= X`)
+    - first row "lower"
+        - categorical features: contains categories to be matched with `==`
+        - numerical features: contains lower bound (`rule[LOWER] <= X`)
+    - second row "upper"
+        - categorical features: invalid (TODO: unequal operator ?)
+        - numerical features: contains upper bound (`rule[UPPER] >= X`)
 """
-lower = 0
-upper = 1
+
+LOWER = 0
+UPPER = 1
 
 
 def make_empty_rule(n_features: int) -> Rule:
     return np.repeat(np.NaN, n_features * 2).reshape((2, n_features))
 
 
+@total_ordering
+class AugmentedRule:
+    """A `Rule` and associated data, like coverage (p, n) of current examples,
+    and a `sort_key` defining a total order between instances.
+
+    Attributes
+    -----
+    conditions: Rule
+        The actual antecedent / conjunction of conditions.
+
+    lower, upper: np.ndarray
+        Return only the lower/upper part of `self.conditions`.
+
+    sort_key: tuple of floats
+        Define an order of rules for `RuleQueue` and finding a `best_rule`,
+        using operator `<` (i.e. higher values == better rule == later in the
+        queue).
+        Set to the return value of `SeCoBaseImplementation.evaluate_rule`
+        (by `SeCoBaseImplementation.rate_rule`).
+
+    instance_no: int
+        number of instance, to compare rules by creation order
+
+    _p, _n: int
+        positive and negative coverage of this rule, access via
+        `SeCoBaseImplementation.count_matches`.
+    """
+    __rule_counter = 0
+
+    def __init__(self, conditions_or_n_features: Rule or int):
+        """Construct an `AugmentedRule` with (`int`) n_features or the given
+        (`Rule`) conditions.
+        """
+        self.instance_no = AugmentedRule.__rule_counter
+        AugmentedRule.__rule_counter += 1
+        if isinstance(conditions_or_n_features, int):
+            self.conditions = make_empty_rule(conditions_or_n_features)
+        else:
+            self.conditions = conditions_or_n_features
+        # init fields for stats
+        self._p = None
+        self._n = None
+        self.sort_key = None
+
+    def copy(self) -> 'AugmentedRule':
+        """:return: A new `AugmentedRule` with a copy of `self.conditions`."""
+        return AugmentedRule(self.conditions.copy())
+
+    @property
+    def lower(self) -> np.ndarray:
+        """The "lower" part of the rules' conditions, i.e. `rule.lower <= X`."""
+        return self.conditions[LOWER]
+
+    @property
+    def upper(self) -> np.ndarray:
+        """The "upper" part of the rules' conditions, i.e. `rule.upper >= X`."""
+        return self.conditions[UPPER]
+
+    def __lt__(self, other):
+        if not hasattr(other, 'sort_key'):
+            return NotImplemented
+        return self.sort_key < other.sort_key
+
+    def __eq__(self, other):
+        if not hasattr(other, 'sort_key'):
+            return NotImplemented
+        return self.sort_key == other.sort_key
+
+
 # TODO: ordered list / unordered set/tree
 Theory = List[Rule]
 # TODO: document default rule
 
-RatedRule = NamedTuple('RatedRule', [
-    ('rating', float or Tuple[float, float]),
-    ('rule', Rule)])
-RuleQueue = List[RatedRule]
+RuleQueue = List[AugmentedRule]
 
 
 def match_rule(X: np.ndarray,
@@ -77,9 +140,10 @@ def match_rule(X: np.ndarray,
     """Apply `rule` to all samples in `X`.
 
     :param X: An array of shape `(n_samples, n_features)`.
-    :param rule: An array of shape `(n_features,)`, holding thresholds (for
-        numerical features) or categories (for categorical features), or
-        `np.NaN` (to not test this feature).
+    :param rule: An array of shape `(2, n_features)`,
+        holding thresholds (for numerical features),
+        or categories (for categorical features),
+        or `np.NaN` (to not test this feature).
     :param categorical_mask: An array of shape `(n_features,)` and type bool,
         specifying which features are categorical (True) and numerical (False)
     :return: An array of shape `(n_samples,)` and type bool, telling for each
@@ -98,25 +162,25 @@ def match_rule(X: np.ndarray,
         """allocate buffer with default value True (if rule=NaN)"""
         return np.ones_like(X, dtype=np.bool_)
 
-    no_lower = np.isnan(rule[lower])
-    no_upper = np.isnan(rule[upper])
+    lower = rule[LOWER]
+    upper = rule[UPPER]
+
+    no_lower = np.isnan(lower)
+    no_upper = np.isnan(upper)
     return (categorical_mask
                & (no_lower
-                  | np.equal(X, rule[lower], where=~no_lower, out=mkbuf()))
+                  | np.equal(X, lower, where=~no_lower, out=mkbuf()))
             | ~categorical_mask
                & (no_lower
-                  | np.less_equal(rule[lower], X, where=~no_lower, out=mkbuf()))
+                  | np.less_equal(lower, X, where=~no_lower, out=mkbuf()))
                & (no_upper
-                  | np.greater_equal(rule[upper], X, where=~no_upper, out=mkbuf()))
+                  | np.greater_equal(upper, X, where=~no_upper, out=mkbuf()))
             ).all(axis=1)
 
 
-# TODO: cache result, esp. P,N are the same for all refinements
-def count_matches(metrics: Dict[str, int] or Iterable[str],
-                  rule: Rule, target_class, categorical_mask, X, y
-                  ) -> Dict[str, int]:
-    """Return `metrics` where for the following keys, if present the
-     corresponding values are calculated:
+def count_matches(rule: Rule, target_class, categorical_mask, X, y
+                  ) -> Tuple[int, int]:
+    """Return (p, n).
 
     returns
     -------
@@ -124,32 +188,16 @@ def count_matches(metrics: Dict[str, int] or Iterable[str],
         The count of positive examples (== target_class) covered by `rule`
     n : int
         The count of negative examples (!= target_class) covered by `rule`
-    P : int
-        The count of positive examples
-    N : int
-        The count of negative examples
     """
-    if not isinstance(metrics, MutableMapping):
-        metrics = dict(zip(metrics, [None]*len(metrics)))
 
-    # the following three are np.arrays of bool
+    # the following both are np.arrays of dtype bool
     covered = match_rule(X, rule, categorical_mask)
     positives = y == target_class
-    negatives = ~positives
     # NOTE: nonzero() is test for True
-    if 'p' in metrics:
-        metrics['p'] = np.count_nonzero(covered & positives)
-    if 'n' in metrics:
-        metrics['n'] = np.count_nonzero(covered & negatives)
-    if 'P' in metrics:
-        metrics['P'] = np.count_nonzero(positives)
-    if 'N' in metrics:
-        metrics['N'] = np.count_nonzero(negatives)
-    if 'P' in metrics and 'N' in metrics:
-        assert metrics['P'] + metrics['N'] == len(y) == X.shape[0]
-    if 'p' in metrics and 'n' in metrics:
-        assert metrics['p'] + metrics['n'] == np.count_nonzero(covered)
-    return metrics
+    p = np.count_nonzero(covered & positives)
+    n = np.count_nonzero(covered & ~positives)
+    assert p+n == np.count_nonzero(covered)
+    return (p, n)
 
 
 # noinspection PyAttributeOutsideInit
@@ -167,13 +215,38 @@ class SeCoBaseImplementation(ABC):
 
     - `categorical_mask`: An array of shape `(n_features,)` and type bool,
       indicating if a feature is categorical (`True`) or numerical (`False`).
-    - `empty_rule`: An empty rule (all fields set to `np.NaN` i.e. "no test"),
-      equivalent to `True`. Be sure to always `np.copy()` this object.
+    - `count_matches()`
     - `n_features`: The number of features in the dataset,
       equivalent to `X.shape[1]`.
+    - `P` and `N`: The count of positive and negative examples (in self.X)
     - `target_class`
-    - `all_feature_values`
+    - `all_feature_values()`
     """
+
+    def __calculate_PN(self):
+        """Calculate values of properties P, N."""
+        if hasattr(self, '_P') and hasattr(self, '_N'):
+            if None in (self._P, self._N):
+                assert self._P is None  # always set both
+                assert self._N is None
+            else:
+                return  # already calculated
+        positives = self.y == self.target_class
+        self._P = np.count_nonzero(positives)
+        self._N = np.count_nonzero(~positives)
+        assert self._P + self._N == len(self.y) == self.X.shape[0]
+
+    @property
+    def P(self):
+        """The count of positive examples"""
+        self.__calculate_PN()
+        return self._P
+
+    @property
+    def N(self):
+        """The count of negative examples"""
+        self.__calculate_PN()
+        return self._N
 
     @lru_cache(maxsize=None)
     def all_feature_values(self, feature_index: int):
@@ -183,6 +256,24 @@ class SeCoBaseImplementation(ABC):
         """
         # unique also sorts
         return np.unique(self.X[:, feature_index])
+
+    def count_matches(self, rule: AugmentedRule):
+        """Return (p, n).
+
+        returns
+        -------
+        p : int
+            The count of positive examples (== target_class) covered by `rule`.
+        n : int
+            The count of negative examples (!= target_class) covered by `rule`.
+        """
+        if None in (rule._p, rule._n):
+            assert rule._p is None  # always set them both together
+            assert rule._n is None
+            rule._p, rule._n = count_matches(rule.conditions, self.target_class,
+                                             self.categorical_mask,
+                                             self.X, self.y)
+        return (rule._p, rule._n)
 
     def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
         """New invocation of `_BinarySeCoEstimator._find_best_rule`.
@@ -195,13 +286,14 @@ class SeCoBaseImplementation(ABC):
 
         # actually don't change, but rewriting them is cheap
         self.categorical_mask = estimator.categorical_mask_
-        self.empty_rule = make_empty_rule(estimator.n_features_)
         self.n_features = estimator.n_features_
         self.target_class = estimator.target_class_
-        # depend on examples, which change each iteration
+        # depend on examples (X, y), which change each iteration
         self.all_feature_values.cache_clear()
         self.X = X
         self.y = y
+        self._P = None
+        self._N = None
 
     def unset_context(self):
         """Called after the last invocation of
@@ -210,38 +302,45 @@ class SeCoBaseImplementation(ABC):
         self.all_feature_values.cache_clear()
         self.X = None
         self.y = None
+        self._P = None
+        self._N = None
 
-    def rate_rule(self, rule: Rule) -> RatedRule:
-        return RatedRule(self.evaluate_rule(rule), rule)
+    def rate_rule(self, rule: AugmentedRule) -> None:
+        """Wrapper around `evaluate_rule`."""
+        rule.sort_key = self.evaluate_rule(rule)
 
+    # TODO: maybe separate callbacks for find_best_rule context into own class?
     # abstract interface
 
     @abstractmethod
-    def init_rule(self) -> Rule:
+    def init_rule(self) -> AugmentedRule:
         """Create a new rule to be refined before added to the theory."""
         pass
 
     # FIXME: make metric(s) of previous rule available (also in stop criteria)
     @abstractmethod
-    def evaluate_rule(self, rule: Rule) -> float or Tuple[float, float]:
-        """Rate rule to allow comparison & finding the best refinement
-        (using operator `>`).
+    def evaluate_rule(self, rule: AugmentedRule) -> float or Tuple[float, ...]:
+        """Rate rule to allow comparison & finding the best refinement.
+
+        :return: A rule rating, or a tuple of these (later elements are used for
+          tie breaking). Rules are compared using these tuples and operator `<`.
         """
         pass
 
     @abstractmethod
-    def select_candidate_rules(self, rules: RuleQueue) -> Iterable[Rule]:
+    def select_candidate_rules(self, rules: RuleQueue
+                               ) -> Iterable[AugmentedRule]:
         """Remove and return those Rules from `rules` which should be refined.
         """
         pass
 
     @abstractmethod
-    def refine_rule(self, rule: Rule) -> Iterable[Rule]:
+    def refine_rule(self, rule: AugmentedRule) -> Iterable[AugmentedRule]:
         """Create all refinements from `rule`."""
         pass
 
     @abstractmethod
-    def inner_stopping_criterion(self, rule: Rule) -> bool:
+    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         """return `True` to stop refining `rule`."""
         pass
 
@@ -253,7 +352,8 @@ class SeCoBaseImplementation(ABC):
         pass
 
     @abstractmethod
-    def rule_stopping_criterion(self, theory: Theory, rule: Rule) -> bool:
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
+                                ) -> bool:
         """return `True` to stop finding more rules, given `rule` was the
         best Rule found.
         """
@@ -328,7 +428,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         self.theory_ = self._abstract_seco(X, y)
         return self
 
-    def _find_best_rule(self, X, y) -> Rule:
+    def _find_best_rule(self, X, y) -> AugmentedRule:
         """Inner loop of abstract SeCo/Covering algorithm.
 
         :param X: Not yet covered examples.
@@ -344,19 +444,20 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         filter_rules = self.implementation.filter_rules
 
         # algorithm
-        best_rule = rate_rule(init_rule())
+        best_rule = init_rule()
+        rate_rule(best_rule)
         rules: RuleQueue = [best_rule]
         while len(rules):
             for candidate in select_candidate_rules(rules):
                 for refinement in refine_rule(candidate):  # TODO: parallelize here?
-                    new_rule = rate_rule(refinement)
+                    rate_rule(refinement)
                     if not inner_stopping_criterion(refinement):
-                        rules.append(new_rule)
-                        if new_rule[0] > best_rule[0]:
-                            best_rule = new_rule
-            rules.sort(key=lambda rr: rr.rating)
+                        rules.append(refinement)
+                        if refinement > best_rule:
+                            best_rule = refinement
+            rules.sort()
             rules = filter_rules(rules)
-        return best_rule[1]
+        return best_rule
 
     def _abstract_seco(self, X: np.ndarray, y: np.ndarray) -> Theory:
         """Main loop of abstract SeCo/Covering algorithm.
@@ -374,17 +475,17 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         # TODO: split growing/pruning set for ripper
         # main loop
         target_class = self.target_class_
-        theory = list()
+        theory: Theory = list()
         while np.any(y == target_class):
             set_context(self, X, y)
             rule = find_best_rule(X, y)
             if rule_stopping_criterion(theory, rule):
                 break
             # ignore the rest of theory, because it already covered
-            uncovered = ~ match_rule(X, rule, self.categorical_mask_)
+            uncovered = ~match_rule(X, rule.conditions, self.categorical_mask_)
             X = X[uncovered]  # TODO: use mask array instead of copy?
             y = y[uncovered]
-            theory.append(rule)
+            theory.append(rule.conditions)  # throw away augmentation
         unset_context()
         return post_process(theory)
 
@@ -463,68 +564,64 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
 class SimpleSeCoImplementation(SeCoBaseImplementation):
 
-    def init_rule(self) -> Rule:
-        return self.empty_rule
+    def init_rule(self) -> AugmentedRule:
+        return AugmentedRule(self.n_features)
 
-    def evaluate_rule(self, rule: Rule) -> Tuple[float, float]:
-        metrics = count_matches(('p', 'n'), rule, self.target_class,
-                                self.categorical_mask, self.X, self.y)
-        p = metrics['p']
-        n = metrics['n']
-        if p+n == 0:
-            return (0, 0)
+    def evaluate_rule(self, rule: AugmentedRule) -> Tuple[float, float, int]:
+        p, n = self.count_matches(rule)
+        if p + n == 0:
+            return (0, p, rule.instance_no)
         purity = p / (p+n)
-        return (purity, p)  # tie-breaking by positive coverage
+        # tie-breaking by positive coverage and rule creation order
+        return (purity, p, rule.instance_no)
 
-    def select_candidate_rules(self, rules: RuleQueue) -> Iterable[Rule]:
+    def select_candidate_rules(self, rules: RuleQueue
+                               ) -> Iterable[AugmentedRule]:
         last = rules.pop()
-        return [last.rule]
+        return [last]
 
-    def refine_rule(self, rule: Rule) -> Iterable[Rule]:
+    def refine_rule(self, rule: AugmentedRule) -> Iterable[AugmentedRule]:
         all_feature_values = self.all_feature_values
         # TODO: mark constant features for exclusion in future specializations
 
         for index in np.argwhere(self.categorical_mask
-                                 & np.isnan(rule[lower])  # unused features
+                                 & np.isnan(rule.lower)  # unused features
                                  ).ravel():
             # argwhere returns each index in separate list, ravel() unpacks
             for value in all_feature_values(index):
                 specialization = rule.copy()
-                specialization[lower, index] = value
+                specialization.lower[index] = value
                 yield specialization
 
         for feature_index in np.nonzero(~self.categorical_mask)[0]:
+            old_lower = rule.lower[feature_index]
+            old_upper = rule.upper[feature_index]
             for value1, value2 in pairwise(all_feature_values(feature_index)):
                 new_threshold = (value1 + value2) / 2
                 # override is collation of lower bounds
-                old_threshold = rule[lower, feature_index]
-                if np.isnan(old_threshold) or new_threshold > old_threshold:
+                if np.isnan(old_lower) or new_threshold > old_lower:
                     specialization = rule.copy()
-                    specialization[lower, feature_index] = new_threshold
+                    specialization.lower[feature_index] = new_threshold
                     yield specialization
                 # override is collation of upper bounds
-                old_threshold = rule[upper, feature_index]
-                if np.isnan(old_threshold) or new_threshold < old_threshold:
+                if np.isnan(old_upper) or new_threshold < old_upper:
                     specialization = rule.copy()
-                    specialization[upper, feature_index] = new_threshold
+                    specialization.upper[feature_index] = new_threshold
                     yield specialization
 
-    def inner_stopping_criterion(self, rule: Rule) -> bool:
+    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         # TODO: java NoNegativesCoveredStop:
-        # n = count_matches(('n',), rule, self.target_class,
-        #                   self.categorical_mask, self.X, self.y)['n']
+        # p, n = self.count_matches(rule)
         # return n == 0
         return False
 
     def filter_rules(self, rules: RuleQueue) -> RuleQueue:
         return rules[-1:]  # only the best one
 
-    def rule_stopping_criterion(self, theory: Theory, rule: Rule) -> bool:
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
+                                ) -> bool:
         # TODO: java CoverageRuleStop;
-        # metrics = count_matches(('p', 'n'), rule, self.target_class,
-        #                         self.categorical_mask, self.X, self.y)
-        # p = metrics['p']
-        # n = metrics['n']
+        # p, n = self.count_matches(rule)
         # return n >= p
         return False
 
@@ -542,23 +639,16 @@ class CN2Implementation(SimpleSeCoImplementation):
         super().__init__()
         self.LRS_threshold = LRS_threshold
 
-    def evaluate_rule(self, rule: Rule) -> Tuple[float, float]:
+    def evaluate_rule(self, rule: AugmentedRule) -> Tuple[float, float, int]:
         # laplace heuristic
-        metrics = count_matches(('p', 'n'), rule, self.target_class,
-                                self.categorical_mask, self.X, self.y)
-        p = metrics['p']
-        n = metrics['n']
+        p, n = self.count_matches(rule)
         LPA = (p + 1) / (p + n + 2)
-        return (LPA, p)  # tie-breaking by positive coverage
+        return (LPA, p, rule.instance_no)  # tie-breaking by positive coverage
 
-    def inner_stopping_criterion(self, rule: Rule) -> bool:
+    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         # TODO: compare LRS with Java & papers
-        # metrics = count_matches(('p', 'n', 'P', 'N'), rule, self.target_class,
-        #                         self.categorical_mask, self.X, self.y)
-        # p = metrics['p']
-        # n = metrics['n']
-        # P = metrics['P']
-        # N = metrics['N']
+        # p, n = self.count_matches(rule)
+        # P, N = self.P, self.N
         # purity = p / (p+n)
         # impurity = n / (p+n)
         # CE = -purity * np.log(purity / (P/(P+N))) \
@@ -568,10 +658,9 @@ class CN2Implementation(SimpleSeCoImplementation):
         # return LRS <= self.LRS_threshold
         return False
 
-    def rule_stopping_criterion(self, theory: Theory, rule: Rule) -> bool:
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule) -> bool:
         # return True iff rule covers no examples
-        p = count_matches({'p'}, rule, self.target_class,
-                          self.categorical_mask, self.X, self.y)['p']
+        p, n = self.count_matches(rule)
         return p == 0
 
 
@@ -581,5 +670,5 @@ class CN2Estimator(SeCoEstimator):
                  multi_class="one_vs_rest",
                  n_jobs=1):
         super().__init__(CN2Implementation(LRS_threshold), multi_class, n_jobs)
-        # needed for test `check_parameters_default_constructible`:
+        # sklearn assumes all parameters are class fields
         self.LRS_threshold = LRS_threshold
