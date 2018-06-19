@@ -61,7 +61,12 @@ def make_empty_rule(n_features: int) -> Rule:
 @total_ordering
 class AugmentedRule:
     """A `Rule` and associated data, like coverage (p, n) of current examples,
-    and a `sort_key` defining a total order between instances.
+    a `sort_key` defining a total order between instances, and for rules forked
+    from others (with `copy()`) a reference to the original rule.
+
+    Lifetime of an AugmentedRule is from its creation (in `init_rule` or
+    `refine_rule`) until its `conditions` are added to the theory in
+    `abstract_seco`.
 
     Attributes
     -----
@@ -71,40 +76,54 @@ class AugmentedRule:
     lower, upper: np.ndarray
         Return only the lower/upper part of `self.conditions`.
 
-    sort_key: tuple of floats
+    instance_no: int
+        number of instance, to compare rules by creation order
+
+    original: AugmentedRule or None
+        Another rule this one has been forked from, using `copy()`.
+
+    _sort_key: tuple of floats
         Define an order of rules for `RuleQueue` and finding a `best_rule`,
         using operator `<` (i.e. higher values == better rule == later in the
         queue).
         Set to the return value of `SeCoBaseImplementation.evaluate_rule`
         (by `SeCoBaseImplementation.rate_rule`).
-
-    instance_no: int
-        number of instance, to compare rules by creation order
+        Accessed implicitly through `__lt__`.
 
     _p, _n: int
-        positive and negative coverage of this rule, access via
+        positive and negative coverage of this rule. Access via
         `SeCoBaseImplementation.count_matches`.
     """
     __rule_counter = 0
 
-    def __init__(self, conditions_or_n_features: Rule or int):
-        """Construct an `AugmentedRule` with (`int`) n_features or the given
-        (`Rule`) conditions.
+    def __init__(self, *, conditions: Rule = None, n_features: int = None,
+                 original=None):
+        """Construct an `AugmentedRule` with either `n_features` or the given
+        `conditions`.
+
+        :param original: A reference to an "original" rule, saved as attribute.
+          See `copy()`.
         """
         self.instance_no = AugmentedRule.__rule_counter
         AugmentedRule.__rule_counter += 1
-        if isinstance(conditions_or_n_features, int):
-            self.conditions = make_empty_rule(conditions_or_n_features)
+        self.original = original
+
+        assert (conditions is None) ^ (n_features is None)  # XOR
+        if conditions is None:
+            self.conditions = make_empty_rule(n_features)
+        elif n_features is None:
+            self.conditions = conditions
         else:
-            self.conditions = conditions_or_n_features
+            raise ValueError("Exactly one of (conditions, n_features) "
+                             "must be not None.")
         # init fields for stats
         self._p = None
         self._n = None
-        self.sort_key = None
+        self._sort_key = None
 
     def copy(self) -> 'AugmentedRule':
         """:return: A new `AugmentedRule` with a copy of `self.conditions`."""
-        return AugmentedRule(self.conditions.copy())
+        return AugmentedRule(conditions=self.conditions.copy(), original=self)
 
     @property
     def lower(self) -> np.ndarray:
@@ -117,14 +136,14 @@ class AugmentedRule:
         return self.conditions[UPPER]
 
     def __lt__(self, other):
-        if not hasattr(other, 'sort_key'):
+        if not hasattr(other, '_sort_key'):
             return NotImplemented
-        return self.sort_key < other.sort_key
+        return self._sort_key < other._sort_key
 
     def __eq__(self, other):
         if not hasattr(other, 'sort_key'):
             return NotImplemented
-        return self.sort_key == other.sort_key
+        return self._sort_key == other._sort_key
 
 
 # TODO: ordered list / unordered set/tree
@@ -307,7 +326,7 @@ class SeCoBaseImplementation(ABC):
 
     def rate_rule(self, rule: AugmentedRule) -> None:
         """Wrapper around `evaluate_rule`."""
-        rule.sort_key = self.evaluate_rule(rule)
+        rule._sort_key = self.evaluate_rule(rule)
 
     # TODO: maybe separate callbacks for find_best_rule context into own class?
     # abstract interface
@@ -317,7 +336,6 @@ class SeCoBaseImplementation(ABC):
         """Create a new rule to be refined before added to the theory."""
         pass
 
-    # FIXME: make metric(s) of previous rule available (also in stop criteria)
     @abstractmethod
     def evaluate_rule(self, rule: AugmentedRule) -> float or Tuple[float, ...]:
         """Rate rule to allow comparison & finding the best refinement.
@@ -565,7 +583,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 class SimpleSeCoImplementation(SeCoBaseImplementation):
 
     def init_rule(self) -> AugmentedRule:
-        return AugmentedRule(self.n_features)
+        return AugmentedRule(n_features=self.n_features)
 
     def evaluate_rule(self, rule: AugmentedRule) -> Tuple[float, float, int]:
         p, n = self.count_matches(rule)
