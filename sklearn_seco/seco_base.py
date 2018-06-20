@@ -603,7 +603,7 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
         # TODO: mark constant features for exclusion in future specializations
 
         for index in np.argwhere(self.categorical_mask
-                                 & np.isnan(rule.lower)  # unused features
+                                 & ~np.isfinite(rule.lower)  # unused features
                                  ).ravel():
             # argwhere returns each index in separate list, ravel() unpacks
             for value in all_feature_values(index):
@@ -613,19 +613,25 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
 
         for feature_index in np.nonzero(~self.categorical_mask)[0]:
             old_lower = rule.lower[feature_index]
+            no_old_lower = ~np.isfinite(old_lower)
             old_upper = rule.upper[feature_index]
+            no_old_upper = ~np.isfinite(old_upper)
             for value1, value2 in pairwise(all_feature_values(feature_index)):
                 new_threshold = (value1 + value2) / 2
                 # override is collation of lower bounds
-                if np.isnan(old_lower) or new_threshold > old_lower:
-                    specialization = rule.copy()
-                    specialization.lower[feature_index] = new_threshold
-                    yield specialization
+                if no_old_lower or new_threshold > old_lower:
+                    # don't test contradiction (e.g. f < 4 && f > 6)
+                    if no_old_upper or new_threshold < old_upper:
+                        specialization = rule.copy()
+                        specialization.lower[feature_index] = new_threshold
+                        yield specialization
                 # override is collation of upper bounds
-                if np.isnan(old_upper) or new_threshold < old_upper:
-                    specialization = rule.copy()
-                    specialization.upper[feature_index] = new_threshold
-                    yield specialization
+                if no_old_upper or new_threshold < old_upper:
+                    # don't test contradiction
+                    if no_old_lower or new_threshold > old_lower:
+                        specialization = rule.copy()
+                        specialization.upper[feature_index] = new_threshold
+                        yield specialization
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         # TODO: java NoNegativesCoveredStop:
