@@ -5,44 +5,46 @@ from sklearn.utils.estimator_checks import _yield_all_checks, \
 from sklearn_seco.seco_base import \
     SimpleSeCoEstimator, CN2Estimator, _BinarySeCoEstimator, \
     SimpleSeCoImplementation, \
-    match_rule, Rule
+    match_rule, make_empty_rule, Rule
 
 
 def test_match_rule():
-    from numpy import NaN
+    from numpy import NINF, PINF
     categorical_mask = np.array([True, True, False, False])
     X = np.array([[1, 2, 3.0, 4.0]])
 
     def am(rule, expected_result, X=X):
-        assert_array_equal(match_rule(X, np.asarray(rule), categorical_mask),
+        assert_array_equal(match_rule(X, Rule(np.asarray(rule)),
+                                      categorical_mask),
                            expected_result)
 
-    am([[NaN, NaN, NaN, NaN], [NaN, NaN, NaN, NaN]], [True])
+    am(make_empty_rule(len(categorical_mask)), [True])
+    am([[NINF, NINF, NINF, NINF], [PINF, PINF, PINF, PINF]], [True])
     # categorical: upper unused
-    am([[NaN, NaN, NaN, NaN], [7, 7, NaN, NaN]], [True])
+    am([[NINF, NINF, NINF, NINF], [7,    7,    PINF, PINF]], [True])
     # categorical ==
-    am([[1,   2,   NaN, NaN], [NaN, NaN, NaN, NaN]], [True])
-    am([[0,   2,   NaN, NaN], [NaN, NaN, NaN, NaN]], [False])
-    am([[11,   2,   NaN, NaN], [NaN, NaN, NaN, NaN]], [False])
+    am([[1,    2,    NINF, NINF], [PINF, PINF, PINF, PINF]], [True])
+    am([[0,    2,    NINF, NINF], [PINF, PINF, PINF, PINF]], [False])
+    am([[11,   2,    NINF, NINF], [PINF, PINF, PINF, PINF]], [False])
     # numerical <= upper
-    am([[NaN, NaN, NaN, NaN], [NaN, NaN, 13.0, 14.0]], [True])
-    am([[NaN, NaN, NaN, NaN], [NaN, NaN, -3.0, -4.0]], [False])
-    am([[NaN, NaN, NaN, NaN], [NaN, NaN, 3.0, NaN]], [True])
-    am([[NaN, NaN, NaN, NaN], [1, 2, 10.0, 10.0]], [True])
+    am([[NINF, NINF, NINF, NINF], [PINF, PINF, 13.0, 14.0]], [True])
+    am([[NINF, NINF, NINF, NINF], [PINF, PINF, -3.0, -4.0]], [False])
+    am([[NINF, NINF, NINF, NINF], [PINF, PINF,  3.0, PINF]], [True])
+    am([[NINF, NINF, NINF, NINF], [1,    2,    10.0, 10.0]], [True])
 
     # test broadcasting using 4 samples, 4 features
     X4 = np.array([[1, 2, 3.0, 4.0],
                    [1, 2, 30.0, 40.0],
                    [1, 2, 0.0,  0.0],
                    [0, 0, 2.0, 3.0]])
-    am([[  1, NaN, NaN, NaN],
-       [NaN, NaN, 3.0, 4.0]], [True, False, True, False], X=X4)
+    am([[   1, NINF, NINF, NINF],
+        [PINF, PINF,  3.0,  4.0]], [True, False, True, False], X=X4)
 
     # TODO: define & test NaN in X (missing values)
 
 
 def test_base_easyrules():
-    from numpy import NaN
+    from numpy import NINF, PINF
     categorical_mask = np.array([True, False])
     X_train = np.array([[0, -1.0],
                         [0, -2.0],
@@ -54,8 +56,8 @@ def test_base_easyrules():
 
     assert_equal(est.target_class_, 1)
     assert_equal(len(est.theory_), 2)
-    assert_array_equal(est.theory_[0], np.array([[NaN, NaN], [NaN, -1.5]]))
-    assert_array_equal(est.theory_[1], np.array([[0, NaN], [NaN, 0]]))
+    assert_array_equal(est.theory_[0], np.array([[NINF, NINF], [PINF, -1.5]]))
+    assert_array_equal(est.theory_[1], np.array([[   0, NINF], [PINF,    0]]))
 
     assert_array_equal(est.predict(X_train), y_train)
 

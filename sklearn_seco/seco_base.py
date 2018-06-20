@@ -14,6 +14,7 @@ Limitations / Assumptions (TODO)
     - for categorical only ==
     - for numerical only <= and >=
 - numerical features always assumed to be ordinal
+- no NaN, inf, or -inf values in data
 """
 
 from abc import ABC, abstractmethod
@@ -48,6 +49,10 @@ Rule.__doc__ = """Represents a conjunction of conditions.
     - second row "upper"
         - categorical features: invalid (TODO: unequal operator ?)
         - numerical features: contains upper bound (`rule[UPPER] >= X`)
+
+    To specify "no test", use appropriate infinity values for numerical features
+    (np.NINF and np.PINF for lower and upper), and for categorical features any
+    non-finite value (np.NaN, np.NINF, np.PINF).
 """
 
 LOWER = 0
@@ -55,7 +60,12 @@ UPPER = 1
 
 
 def make_empty_rule(n_features: int) -> Rule:
-    return np.repeat(np.NaN, n_features * 2).reshape((2, n_features))
+    """:return: A `Rule` with no conditions, it always matches."""
+    # NOTE: even if user inputs dtype which knows no np.inf (like int),
+    # `Rule` has always dtype float which does
+    return Rule(np.vstack([np.repeat(np.NINF, n_features),  # lower
+                           np.repeat(np.PINF, n_features)  # upper
+                           ]))
 
 
 @total_ordering
@@ -171,29 +181,19 @@ def match_rule(X: np.ndarray,
     pseudocode::
         conjugate for all features:
             if feature is categorical:
-                return rule[lower] is NaN  or  rule[lower] == X
+                return rule[LOWER] is NaN  or  rule[LOWER] == X
             else:
-                return  rule[lower] is NaN  or  rule[lower] <= X
-                     && rule[upper] is NaN  or  rule[upper] >= X
+                return  rule[LOWER] is NaN  or  rule[LOWER] <= X
+                     && rule[UPPER] is NaN  or  rule[UPPER] >= X
     """
-
-    def mkbuf():
-        """allocate buffer with default value True (if rule=NaN)"""
-        return np.ones_like(X, dtype=np.bool_)
 
     lower = rule[LOWER]
     upper = rule[UPPER]
 
-    no_lower = np.isnan(lower)
-    no_upper = np.isnan(upper)
-    return (categorical_mask
-               & (no_lower
-                  | np.equal(X, lower, where=~no_lower, out=mkbuf()))
+    return (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
             | ~categorical_mask
-               & (no_lower
-                  | np.less_equal(lower, X, where=~no_lower, out=mkbuf()))
-               & (no_upper
-                  | np.greater_equal(upper, X, where=~no_upper, out=mkbuf()))
+               & np.less_equal(lower, X)
+               & np.greater_equal(upper, X)
             ).all(axis=1)
 
 
