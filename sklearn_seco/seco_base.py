@@ -588,10 +588,10 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
     def evaluate_rule(self, rule: AugmentedRule) -> Tuple[float, float, int]:
         p, n = self.count_matches(rule)
         if p + n == 0:
-            return (0, p, rule.instance_no)
+            return (0, p, -rule.instance_no)
         purity = p / (p+n)
-        # tie-breaking by positive coverage and rule creation order
-        return (purity, p, rule.instance_no)
+        # tie-breaking by pos. coverage and rule creation order (older = better)
+        return (purity, p, -rule.instance_no)
 
     def select_candidate_rules(self, rules: RuleQueue
                                ) -> Iterable[AugmentedRule]:
