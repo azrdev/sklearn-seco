@@ -7,9 +7,10 @@ Limitations / Assumptions (TODO)
 - no sparse input
 - no missing values
 - binary estimator, applies binarization to multi-class problems
-- first class (in `sklearn.utils.unique_labels()`, i.e. the lowest class)
-    always assumed to be positive
-- only ordered rule list, implicit default rule
+- first class (from `sklearn.utils.unique_labels()`, i.e. the lowest class)
+    always assumed to be positive (may be asymmetrical, because of default rule)
+- implicit default rule
+- only ordered rule list (no unordered rule set / tree)
 - limited operator set:
     - for categorical only ==
     - for numerical only <= and >=
@@ -156,10 +157,7 @@ class AugmentedRule:
         return self._sort_key == other._sort_key
 
 
-# TODO: ordered list / unordered set/tree
 Theory = List[Rule]
-# TODO: document default rule
-
 RuleQueue = List[AugmentedRule]
 
 
@@ -191,9 +189,9 @@ def match_rule(X: np.ndarray,
     upper = rule[UPPER]
 
     return (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
-            | ~categorical_mask
+            | (~categorical_mask
                & np.less_equal(lower, X)
-               & np.greater_equal(upper, X)
+               & np.greater_equal(upper, X))
             ).all(axis=1)
 
 
@@ -215,7 +213,7 @@ def count_matches(rule: Rule, target_class, categorical_mask, X, y
     # NOTE: nonzero() is test for True
     p = np.count_nonzero(covered & positives)
     n = np.count_nonzero(covered & ~positives)
-    assert p+n == np.count_nonzero(covered)
+    assert p + n == np.count_nonzero(covered)
     return (p, n)
 
 
@@ -441,8 +439,6 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         check_classification_targets(y)
         self.classes_ = unique_labels(y)
         self.target_class_ = self.classes_[0]
-        # TODO: assuming classes_[0, 1] being positive & negative.
-        # TODO: a default rule might lead to asymmetry → positive class should be configurable
 
         # prepare  attributes / features / X
         self.n_features_ = X.shape[1]
@@ -608,7 +604,7 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
         p, n = self.count_matches(rule)
         if p + n == 0:
             return (0, p, -rule.instance_no)
-        purity = p / (p+n)
+        purity = p / (p + n)
         # tie-breaking by pos. coverage and rule creation order (older = better)
         return (purity, p, -rule.instance_no)
 

@@ -1,0 +1,9 @@
+[flake8]
+ignore =
+	# whitespace in list (for indentation of test sets)
+	E201, E241,
+	# too long lines
+	E501,
+	# line break before/after binary operator
+	W503, W504,
+
