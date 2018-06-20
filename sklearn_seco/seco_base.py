@@ -234,6 +234,7 @@ class SeCoBaseImplementation(ABC):
 
     - `categorical_mask`: An array of shape `(n_features,)` and type bool,
       indicating if a feature is categorical (`True`) or numerical (`False`).
+    - `match_rule()` and `match_rule_raw()`
     - `count_matches()`
     - `n_features`: The number of features in the dataset,
       equivalent to `X.shape[1]`.
@@ -275,6 +276,22 @@ class SeCoBaseImplementation(ABC):
         """
         # unique also sorts
         return np.unique(self.X[:, feature_index])
+
+    def match_rule(self, rule: AugmentedRule):
+        """Apply `rule`, telling for each sample if it matched.
+
+        :return: An array of dtype bool and shape `(n_samples,)`.
+        """
+        return match_rule(self.X, rule.conditions, self.categorical_mask)
+
+    def match_rule_raw(self, rule: Rule, X):
+        """
+
+        :param rule:
+        :param X: The samples to test.
+        :return: An array of dtype bool and shape `(n_samples,)`.
+        """
+        return match_rule(X, rule, self.categorical_mask)
 
     def count_matches(self, rule: AugmentedRule):
         """Return (p, n).
@@ -471,7 +488,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                     rate_rule(refinement)
                     if not inner_stopping_criterion(refinement):
                         rules.append(refinement)
-                        if refinement > best_rule:
+                        if best_rule < refinement:
                             best_rule = refinement
             rules.sort()
             rules = filter_rules(rules)
@@ -489,6 +506,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         find_best_rule = self._find_best_rule
         unset_context = self.implementation.unset_context
         post_process = self.implementation.post_process
+        match_rule = self.implementation.match_rule
 
         # TODO: split growing/pruning set for ripper
         # main loop
@@ -500,7 +518,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             if rule_stopping_criterion(theory, rule):
                 break
             # ignore the rest of theory, because it already covered
-            uncovered = ~match_rule(X, rule.conditions, self.categorical_mask_)
+            uncovered = ~ match_rule(rule)
             X = X[uncovered]  # TODO: use mask array instead of copy?
             y = y[uncovered]
             theory.append(rule.conditions)  # throw away augmentation
@@ -511,12 +529,13 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
         X: np.ndarray = check_array(X)
         target_class = self.target_class_
+        match_rule = self.implementation.match_rule_raw
         result = np.repeat(self.classes_[1],  # negative class
                            X.shape[0])
 
         for rule in self.theory_:
             result = np.where(
-                match_rule(X, rule, self.categorical_mask_),
+                match_rule(rule, X),
                 target_class,
                 result)
         return result
