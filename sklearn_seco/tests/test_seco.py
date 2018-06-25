@@ -1,5 +1,9 @@
 import numpy as np
-from numpy.testing import assert_array_equal, assert_equal
+from numpy import NINF, PINF
+from nose.tools import assert_is_instance
+from numpy.testing import assert_array_equal, assert_equal, \
+    assert_array_almost_equal
+from sklearn.utils import check_random_state
 from sklearn.utils.estimator_checks import _yield_all_checks, \
     check_parameters_default_constructible, check_no_fit_attributes_set_in_init
 from sklearn_seco.seco_base import \
@@ -9,7 +13,7 @@ from sklearn_seco.seco_base import \
 
 
 def test_match_rule():
-    from numpy import NINF, PINF
+    """Test :func:`match_rule`, i.e. basic rule matching."""
     categorical_mask = np.array([True, True, False, False])
     X = np.array([[1, 2, 3.0, 4.0]])
 
@@ -44,7 +48,9 @@ def test_match_rule():
 
 
 def test_base_easyrules():
-    from numpy import NINF, PINF
+    """Test :class:`_BinarySeCoEstimator` with some small test set for some
+    trivial rules
+    """
     categorical_mask = np.array([True, False])
     X_train = np.array([[0, -1.0],
                         [0, -2.0],
@@ -71,8 +77,29 @@ def test_base_easyrules():
     assert_array_equal(est.predict(X_test), y_test)
 
 
+def test_trivial_decision_border():
+    """Generate two scattered classes without overlap and check the border is
+    determined correctly.
+    """
+    random = check_random_state(None)
+    X = np.array([random.normal(size=50), random.random_sample(50)]).T
+    X[0:25, 1] += 1
+    y = np.zeros(50)
+    y[0:25] = 1
+    est = SimpleSeCoEstimator()
+    est.fit(X, y)
+    base = est.base_estimator_
+    assert_is_instance(base, _BinarySeCoEstimator)
+    assert_equal(base.target_class_, 0)
+    assert_equal(len(base.theory_), 1)
+    assert_array_almost_equal(base.theory_[0], [[NINF, NINF], [PINF, 1.0]],
+                              decimal=1)
+
+
 def test_check_simple():
-    # check_estimator(SimpleSeCoEstimator)
+    """Unwrap :func:`sklearn.utils.estimator_checks.check_estimator` for
+    :class:`SimpleSeCoEstimator`.
+    """
 
     # disassembled check_estimator, to have all as separate nosetests
     Estimator = SimpleSeCoEstimator
@@ -87,7 +114,9 @@ def test_check_simple():
 
 
 def test_check_CN2():
-    # check_estimator(CN2Estimator)
+    """Unwrap :func:`sklearn.utils.estimator_checks.check_estimator` for
+    :class:`CN2Estimator`.
+    """
 
     # disassembled check_estimator, to have all as separate nosetests
     Estimator = CN2Estimator
