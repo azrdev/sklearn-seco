@@ -456,10 +456,10 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                              " but got {}.".format(categorical_features))
 
         # run SeCo algorithm
-        self.theory_ = self._abstract_seco(X, y)
+        self.theory_ = self.abstract_seco(X, y)
         return self
 
-    def _find_best_rule(self, X, y) -> AugmentedRule:
+    def find_best_rule(self, X, y) -> AugmentedRule:
         """Inner loop of abstract SeCo/Covering algorithm.
 
         :param X: Not yet covered examples.
@@ -490,7 +490,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             rules = filter_rules(rules)
         return best_rule
 
-    def _abstract_seco(self, X: np.ndarray, y: np.ndarray) -> Theory:
+    def abstract_seco(self, X: np.ndarray, y: np.ndarray) -> Theory:
         """Main loop of abstract SeCo/Covering algorithm.
 
         :return: Theory
@@ -499,7 +499,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         # resolve methods once for performance
         set_context = self.implementation.set_context
         rule_stopping_criterion = self.implementation.rule_stopping_criterion
-        find_best_rule = self._find_best_rule
+        find_best_rule = self.find_best_rule
         unset_context = self.implementation.unset_context
         post_process = self.implementation.post_process
         match_rule = self.implementation.match_rule
