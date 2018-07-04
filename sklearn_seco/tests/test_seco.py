@@ -1,8 +1,9 @@
 import numpy as np
 from numpy import NINF, PINF
-from nose.tools import assert_is_instance
+from nose.tools import assert_is_instance, assert_greater
 from numpy.testing import assert_array_equal, assert_equal, \
     assert_array_almost_equal
+from sklearn.metrics import accuracy_score
 from sklearn.utils import check_random_state
 from sklearn.utils.estimator_checks import _yield_all_checks, \
     check_parameters_default_constructible, check_no_fit_attributes_set_in_init
@@ -48,8 +49,7 @@ def test_match_rule():
 
 
 def test_base_easyrules():
-    """Test :class:`_BinarySeCoEstimator` with some small test set for some
-    trivial rules
+    """Test SimpleSeCo with some small test set for some trivial, binary rules.
     """
     categorical_mask = np.array([True, False])
     X_train = np.array([[0, -1.0],
@@ -77,23 +77,74 @@ def test_base_easyrules():
     assert_array_equal(est.predict(X_test), y_test)
 
 
+# TODO: apply all tests to all supplied seco subclasses
+
+
 def test_trivial_decision_border():
     """Generate two scattered classes without overlap and check the border is
     determined correctly.
     """
-    random = check_random_state(None)
-    X = np.array([random.normal(size=50), random.random_sample(50)]).T
-    X[0:25, 1] += 1
-    y = np.zeros(50)
+    random = check_random_state(42)
+    samples = np.array([random.normal(size=50),
+                        random.random_sample(50),
+                        np.zeros(50)]).T
+    X = samples[:, :-1]  # all but last column
+    y = samples[:, -1]  # last column
+    samples[0:25, 1] += 1
     y[0:25] = 1
-    est = SimpleSeCoEstimator()
-    est.fit(X, y)
-    base = est.base_estimator_
-    assert_is_instance(base, _BinarySeCoEstimator)
-    assert_equal(base.target_class_, 0)
-    assert_equal(len(base.theory_), 1)
-    assert_array_almost_equal(base.theory_[0], [[NINF, NINF], [PINF, 1.0]],
-                              decimal=1)
+    np.random.shuffle(samples)
+
+    def apply_test(estimator):
+        estimator.fit(X, y)
+        # check recognition of binary problem
+        base = estimator.base_estimator_
+        assert_is_instance(base, _BinarySeCoEstimator)
+        assert_equal(base.target_class_, 0)
+        # check expected rule
+        assert_equal(len(base.theory_), 1)
+        assert_array_almost_equal(base.theory_[0], [[NINF, NINF], [PINF, 1.0]],
+                                  decimal=1)
+    yield apply_test, SimpleSeCoEstimator()
+    yield apply_test, CN2Estimator()
+
+
+def test_blackbox_accuracy_binary():
+    """Generate two scattered, slightly overlapping classes and assert a certain
+    accuracy_score.
+    """
+    random = check_random_state(42)
+    dim = 8
+    n_cls = 80
+    training = np.block([
+        [random.multivariate_normal(np.zeros(dim), np.eye(dim), size=n_cls),
+         np.ones((n_cls, 1))],
+        [random.multivariate_normal(np.zeros(dim) + 3, np.eye(dim), size=n_cls),
+         np.zeros((n_cls, 1))]
+    ])
+    X = training[:, :-1]  # all but last column
+    y = training[:, -1]  # last column
+    np.random.shuffle(training)
+    testing = np.block([
+        [random.multivariate_normal(np.zeros(dim), np.eye(dim), size=n_cls),
+         np.ones((n_cls, 1))],
+        [random.multivariate_normal(np.zeros(dim) + 3, np.eye(dim), size=n_cls),
+         np.zeros((n_cls, 1))]
+    ])
+    X_testing = testing[:, :-1]  # all but last column
+    y_testing = testing[:, -1]  # last column
+
+    def apply_test(estimator):
+        estimator.fit(X, y)
+        # check recognition of binary problem
+        base = estimator.base_estimator_
+        assert_is_instance(base, _BinarySeCoEstimator)
+        assert_equal(base.target_class_, 0)
+        # check accuracy
+        y_predicted = estimator.predict(X_testing)
+        assert_greater(accuracy_score(y_testing, y_predicted), 0.8)
+
+    yield apply_test, SimpleSeCoEstimator()
+    yield apply_test, CN2Estimator()
 
 
 def test_check_simple():
