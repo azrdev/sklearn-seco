@@ -649,10 +649,8 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
                         yield specialization
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
-        # TODO: java NoNegativesCoveredStop:
-        # p, n = self.count_matches(rule)
-        # return n == 0
-        return False
+        p, n = self.count_matches(rule)
+        return n == 0
 
     def filter_rules(self, rules: RuleQueue) -> RuleQueue:
         return rules[-1:]  # only the best one
@@ -674,40 +672,46 @@ class SimpleSeCoEstimator(SeCoEstimator):
 
 
 class CN2Implementation(SimpleSeCoImplementation):
+    """CN2 as refined by (Clark and Boswell 1991)."""
     def __init__(self, LRS_threshold: float):
         super().__init__()
         self.LRS_threshold = LRS_threshold
 
     def evaluate_rule(self, rule: AugmentedRule) -> Tuple[float, float, int]:
-        # laplace heuristic
+        """Laplace heuristic, as defined by (Clark and Boswell 1991)."""
         p, n = self.count_matches(rule)
-        LPA = (p + 1) / (p + n + 2)
-        return (LPA, p, rule.instance_no)  # tie-breaking by positive coverage
+        laplace = (p + 1) / (p + n + 2)
+        return (laplace, p, rule.instance_no)  # tie-breaking by pos. coverage
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
-        # TODO: compare LRS with Java & papers
-        # p, n = self.count_matches(rule)
-        # P, N = self.P, self.N
-        # purity = p / (p+n)
-        # impurity = n / (p+n)
-        # CE = -purity * np.log(purity / (P/(P+N))) \
-        #     -impurity * np.log(impurity / (N/P+N))
-        # J = p * CE
-        # LRS = 2*(P+N)*J
-        # return LRS <= self.LRS_threshold
-        return False
+        """*Significance test* as defined by (Clark and Niblett 1989), but used
+        there for rule evaluation, instead used as stopping criterion following
+        (Clark and Boswell 1991).
+        """
+        p, n = self.count_matches(rule)
+        P, N = self.P, self.N
+        if 0 in (p, n, P, N):
+            return True
+        purity = p / (p + n)
+        impurity = n / (p + n)
+        CE = (- purity * np.log(purity / (P / (P + N)))  # cross entropy
+              - impurity * np.log(impurity / (N / P + N)))
+        J = p * CE  # J-Measure
+        LRS = 2 * (P + N) * J  # likelihood ratio statistics
+        return LRS <= self.LRS_threshold
 
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule) -> bool:
-        # return True iff rule covers no examples
+        """abort search if rule covers no examples"""
         p, n = self.count_matches(rule)
         return p == 0
 
 
 class CN2Estimator(SeCoEstimator):
+    """Estimator using :class:`CN2Implementation`."""
     def __init__(self,
                  LRS_threshold: float = 0.9,
                  multi_class="one_vs_rest",
                  n_jobs=1):
         super().__init__(CN2Implementation(LRS_threshold), multi_class, n_jobs)
-        # sklearn assumes all parameters are class fields
-        self.LRS_threshold = LRS_threshold
+        # sklearn assumes all parameters are class fields, so copy this here
+        self.LRS_threshold = LRS_threshold  # FIXME: set_param not reflected in self.implementation
