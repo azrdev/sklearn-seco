@@ -1,16 +1,16 @@
 import numpy as np
 from numpy import NINF, PINF
 from nose.tools import assert_is_instance, assert_greater
-from numpy.testing import assert_array_equal, assert_equal, \
-    assert_array_almost_equal
+from numpy.testing import \
+    assert_array_equal, assert_equal, assert_array_almost_equal
 from sklearn.metrics import accuracy_score
 from sklearn.utils import check_random_state
 from sklearn.utils.estimator_checks import _yield_all_checks, \
     check_parameters_default_constructible, check_no_fit_attributes_set_in_init
-from sklearn_seco.seco_base import \
-    SimpleSeCoEstimator, CN2Estimator, _BinarySeCoEstimator, \
-    SimpleSeCoImplementation, \
-    match_rule, make_empty_rule, Rule
+from sklearn_seco.abstract import _BinarySeCoEstimator
+from sklearn_seco.concrete import \
+    SimpleSeCoImplementation, SimpleSeCoEstimator, CN2Estimator
+from sklearn_seco.common import Rule, make_empty_rule, match_rule
 
 
 def test_match_rule():
