@@ -4,7 +4,7 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 """
 
 from abc import ABC, abstractmethod
-from functools import total_ordering, lru_cache
+from functools import total_ordering
 from typing import NewType, Tuple, Iterable, List
 import numpy as np
 from sklearn_seco.abstract import _BinarySeCoEstimator
@@ -205,7 +205,6 @@ class SeCoBaseImplementation(ABC):
       equivalent to `X.shape[1]`.
     - `P` and `N`: The count of positive and negative examples (in self.X)
     - `target_class`
-    - `all_feature_values()`
     """
 
     def __calculate_PN(self):
@@ -232,15 +231,6 @@ class SeCoBaseImplementation(ABC):
         """The count of negative examples"""
         self.__calculate_PN()
         return self._N
-
-    @lru_cache(maxsize=None)
-    def all_feature_values(self, feature_index: int):
-        """
-        :return: All distinct values of feature (in examples) with given index,
-             sorted.
-        """
-        # unique also sorts
-        return np.unique(self.X[:, feature_index])
 
     def match_rule(self, rule: AugmentedRule):
         """Apply `rule`, telling for each sample if it matched.
@@ -290,7 +280,6 @@ class SeCoBaseImplementation(ABC):
         self.n_features = estimator.n_features_
         self.target_class = estimator.target_class_
         # depend on examples (X, y), which change each iteration
-        self.all_feature_values.cache_clear()
         self.X = X
         self.y = y
         self._P = None
@@ -300,7 +289,6 @@ class SeCoBaseImplementation(ABC):
         """Called after the last invocation of
         `_BinarySeCoEstimator._find_best_rule`.
         """
-        self.all_feature_values.cache_clear()
         self.X = None
         self.y = None
         self._P = None

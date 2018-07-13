@@ -10,9 +10,8 @@
 
 - CI
     - `setup.py`
-    - autochecks flake8, `nosetest --with-coverage`
+    - autochecks flake8, `nosetest --with-coverage`, mypy
 - optimization <http://www.scipy-lectures.org/advanced/optimizing/index.html>
-- common building blocks (e.g n-beam search, heuristics) as Mixins
 
 - rule visualization
 - regression?
@@ -22,3 +21,4 @@
 
 - python2 compatibility, esp. type hints
 - submission to upstream: sklearn-contrib? future maintainer needed?
+    - add paper references to documentation

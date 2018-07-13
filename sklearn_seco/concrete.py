@@ -2,30 +2,69 @@
 Implementation of SeCo / Covering algorithm:
 Usual building blocks & known instantiations of the abstract base algorithm.
 """
-
+from functools import lru_cache
 from typing import Tuple, Iterable
 import numpy as np
 from sklearn_seco.abstract import RuleQueue, Theory, SeCoEstimator
 from sklearn_seco.common import SeCoBaseImplementation, AugmentedRule
 
 
-class SimpleSeCoImplementation(SeCoBaseImplementation):
+def pairwise(iterable):
+    """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
+    # copied from itertools docs
+    from itertools import tee
+    a, b = tee(iterable)
+    next(b, None)
+    return zip(a, b)
 
-    def init_rule(self) -> AugmentedRule:
-        return AugmentedRule(n_features=self.n_features)
 
-    def evaluate_rule(self, rule: AugmentedRule) -> Tuple[float, float, int]:
-        p, n = self.count_matches(rule)
-        if p + n == 0:
-            return (0, p, -rule.instance_no)
-        purity = p / (p + n)
-        # tie-breaking by pos. coverage and rule creation order (older = better)
-        return (purity, p, -rule.instance_no)
+# Mixins providing implementation facettes
+
+
+class BeamSearch(SeCoBaseImplementation):
+    """Mixin implementing a beam search of width 1 (TODO: n), i.e. a hill
+    climbing search.
+
+    - A beam width of 1 signifies a hill climbing search, only ever optimizing
+      one candidate rule.
+    - A special beam width of 0 means trying all candidate rules, i.e. a
+      Best-first search. TODO
+    """
 
     def select_candidate_rules(self, rules: RuleQueue
                                ) -> Iterable[AugmentedRule]:
-        last = rules.pop()
+        last = rules.pop()  # only the best one
         return [last]
+
+    def filter_rules(self, rules: RuleQueue) -> RuleQueue:
+        return rules[-1:]  # only the best one
+
+
+class TopDownSearch(SeCoBaseImplementation):
+    """Mixin providing a Top-Down rule search: initializes an empty rule and
+    subsequently specializes it.
+    """
+
+    def set_context(self, estimator, X, y):
+        super().set_context(estimator, X, y)
+        # cached results depend on examples (X, y), which change each iteration
+        self.all_feature_values.cache_clear()
+
+    def unset_context(self):
+        super().unset_context()
+        self.all_feature_values.cache_clear()
+
+    @lru_cache(maxsize=None)
+    def all_feature_values(self, feature_index: int):
+        """
+        :return: All distinct values of feature (in examples) with given index,
+             sorted.
+        """
+        # unique also sorts
+        return np.unique(self.X[:, feature_index])
+
+    def init_rule(self) -> AugmentedRule:
+        return AugmentedRule(n_features=self.n_features)
 
     def refine_rule(self, rule: AugmentedRule) -> Iterable[AugmentedRule]:
         all_feature_values = self.all_feature_values
@@ -62,45 +101,45 @@ class SimpleSeCoImplementation(SeCoBaseImplementation):
                         specialization.upper[feature_index] = new_threshold
                         yield specialization
 
-    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
+
+class PurityHeuristic(SeCoBaseImplementation):
+    """Mixin providing the purity as rule evaluation metric: the percentage of
+    positive examples among the examples covered by the rule.
+    """
+
+    def evaluate_rule(self, rule: AugmentedRule) -> Tuple[float, float, int]:
         p, n = self.count_matches(rule)
-        return n == 0
-
-    def filter_rules(self, rules: RuleQueue) -> RuleQueue:
-        return rules[-1:]  # only the best one
-
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
-                                ) -> bool:
-        # TODO: java CoverageRuleStop;
-        # p, n = self.count_matches(rule)
-        # return n >= p
-        return False
-
-    def post_process(self, theory: Theory) -> Theory:
-        return theory
+        if p + n == 0:
+            return (0, p, -rule.instance_no)
+        purity = p / (p + n)
+        # tie-breaking by pos. coverage and rule creation order: older = better
+        return (purity, p, -rule.instance_no)
 
 
-class SimpleSeCoEstimator(SeCoEstimator):
-    def __init__(self, multi_class="one_vs_rest", n_jobs=1):
-        super().__init__(SimpleSeCoImplementation(), multi_class, n_jobs)
+class LaplaceHeuristic(SeCoBaseImplementation):
+    """Mixin implementing the Laplace rule evaluation metric.
 
-
-class CN2Implementation(SimpleSeCoImplementation):
-    """CN2 as refined by (Clark and Boswell 1991)."""
-    def __init__(self, LRS_threshold: float):
-        super().__init__()
-        self.LRS_threshold = LRS_threshold
-
+    The Laplace estimate was defined by (Clark and Boswell 1991) for CN2.
+    """
     def evaluate_rule(self, rule: AugmentedRule) -> Tuple[float, float, int]:
         """Laplace heuristic, as defined by (Clark and Boswell 1991)."""
         p, n = self.count_matches(rule)
         laplace = (p + 1) / (p + n + 2)
         return (laplace, p, rule.instance_no)  # tie-breaking by pos. coverage
 
+
+class SignificanceStoppingCriterion(SeCoBaseImplementation):
+    """Mixin using as stopping criterion for rule refinement a significance
+    test like CN2.
+    """
+    def __init__(self, LRS_threshold: float):
+        super().__init__()
+        self.LRS_threshold = LRS_threshold  # FIXME: estimator.set_param not reflected here
+
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         """*Significance test* as defined by (Clark and Niblett 1989), but used
-        there for rule evaluation, instead used as stopping criterion following
-        (Clark and Boswell 1991).
+        there for rule evaluation, here instead used as stopping criterion
+        following (Clark and Boswell 1991).
         """
         p, n = self.count_matches(rule)
         P, N = self.P, self.N
@@ -114,7 +153,49 @@ class CN2Implementation(SimpleSeCoImplementation):
         LRS = 2 * (P + N) * J  # likelihood ratio statistics
         return LRS <= self.LRS_threshold
 
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule) -> bool:
+
+class NoPostProcess(SeCoBaseImplementation):
+    """Mixin to skip post processing."""
+    def post_process(self, theory: Theory) -> Theory:
+        return theory
+
+
+# Example Algorithm configurations
+
+
+class SimpleSeCoImplementation(BeamSearch,
+                               TopDownSearch,
+                               PurityHeuristic,
+                               NoPostProcess):
+
+    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
+        p, n = self.count_matches(rule)
+        return n == 0
+
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
+                                ) -> bool:
+        # TODO: java CoverageRuleStop;
+        # p, n = self.count_matches(rule)
+        # return n >= p
+        return False
+
+
+class SimpleSeCoEstimator(SeCoEstimator):
+    def __init__(self, multi_class="one_vs_rest", n_jobs=1):
+        super().__init__(SimpleSeCoImplementation(), multi_class, n_jobs)
+
+
+class CN2Implementation(BeamSearch,
+                        TopDownSearch,
+                        LaplaceHeuristic,
+                        SignificanceStoppingCriterion,
+                        NoPostProcess):
+    """CN2 as refined by (Clark and Boswell 1991)."""
+    def __init__(self, LRS_threshold: float):
+        super().__init__(LRS_threshold)
+
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
+                                ) -> bool:
         """abort search if rule covers no examples"""
         p, n = self.count_matches(rule)
         return p == 0
@@ -128,13 +209,4 @@ class CN2Estimator(SeCoEstimator):
                  n_jobs=1):
         super().__init__(CN2Implementation(LRS_threshold), multi_class, n_jobs)
         # sklearn assumes all parameters are class fields, so copy this here
-        self.LRS_threshold = LRS_threshold  # FIXME: set_param not reflected in self.implementation
-
-
-def pairwise(iterable):
-    """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
-    # copied from itertools docs
-    from itertools import tee
-    a, b = tee(iterable)
-    next(b, None)
-    return zip(a, b)
+        self.LRS_threshold = LRS_threshold
