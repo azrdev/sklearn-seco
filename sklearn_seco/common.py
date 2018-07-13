@@ -5,9 +5,9 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import NewType, Tuple, Iterable, List
+from typing import NewType, Tuple, Iterable, List, Union
 import numpy as np
-from sklearn_seco.abstract import _BinarySeCoEstimator
+from sklearn_seco import abstract
 
 
 Rule = NewType('Rule', np.ndarray)
@@ -266,7 +266,7 @@ class SeCoBaseImplementation(ABC):
                                              self.X, self.y)
         return (rule._p, rule._n)
 
-    def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
+    def set_context(self, estimator: 'abstract._BinarySeCoEstimator', X, y):
         """New invocation of `_BinarySeCoEstimator._find_best_rule`.
 
         Override this hook if you need to keep state across all invocations of
@@ -307,7 +307,7 @@ class SeCoBaseImplementation(ABC):
         pass
 
     @abstractmethod
-    def evaluate_rule(self, rule: AugmentedRule) -> float or Tuple[float, ...]:
+    def evaluate_rule(self, rule: AugmentedRule) -> Union[float, Tuple[float, ...]]:
         """Rate rule to allow comparison & finding the best refinement.
 
         :return: A rule rating, or a tuple of these (later elements are used for

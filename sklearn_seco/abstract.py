@@ -62,8 +62,8 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         elif categorical_features == 'all':
             self.categorical_mask_ = np.ones(self.n_features_, dtype=bool)
         else:
-            raise ValueError("categorical_features must be one of: None, 'all',"
-                             " np.ndarray of dtype bool or integer,"
+            raise ValueError("categorical_features must be one of: None,"
+                             " 'all', np.ndarray of dtype bool or integer,"
                              " but got {}.".format(categorical_features))
 
         # run SeCo algorithm
@@ -91,8 +91,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         rules: RuleQueue = [best_rule]
         while len(rules):
             for candidate in select_candidate_rules(rules):
-                for refinement in refine_rule(
-                        candidate):  # TODO: parallelize here?
+                for refinement in refine_rule(candidate):  # TODO: parallelize here?
                     rate_rule(refinement)
                     if not inner_stopping_criterion(refinement):
                         rules.append(refinement)

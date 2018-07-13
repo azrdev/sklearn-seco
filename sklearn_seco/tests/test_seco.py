@@ -14,7 +14,7 @@ from sklearn_seco.common import Rule, make_empty_rule, match_rule
 
 
 def test_match_rule():
-    """Test :func:`match_rule`, i.e. basic rule matching."""
+    """Test basic rule matching (:func:`match_rule`)."""
     categorical_mask = np.array([True, True, False, False])
     X = np.array([[1, 2, 3.0, 4.0]])
 
@@ -48,7 +48,7 @@ def test_match_rule():
     # TODO: define & test NaN in X (missing values)
 
 
-def test_base_easyrules():
+def test_base_easyrules():  # XXX: fails, debug! since 8be6375 ?
     """Test SimpleSeCo with some small test set for some trivial, binary rules.
     """
     categorical_mask = np.array([True, False])
@@ -81,8 +81,8 @@ def test_base_easyrules():
 
 
 def test_trivial_decision_border():
-    """Generate two scattered classes without overlap and check the border is
-    determined correctly.
+    """
+    Generate two distinct scattered classes and check recognition of the border.
     """
     random = check_random_state(42)
     samples = np.array([random.normal(size=50),
@@ -109,8 +109,8 @@ def test_trivial_decision_border():
 
 
 def test_blackbox_accuracy_binary():
-    """Generate two scattered, slightly overlapping classes and assert a certain
-    accuracy_score.
+    """
+    Generate two scattered, slightly overlapping classes and expect high accuracy_score.
     """
     random = check_random_state(42)
     dim = 8
