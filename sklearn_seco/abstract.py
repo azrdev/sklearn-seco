@@ -95,8 +95,8 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                     rate_rule(refinement)
                     if not inner_stopping_criterion(refinement):
                         rules.append(refinement)
-                        if best_rule < refinement:
-                            best_rule = refinement
+                    if best_rule < refinement:
+                        best_rule = refinement
             rules.sort()
             rules = filter_rules(rules)
         return best_rule
