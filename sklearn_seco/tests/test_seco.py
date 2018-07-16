@@ -48,7 +48,34 @@ def test_match_rule():
     # TODO: define & test NaN in X (missing values)
 
 
-def test_base_easyrules():  # XXX: fails, debug! since 8be6375 ?
+def test_base_trivial():
+    """Test SimpleSeCo with some trivial, binary test set."""
+    categorical_mask = np.array([True, False])
+    X_train = np.array([[100, 0.0],
+                        [111, 1.0]])
+    y_train = np.array([1, 2])
+    est = _BinarySeCoEstimator(SimpleSeCoImplementation())
+    est.fit(X_train, y_train, categorical_mask)
+
+    assert_equal(est.target_class_, 1)
+    assert_equal(len(est.theory_), 1)
+    # first refinement wins (tie breaking)
+    assert_array_equal(est.theory_[0], [[100, NINF], [PINF, PINF]])
+
+    assert_array_equal(est.predict(X_train), y_train)
+
+    X_test = np.array([[100, 14],
+                       [111, -15],
+                       [100, -16],
+                       [100, 0],
+                       [111, 1]
+                       ])
+    y_test = np.array([1, 2, 1, 1, 2])
+    assert_array_equal(est.predict(X_test), y_test)
+
+
+# FIXME: broken since inner_stopping_criterion = (n == 0), commit 2d6f261
+def test_base_easyrules():
     """Test SimpleSeCo with some small test set for some trivial, binary rules.
     """
     categorical_mask = np.array([True, False])
