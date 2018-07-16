@@ -22,22 +22,29 @@ def pairwise(iterable):
 
 
 class BeamSearch(SeCoBaseImplementation):
-    """Mixin implementing a beam search of width 1 (TODO: n), i.e. a hill
-    climbing search.
+    """Mixin implementing a beam search of width `n`.
 
-    - A beam width of 1 signifies a hill climbing search, only ever optimizing
-      one candidate rule.
-    - A special beam width of 0 means trying all candidate rules, i.e. a
-      Best-first search. TODO
+    - The default `beam_width` of 1 signifies a hill climbing search, only ever
+      optimizing one candidate rule.
+    - A special `beam_width` of 0 means trying all candidate rules, i.e. a
+      best-first search.
+
+    Rule selection is done in `filter_rules`, while `select_candidate_rules`
+    always returns the whole queue as candidates.
     """
+    def __init__(self, beam_width: int = 1):
+        self.beam_width_ = beam_width
 
     def select_candidate_rules(self, rules: RuleQueue
                                ) -> Iterable[AugmentedRule]:
-        last = rules.pop()  # only the best one
-        return [last]
+        _rules = rules
+        del rules[:]  # remove all candidates from queue, see method contract
+        return _rules
 
     def filter_rules(self, rules: RuleQueue) -> RuleQueue:
-        return rules[-1:]  # only the best one
+        # negative to get the last items, the best.
+        # special case -0 equals 0 and gets the whole queue
+        return rules[-self.beam_width_:]
 
 
 class TopDownSearch(SeCoBaseImplementation):
