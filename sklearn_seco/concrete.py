@@ -1,7 +1,13 @@
 """
 Implementation of SeCo / Covering algorithm:
 Usual building blocks & known instantiations of the abstract base algorithm.
+
+Implemented as Mixins. For __init__ parameters, they use cooperative
+multi-inheritance, each class has to declare **kwargs and forward anything it
+doesn't consume using `super().__init__(**kwargs)`. Users of mixin-composed
+classes will have to use keyword- instead of positional arguments.
 """
+
 from functools import lru_cache
 from typing import Tuple, Iterable
 import numpy as np
@@ -32,7 +38,8 @@ class BeamSearch(SeCoBaseImplementation):
     Rule selection is done in `filter_rules`, while `select_candidate_rules`
     always returns the whole queue as candidates.
     """
-    def __init__(self, beam_width: int = 1):
+    def __init__(self, beam_width: int = 1, **kwargs):
+        super().__init__(**kwargs)
         self.beam_width_ = beam_width
 
     def select_candidate_rules(self, rules: RuleQueue
@@ -139,8 +146,8 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
     """Mixin using as stopping criterion for rule refinement a significance
     test like CN2.
     """
-    def __init__(self, LRS_threshold: float):
-        super().__init__()
+    def __init__(self, LRS_threshold: float, **kwargs):
+        super().__init__(**kwargs)
         self.LRS_threshold = LRS_threshold  # FIXME: estimator.set_param not reflected here
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
@@ -198,8 +205,8 @@ class CN2Implementation(BeamSearch,
                         SignificanceStoppingCriterion,
                         NoPostProcess):
     """CN2 as refined by (Clark and Boswell 1991)."""
-    def __init__(self, LRS_threshold: float):
-        super().__init__(LRS_threshold)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:
@@ -214,6 +221,7 @@ class CN2Estimator(SeCoEstimator):
                  LRS_threshold: float = 0.9,
                  multi_class="one_vs_rest",
                  n_jobs=1):
-        super().__init__(CN2Implementation(LRS_threshold), multi_class, n_jobs)
+        super().__init__(CN2Implementation(LRS_threshold=LRS_threshold),
+                         multi_class, n_jobs)
         # sklearn assumes all parameters are class fields, so copy this here
         self.LRS_threshold = LRS_threshold
