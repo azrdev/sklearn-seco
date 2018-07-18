@@ -44,9 +44,10 @@ class BeamSearch(SeCoBaseImplementation):
 
     def select_candidate_rules(self, rules: RuleQueue
                                ) -> Iterable[AugmentedRule]:
-        _rules = rules
-        del rules[:]  # remove all candidates from queue, see method contract
-        return _rules
+        # pop all items from rules, retaining the reference
+        # (so caller also sees the empty list)
+        candidates, rules[:] = rules[:], []
+        return candidates
 
     def filter_rules(self, rules: RuleQueue) -> RuleQueue:
         # negative to get the last items, the best.
