@@ -13,7 +13,7 @@ from sklearn_seco.concrete import \
 
 
 def test_base_trivial():
-    """Test SimpleSeCo with some trivial, binary test set."""
+    """Test SimpleSeCo with a trivial test set of 2 instances."""
     categorical_mask = np.array([True, False])
     X_train = np.array([[100, 0.0],
                         [111, 1.0]])
@@ -40,7 +40,7 @@ def test_base_trivial():
 
 # FIXME: broken since inner_stopping_criterion = (n == 0), commit 2d6f261
 def test_base_easyrules():
-    """Test SimpleSeCo with some small test set for some trivial, binary rules.
+    """Test SimpleSeCo with a linearly separable, 4 instance binary test set.
     """
     categorical_mask = np.array([True, False])
     X_train = np.array([[0, -1.0],
@@ -90,7 +90,7 @@ def seco_estimator(seco_estimator_class):
 
 def test_trivial_decision_border(seco_estimator):
     """
-    Generate two distinct scattered classes and check recognition of the border.
+    Check recognition of the linear border between to normal distributed classes.
     """
     random = check_random_state(42)
     samples = np.array([random.normal(size=50),
@@ -115,7 +115,7 @@ def test_trivial_decision_border(seco_estimator):
 
 def test_blackbox_accuracy_binary(seco_estimator):
     """
-    Generate two scattered, slightly overlapping classes and expect high accuracy_score.
+    Generate two normal distributed, slightly overlapping classes and expect high accuracy_score.
     """
     random = check_random_state(42)
     dim = 8
@@ -156,6 +156,3 @@ def test_sklearn_check_estimator(seco_estimator_class):
     our report shows which ones actually failed. Waiting for <https://github.com/scikit-learn/scikit-learn/issues/11622>
     """
     check_estimator(seco_estimator_class)
-
-
-# TODO: check estimator vs. classifier in <https://github.com/scikit-learn-contrib/project-template/blob/master/skltemplate/template.py>
