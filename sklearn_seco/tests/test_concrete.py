@@ -1,4 +1,4 @@
-"""Unittests for use with py.test"""
+"""Tests for `sklearn_seco.concrete`."""
 
 import numpy as np
 import pytest
@@ -10,42 +10,6 @@ from sklearn.utils.estimator_checks import check_estimator
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.concrete import \
     SimpleSeCoImplementation, SimpleSeCoEstimator, CN2Estimator
-from sklearn_seco.common import Rule, make_empty_rule, match_rule
-
-
-def test_match_rule():
-    """Test basic rule matching (:func:`match_rule`)."""
-    categorical_mask = np.array([True, True, False, False])
-    X = np.array([[1, 2, 3.0, 4.0]])
-
-    def am(rule, expected_result, X=X):
-        assert_array_equal(match_rule(X, Rule(np.asarray(rule)),
-                                      categorical_mask),
-                           expected_result)
-
-    am(make_empty_rule(len(categorical_mask)), [True])
-    am([[NINF, NINF, NINF, NINF], [PINF, PINF, PINF, PINF]], [True])
-    # categorical: upper unused
-    am([[NINF, NINF, NINF, NINF], [7,    7,    PINF, PINF]], [True])
-    # categorical ==
-    am([[1,    2,    NINF, NINF], [PINF, PINF, PINF, PINF]], [True])
-    am([[0,    2,    NINF, NINF], [PINF, PINF, PINF, PINF]], [False])
-    am([[11,   2,    NINF, NINF], [PINF, PINF, PINF, PINF]], [False])
-    # numerical <= upper
-    am([[NINF, NINF, NINF, NINF], [PINF, PINF, 13.0, 14.0]], [True])
-    am([[NINF, NINF, NINF, NINF], [PINF, PINF, -3.0, -4.0]], [False])
-    am([[NINF, NINF, NINF, NINF], [PINF, PINF,  3.0, PINF]], [True])
-    am([[NINF, NINF, NINF, NINF], [1,    2,    10.0, 10.0]], [True])
-
-    # test broadcasting using 4 samples, 4 features
-    X4 = np.array([[1, 2, 3.0, 4.0],
-                   [1, 2, 30.0, 40.0],
-                   [1, 2, 0.0,  0.0],
-                   [0, 0, 2.0, 3.0]])
-    am([[   1, NINF, NINF, NINF],
-        [PINF, PINF,  3.0,  4.0]], [True, False, True, False], X=X4)
-
-    # TODO: define & test NaN in X (missing values)
 
 
 def test_base_trivial():
@@ -108,6 +72,8 @@ def test_base_easyrules():
 def seco_estimator_class(request):
     """Fixture running for each of the pre-defined estimator classes from
     `sklearn_seco.concrete`.
+
+    :return: An estimator class.
     """
     return request.param
 
@@ -115,7 +81,9 @@ def seco_estimator_class(request):
 @pytest.fixture
 def seco_estimator(seco_estimator_class):
     """Fixture running for each of the pre-defined estimators from
-    `sklearn_seco.concrete`, returning an Instance.
+    `sklearn_seco.concrete`.
+
+    :return: An estimator instance.
     """
     return seco_estimator_class()
 
@@ -152,19 +120,20 @@ def test_blackbox_accuracy_binary(seco_estimator):
     random = check_random_state(42)
     dim = 8
     n_cls = 80
+    cov = np.eye(dim)
     training = np.block([
-        [random.multivariate_normal(np.zeros(dim), np.eye(dim), size=n_cls),
+        [random.multivariate_normal(np.zeros(dim), cov, size=n_cls),
          np.ones((n_cls, 1))],
-        [random.multivariate_normal(np.zeros(dim) + 3, np.eye(dim), size=n_cls),
+        [random.multivariate_normal(np.zeros(dim) + 3, cov, size=n_cls),
          np.zeros((n_cls, 1))]
     ])
     X = training[:, :-1]  # all but last column
     y = training[:, -1]  # last column
     np.random.shuffle(training)
     testing = np.block([
-        [random.multivariate_normal(np.zeros(dim), np.eye(dim), size=n_cls),
+        [random.multivariate_normal(np.zeros(dim), cov, size=n_cls),
          np.ones((n_cls, 1))],
-        [random.multivariate_normal(np.zeros(dim) + 3, np.eye(dim), size=n_cls),
+        [random.multivariate_normal(np.zeros(dim) + 3, cov, size=n_cls),
          np.zeros((n_cls, 1))]
     ])
     X_testing = testing[:, :-1]  # all but last column
