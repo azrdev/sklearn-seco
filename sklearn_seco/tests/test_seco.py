@@ -1,12 +1,12 @@
+"""Unittests for use with py.test"""
+
 import numpy as np
+import pytest
 from numpy import NINF, PINF
-from nose.tools import assert_is_instance, assert_greater
-from numpy.testing import \
-    assert_array_equal, assert_equal, assert_array_almost_equal
+from numpy.testing import assert_array_equal, assert_array_almost_equal
 from sklearn.metrics import accuracy_score
 from sklearn.utils import check_random_state
-from sklearn.utils.estimator_checks import _yield_all_checks, \
-    check_parameters_default_constructible, check_no_fit_attributes_set_in_init
+from sklearn.utils.estimator_checks import check_estimator
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.concrete import \
     SimpleSeCoImplementation, SimpleSeCoEstimator, CN2Estimator
@@ -57,8 +57,8 @@ def test_base_trivial():
     est = _BinarySeCoEstimator(SimpleSeCoImplementation())
     est.fit(X_train, y_train, categorical_mask)
 
-    assert_equal(est.target_class_, 1)
-    assert_equal(len(est.theory_), 1)
+    assert est.target_class_ == 1
+    assert len(est.theory_) == 1
     # first refinement wins (tie breaking)
     assert_array_equal(est.theory_[0], [[100, NINF], [PINF, PINF]])
 
@@ -87,8 +87,8 @@ def test_base_easyrules():
     est = _BinarySeCoEstimator(SimpleSeCoImplementation())
     est.fit(X_train, y_train, categorical_mask)
 
-    assert_equal(est.target_class_, 1)
-    assert_equal(len(est.theory_), 2)
+    assert est.target_class_ == 1
+    assert len(est.theory_) == 2
     assert_array_equal(est.theory_[0], np.array([[NINF, NINF], [PINF, -1.5]]))
     assert_array_equal(est.theory_[1], np.array([[   0, NINF], [PINF,    0]]))
 
@@ -104,10 +104,23 @@ def test_base_easyrules():
     assert_array_equal(est.predict(X_test), y_test)
 
 
-# TODO: apply all tests to all supplied seco subclasses
+@pytest.fixture(params=[SimpleSeCoEstimator, CN2Estimator])
+def seco_estimator_class(request):
+    """Fixture running for each of the pre-defined estimator classes from
+    `sklearn_seco.concrete`.
+    """
+    return request.param
 
 
-def test_trivial_decision_border():
+@pytest.fixture
+def seco_estimator(seco_estimator_class):
+    """Fixture running for each of the pre-defined estimators from
+    `sklearn_seco.concrete`, returning an Instance.
+    """
+    return seco_estimator_class()
+
+
+def test_trivial_decision_border(seco_estimator):
     """
     Generate two distinct scattered classes and check recognition of the border.
     """
@@ -121,21 +134,18 @@ def test_trivial_decision_border():
     y[0:25] = 1
     np.random.shuffle(samples)
 
-    def apply_test(estimator):
-        estimator.fit(X, y)
-        # check recognition of binary problem
-        base = estimator.base_estimator_
-        assert_is_instance(base, _BinarySeCoEstimator)
-        assert_equal(base.target_class_, 0)
-        # check expected rule
-        assert_equal(len(base.theory_), 1)
-        assert_array_almost_equal(base.theory_[0], [[NINF, NINF], [PINF, 1.0]],
-                                  decimal=1)
-    yield apply_test, SimpleSeCoEstimator()
-    yield apply_test, CN2Estimator()
+    seco_estimator.fit(X, y)
+    # check recognition of binary problem
+    base = seco_estimator.base_estimator_
+    assert isinstance(base, _BinarySeCoEstimator)
+    assert base.target_class_ == 0
+    # check expected rule
+    assert len(base.theory_) == 1
+    assert_array_almost_equal(base.theory_[0], [[NINF, NINF], [PINF, 1.0]],
+                              decimal=1)
 
 
-def test_blackbox_accuracy_binary():
+def test_blackbox_accuracy_binary(seco_estimator):
     """
     Generate two scattered, slightly overlapping classes and expect high accuracy_score.
     """
@@ -160,52 +170,23 @@ def test_blackbox_accuracy_binary():
     X_testing = testing[:, :-1]  # all but last column
     y_testing = testing[:, -1]  # last column
 
-    def apply_test(estimator):
-        estimator.fit(X, y)
-        # check recognition of binary problem
-        base = estimator.base_estimator_
-        assert_is_instance(base, _BinarySeCoEstimator)
-        assert_equal(base.target_class_, 0)
-        # check accuracy
-        y_predicted = estimator.predict(X_testing)
-        assert_greater(accuracy_score(y_testing, y_predicted), 0.8)
-
-    yield apply_test, SimpleSeCoEstimator()
-    yield apply_test, CN2Estimator()
+    seco_estimator.fit(X, y)
+    # check recognition of binary problem
+    base = seco_estimator.base_estimator_
+    assert isinstance(base, _BinarySeCoEstimator)
+    assert base.target_class_ == 0
+    # check accuracy
+    y_predicted = seco_estimator.predict(X_testing)
+    assert accuracy_score(y_testing, y_predicted) > 0.8
 
 
-def test_check_simple():
-    """Unwrap :func:`sklearn.utils.estimator_checks.check_estimator` for
-    :class:`SimpleSeCoEstimator`.
+def test_sklearn_check_estimator(seco_estimator_class):
+    """Run check_estimator from `sklearn.utils.estimator_checks`.
+
+    # TODO: Unwrap :func:`sklearn.utils.estimator_checks.check_estimator`, so
+    our report shows which ones actually failed. Waiting for <https://github.com/scikit-learn/scikit-learn/issues/11622>
     """
-
-    # disassembled check_estimator, to have all as separate nosetests
-    Estimator = SimpleSeCoEstimator
-    name = Estimator.__name__
-    check_parameters_default_constructible(name, Estimator)
-    check_no_fit_attributes_set_in_init(name, Estimator)
-
-    estimator = Estimator()
-    for check in _yield_all_checks(name, estimator):
-        check.description = check.__name__
-        yield check, name, estimator
-
-
-def test_check_CN2():
-    """Unwrap :func:`sklearn.utils.estimator_checks.check_estimator` for
-    :class:`CN2Estimator`.
-    """
-
-    # disassembled check_estimator, to have all as separate nosetests
-    Estimator = CN2Estimator
-    name = Estimator.__name__
-    check_parameters_default_constructible(name, Estimator)
-    check_no_fit_attributes_set_in_init(name, Estimator)
-
-    estimator = Estimator()
-    for check in _yield_all_checks(name, estimator):
-        check.description = check.__name__
-        yield check, name, estimator
+    check_estimator(seco_estimator_class)
 
 
 # TODO: check estimator vs. classifier in <https://github.com/scikit-learn-contrib/project-template/blob/master/skltemplate/template.py>
