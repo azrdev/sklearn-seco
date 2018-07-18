@@ -189,10 +189,8 @@ class SimpleSeCoImplementation(BeamSearch,
 
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:
-        # TODO: java CoverageRuleStop;
-        # p, n = self.count_matches(rule)
-        # return n >= p
-        return False
+        p, n = self.count_matches(rule)
+        return n >= p
 
 
 class SimpleSeCoEstimator(SeCoEstimator):
