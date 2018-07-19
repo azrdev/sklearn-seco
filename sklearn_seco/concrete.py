@@ -11,8 +11,9 @@ classes will have to use keyword- instead of positional arguments.
 from functools import lru_cache
 from typing import Tuple, Iterable
 import numpy as np
-from sklearn_seco.abstract import RuleQueue, Theory, SeCoEstimator
-from sklearn_seco.common import SeCoBaseImplementation, AugmentedRule
+from sklearn_seco.abstract import Theory, SeCoEstimator
+from sklearn_seco.common import \
+    RuleQueue, SeCoBaseImplementation, AugmentedRule
 
 
 def pairwise(iterable):

@@ -9,13 +9,10 @@ from sklearn.utils import check_X_y, check_array
 from sklearn.utils.multiclass import unique_labels, check_classification_targets
 from sklearn.utils.validation import check_is_fitted
 
-from sklearn_seco.common import \
-    RuleQueue, AugmentedRule, SeCoBaseImplementation, Theory
-
 
 # noinspection PyAttributeOutsideInit
 class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
-    def __init__(self, implementation: SeCoBaseImplementation):
+    def __init__(self, implementation: 'SeCoBaseImplementation'):
         super().__init__()
         self.implementation = implementation
 
@@ -70,7 +67,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         self.theory_ = self.abstract_seco(X, y)
         return self
 
-    def find_best_rule(self, X, y) -> AugmentedRule:
+    def find_best_rule(self, X, y) -> 'AugmentedRule':
         """Inner loop of abstract SeCo/Covering algorithm.
 
         :param X: Not yet covered examples.
@@ -101,7 +98,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             rules = filter_rules(rules)
         return best_rule
 
-    def abstract_seco(self, X: np.ndarray, y: np.ndarray) -> Theory:
+    def abstract_seco(self, X: np.ndarray, y: np.ndarray) -> 'Theory':
         """Main loop of abstract SeCo/Covering algorithm.
 
         :return: Theory
@@ -158,7 +155,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 class SeCoEstimator(BaseEstimator, ClassifierMixin):
     """Wrap the base SeCo to provide class label binarization."""
 
-    def __init__(self, implementation: SeCoBaseImplementation,
+    def __init__(self, implementation: 'SeCoBaseImplementation',
                  multi_class="one_vs_rest", n_jobs=1):
         self.implementation = implementation
         self.multi_class = multi_class
@@ -205,3 +202,8 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, ["classes_", "n_classes_"])
         X = check_array(X)
         return self.base_estimator_.predict(X)
+
+
+# imports needed only for type checking, place here to break circularity
+from sklearn_seco.common import \
+    RuleQueue, AugmentedRule, SeCoBaseImplementation, Theory

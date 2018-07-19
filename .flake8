@@ -6,4 +6,6 @@ ignore =
 	E501,
 	# line break before/after binary operator
 	W503, W504,
+	# module level import not at top of file
+	E402,
 
