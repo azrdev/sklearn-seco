@@ -174,6 +174,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
                              "classes. Only class %s present."
                              % self.classes_[0])
         elif self.n_classes_ > 2:
+            # TODO: multi_class strategy of ripper: OneVsRest, remove C_i after learning rules for it
             if self.multi_class == "one_vs_rest":
                 self.base_estimator_ = OneVsRestClassifier(self.base_estimator_,
                                                            n_jobs=self.n_jobs)

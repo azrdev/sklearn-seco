@@ -328,7 +328,7 @@ class SeCoBaseImplementation(ABC):
 
     @abstractmethod
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
-        """return `True` to stop refining `rule`."""
+        """return `True` to stop refining `rule`, i.e. pre-pruning it."""
         pass
 
     @abstractmethod

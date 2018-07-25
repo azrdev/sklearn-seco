@@ -10,7 +10,7 @@
 
 - CI
     - `setup.py`
-    - autochecks flake8, `nosetest --with-coverage`, mypy
+    - autochecks: flake8, `py.test --with-coverage`, typecheck (mypy)
 - optimization <http://www.scipy-lectures.org/advanced/optimizing/index.html>
 
 - rule visualization
