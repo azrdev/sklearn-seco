@@ -67,7 +67,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         self.theory_ = self.abstract_seco(X, y)
         return self
 
-    def find_best_rule(self, X, y) -> 'AugmentedRule':
+    def find_best_rule(self) -> 'AugmentedRule':
         """Inner loop of abstract SeCo/Covering algorithm.
 
         :param X: Not yet covered examples.
@@ -118,7 +118,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         theory: Theory = list()
         while np.any(y == target_class):
             set_context(self, X, y)
-            rule = find_best_rule(X, y)
+            rule = find_best_rule()
             if rule_stopping_criterion(theory, rule):
                 break
             # ignore the rest of theory, because it already covered

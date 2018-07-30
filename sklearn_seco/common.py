@@ -303,7 +303,7 @@ class SeCoBaseImplementation(ABC):
     @abstractmethod
     def init_rule(self) -> AugmentedRule:
         """Create a new rule to be refined before added to the theory."""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def evaluate_rule(self, rule: AugmentedRule) -> Union[float, Tuple[float, ...]]:
@@ -312,31 +312,31 @@ class SeCoBaseImplementation(ABC):
         :return: A rule rating, or a tuple of these (later elements are used for
           tie breaking). Rules are compared using these tuples and operator `<`.
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def select_candidate_rules(self, rules: RuleQueue
                                ) -> Iterable[AugmentedRule]:
         """Remove and return those Rules from `rules` which should be refined.
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def refine_rule(self, rule: AugmentedRule) -> Iterable[AugmentedRule]:
         """Create all refinements from `rule`."""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         """return `True` to stop refining `rule`, i.e. pre-pruning it."""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def filter_rules(self, rules: RuleQueue) -> RuleQueue:
         """After one refinement iteration, filter the candidate `rules` (may be
         empty) for the next one.
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
@@ -344,7 +344,7 @@ class SeCoBaseImplementation(ABC):
         """return `True` to stop finding more rules, given `rule` was the
         best Rule found.
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def post_process(self, theory: Theory) -> Theory:
@@ -353,7 +353,7 @@ class SeCoBaseImplementation(ABC):
         *NOTE*: contrary to all other hooks, this is called after
         `unset_context`.
         """
-        pass
+        raise NotImplementedError
 
 
 # import only needed for type checking, place here to break circularity
