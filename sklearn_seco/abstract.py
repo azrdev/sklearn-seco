@@ -107,6 +107,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         set_context = self.implementation.set_context
         rule_stopping_criterion = self.implementation.rule_stopping_criterion
         find_best_rule = self.find_best_rule
+        simplify_rule = self.implementation.simplify_rule
         unset_context = self.implementation.unset_context
         post_process = self.implementation.post_process
         match_rule = self.implementation.match_rule
@@ -118,6 +119,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         while np.any(y == target_class):
             set_context(self, X, y)
             rule = find_best_rule()
+            rule = simplify_rule(rule)
             if rule_stopping_criterion(theory, rule):
                 break
             # ignore the rest of theory, because it already covered

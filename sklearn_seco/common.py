@@ -340,6 +340,13 @@ class SeCoBaseImplementation(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
+        """After `find_best_rule` terminates, this hook is called and may
+        implement post-pruning.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:
         """return `True` to stop finding more rules, given `rule` was the

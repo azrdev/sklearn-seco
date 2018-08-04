@@ -170,6 +170,12 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
         return LRS <= self.LRS_threshold
 
 
+class NoPostPruning(SeCoBaseImplementation):
+    """Mixin to skip post-pruning"""
+    def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
+        return rule
+
+
 class NoPostProcess(SeCoBaseImplementation):
     """Mixin to skip post processing."""
     def post_process(self, theory: Theory) -> Theory:
@@ -182,6 +188,7 @@ class NoPostProcess(SeCoBaseImplementation):
 class SimpleSeCoImplementation(BeamSearch,
                                TopDownSearch,
                                PurityHeuristic,
+                               NoPostPruning,
                                NoPostProcess):
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
@@ -203,6 +210,7 @@ class CN2Implementation(BeamSearch,
                         TopDownSearch,
                         LaplaceHeuristic,
                         SignificanceStoppingCriterion,
+                        NoPostPruning,
                         NoPostProcess):
     """CN2 as refined by (Clark and Boswell 1991)."""
     def __init__(self, **kwargs):
