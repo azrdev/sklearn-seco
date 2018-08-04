@@ -16,4 +16,5 @@ Limitations / Assumptions (TODO)
     - for numerical only <= and >=
 - numerical features always assumed to be ordinal
 - no NaN, inf, or -inf values in data
+- no weighting
 """

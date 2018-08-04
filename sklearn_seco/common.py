@@ -208,6 +208,7 @@ class SeCoBaseImplementation(ABC):
 
     def __calculate_PN(self):
         """Calculate values of properties P, N."""
+        # TODO: get these from abstract_seco() ?
         if hasattr(self, '_P') and hasattr(self, '_N'):
             if None in (self._P, self._N):
                 assert self._P is None  # always set both

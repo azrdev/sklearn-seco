@@ -225,3 +225,6 @@ class CN2Estimator(SeCoEstimator):
                          multi_class, n_jobs)
         # sklearn assumes all parameters are class fields, so copy this here
         self.LRS_threshold = LRS_threshold
+
+
+# TODO: don't require definition of 2 classes, add *Estimator factory method in SeCoBaseImplementation
