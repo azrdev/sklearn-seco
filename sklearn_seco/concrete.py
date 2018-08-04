@@ -141,7 +141,7 @@ class LaplaceHeuristic(SeCoBaseImplementation):
         """Laplace heuristic, as defined by (Clark and Boswell 1991)."""
         p, n = self.count_matches(rule)
         laplace = (p + 1) / (p + n + 2)
-        return (laplace, p, rule.instance_no)  # tie-breaking by pos. coverage
+        return (laplace, p, -rule.instance_no)  # tie-breaking by pos. coverage
 
 
 class SignificanceStoppingCriterion(SeCoBaseImplementation):
