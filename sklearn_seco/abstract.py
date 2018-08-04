@@ -16,7 +16,6 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         super().__init__()
         self.implementation = implementation
 
-    # TODO: propagate `categorical_features` from SeCoEstimator
     def fit(self, X, y, categorical_features=None):
         """Build the decision rule list from training data `X` with labels `y`.
 
@@ -161,7 +160,8 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         self.multi_class = multi_class
         self.n_jobs = n_jobs
 
-    def fit(self, X, y):
+    def fit(self, X, y, **kwargs):
+        # TODO: document available kwargs or link `_BinarySeCoEstimator.fit`
         X, y = check_X_y(X, y, multi_output=False)
 
         self.base_estimator_ = _BinarySeCoEstimator(self.implementation)
@@ -185,7 +185,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
                 raise ValueError("Unknown multi-class mode %s"
                                  % self.multi_class)
 
-        self.base_estimator_.fit(X, y)
+        self.base_estimator_.fit(X, y, **kwargs)
         return self
 
     def predict(self, X):
