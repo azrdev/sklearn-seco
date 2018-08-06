@@ -40,6 +40,13 @@ def make_empty_rule(n_features: int) -> Rule:
                            ]))
 
 
+def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
+    """:return: `rule` and all its ancestors, see `AugmentedRule.copy()`."""
+    while rule:
+        yield rule
+        rule = rule.original
+
+
 @total_ordering
 class AugmentedRule:
     """A `Rule` and associated data, like coverage (p, n) of current examples,
