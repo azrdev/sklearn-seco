@@ -8,9 +8,10 @@ from sklearn.datasets import make_blobs
 from sklearn.metrics import accuracy_score
 from sklearn.utils import check_random_state
 from sklearn.utils.estimator_checks import check_estimator
-from sklearn_seco.abstract import _BinarySeCoEstimator
+from sklearn_seco.abstract import _BinarySeCoEstimator, SeCoEstimator
 from sklearn_seco.concrete import \
-    SimpleSeCoImplementation, SimpleSeCoEstimator, CN2Estimator
+    SimpleSeCoEstimator, CN2Estimator, \
+    TraceCoverage, SimpleSeCoImplementation, CN2Implementation
 
 
 def test_base_trivial():
@@ -190,6 +191,29 @@ def test_blackbox_accuracy_binary_categorical(seco_estimator,
     # check accuracy
     y_predicted = seco_estimator.predict(X_test)
     assert accuracy_score(y_test, y_predicted) > 0.8
+
+
+@pytest.mark.parametrize('implementation_class', [SimpleSeCoImplementation, CN2Implementation])
+def test_coverage_tracing(binary_categorical, implementation_class):
+    """Test the `TraceCoverage` mixin, using SimpleSeCo and CN2."""
+    class TracingImpl(TraceCoverage, implementation_class):
+        pass
+    tracer = TracingImpl()
+    estimator = SeCoEstimator(tracer)
+    X, y, X_test, y_test = binary_categorical
+    estimator.fit(X, y, categorical_features='all')
+    # check recognition of binary problem
+    base = estimator.base_estimator_
+    assert isinstance(base, _BinarySeCoEstimator)
+    # check consistency of trace
+    assert tracer.has_complete_trace
+    assert isinstance(tracer.last_rule_stop, bool)
+    assert len(base.theory_) == \
+           len(tracer.coverage_log) - tracer.last_rule_stop  # bool is int 0/1
+    assert len(base.theory_) == \
+           len(tracer.refinement_log) - tracer.last_rule_stop
+    # TODO trace levels
+    tracer.plot_coverage_log(title='SimpleSeCo')
 
 
 def test_sklearn_check_estimator(seco_estimator_class):
