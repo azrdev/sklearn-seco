@@ -9,6 +9,7 @@ classes will have to use keyword- instead of positional arguments.
 """
 
 from functools import lru_cache
+import itertools
 from typing import Tuple, Iterable
 import numpy as np
 from sklearn_seco.abstract import Theory, SeCoEstimator
@@ -189,7 +190,7 @@ class TraceCoverage(SeCoBaseImplementation):
       Otherwise the methods `inner_stopping_criterion` and
       `rule_stopping_criterion` won't work, because other classes are not
       required to cooperate on these methods (i.e. call `super()`).
-      TODO: fix uncooperative multi-inheritance for tracing
+      TODO: fix uncooperative multi-inheritance for tracing. use @decorator?
 
     - `trace_level`
       specifies detail level to trace:
@@ -256,21 +257,18 @@ class TraceCoverage(SeCoBaseImplementation):
                                 ) -> bool:
         self.last_rule_stop = super().rule_stopping_criterion(theory, rule)
         # note usage of (x=n, y=p) instead of (p,n) due to plot coordinates
-        log = self.coverage_log
-        trace_level = self.trace_level
-        # get current (N, P) to transform the relative (n,p)
-        #XXX NP = log[-1][0] if len(log) else np.zeros(2)
 
         def rnp(rule):
             p, n = self.count_matches(rule)
             return n, p
 
-        if trace_level == 'best_rules':
-            log.append( np.array([rnp(rule)]) )
+        if self.trace_level == 'best_rules':
+            self.coverage_log.append( np.array([rnp(rule)]) )
         else:  # elif trace_level in ('ancestors', 'refinements'):
-            log.append( np.array([rnp(r) for r in rule_ancestors(rule)]) )
+            self.coverage_log.append(
+                np.array([rnp(r) for r in rule_ancestors(rule)]) )
 
-        if trace_level == 'refinements':
+        if self.trace_level == 'refinements':
             self.refinement_log[-1] = np.array(self.refinement_log[-1])
 
         return self.last_rule_stop
@@ -283,62 +281,92 @@ class TraceCoverage(SeCoBaseImplementation):
 
     def plot_coverage_log(self, title=None):
         """TODO: doc"""
+        # TODO use structured ndarrays & plot(xlabel, ylabel, data) variant
         assert self.has_complete_trace
-
         NP0 = self.NP[0]
+        rnd_style = dict(color='grey', alpha=0.5, linestyle='dotted')
+        refinements_style = dict(marker='.', markersize=1, linestyle='',
+                                 zorder=-1,)
+
         import matplotlib.pyplot as plt
+        from matplotlib.ticker import AutoLocator
         theory_fig = plt.figure()
         theory_axis = theory_fig.gca(xlabel='n', ylabel='p',
                                      xlim=(0, NP0[0]),
                                      ylim=(0, NP0[1]))
-        theory_axis.plot([0, NP0[0]], [0, NP0[1]], ':',
-                         color='grey', alpha=0.5)  # "random theory" marker
+        # draw "random theory" reference marker
+        theory_axis.plot([0, NP0[0]], [0, NP0[1]], **rnd_style)
 
-        # TODO: only if self.trace_level != 'best_rules'
         n_plot_sqrt = int(np.ceil(np.sqrt(len(self.coverage_log))))
-        rules_fig, axes = plt.subplots(n_plot_sqrt, n_plot_sqrt, squeeze=False,
-                                       figsize=(10.24, 10.24))
-        rule_axes = axes.flat
-        for i in range(len(self.coverage_log), len(rule_axes)):
-            rules_fig.delaxes(rule_axes[i])
+        rules_fig = plt.figure(figsize=(10.24, 10.24), tight_layout=True)
+        # TODO: axis labels
 
         previous_best_rule = np.array((0,0))  # equals (N, P) for some trace
-        for rule_idx, rule_trace in enumerate(self.coverage_log):
-            best_rule = rule_trace[0]  # first=best_rule is in the theory
+        for rule_idx, rule_trace, refinements in zip(itertools.count(),
+                                                     self.coverage_log,
+                                                     self.refinement_log):
+            refts_mask = refinements[:, 1] != 0
+            best_rule = rule_trace[0] + previous_best_rule
+            NP = self.NP[rule_idx]
+
+            mark_stop = self.last_rule_stop and (rule_idx ==
+                                                 len(self.coverage_log) -1)
+            # this rule in theory plot
             theory_line = theory_axis.plot(
-                best_rule[0], best_rule[1], '.',
+                best_rule[0], best_rule[1], 'x' if mark_stop else '.',
                 label="{2}: ({1}, {0})".format(*best_rule, rule_idx))
+            best_rule_color = theory_line[0].get_color()
+            # draw refinements in theory plot
+            theory_axis.plot(refinements[refts_mask,0] + previous_best_rule[0],
+                             refinements[refts_mask,1] + previous_best_rule[1],
+                             color=best_rule_color, alpha=0.3,
+                             **refinements_style)
             # draw arrows between best_rules
             theory_axis.annotate("", xytext=previous_best_rule, xy=best_rule,
                                  arrowprops={'arrowstyle': "->"})
+            previous_best_rule = best_rule
 
-            # subplot with refinements of current rule (how it was found)
-            rule_axis = rule_axes[rule_idx]
-            # grey out area already covered by previous rules
-            Ni, Pi = previous_best_rule
-            rule_axis.fill_between([0, Ni, Ni, NP0[0]],
-                                   [NP0[1], NP0[1], Pi, Pi],
-                                   facecolor='lightgray', alpha=0.3)
-            # draw "random theory" marker
-            rule_axis.plot([0, NP0[0]], [0, NP0[1]], ':',
-                           color='grey', alpha=0.5)
+            # TODO: move ancestor plot to separate method
+            # subplot with ancestors of current best_rule
+            rule_axis = rules_fig.add_subplot(n_plot_sqrt, n_plot_sqrt,
+                                              rule_idx +1)
+            if mark_stop:
+                rule_axis.set_title('(Rule #%d) Candidate' % rule_idx)
+            else:
+                rule_axis.set_title('Rule #%d' % rule_idx)
+            # draw "random theory" reference marker
+            rule_axis.plot([0, NP0[0]], [0, NP0[1]], **rnd_style)
             # draw rule_trace
             rule_axis.plot(rule_trace[:, 0], rule_trace[:, 1], 'o-',
-                           color=theory_line[0].get_color())
-            rule_axis.set_title('Rule #%d' % rule_idx)
-            rule_axis.set_xlabel('n')
-            rule_axis.set_ylabel('p')
-            rule_axis.set_xlim(0, NP0[0])
-            rule_axis.set_ylim(0, NP0[1])
-            rule_axis.label_outer()
-            previous_best_rule = best_rule
+                           color=best_rule_color)
+            # draw refinements as scattered dots
+            rule_axis.plot(refinements[refts_mask, 0],
+                           refinements[refts_mask, 1],
+                           color='black', alpha=0.7, **refinements_style)
+
+            # draw x and y axes through (0,0) and hide for negative values
+            for spine_type, spine in rule_axis.spines.items():
+                spine.set_position('zero')
+                horizontal = spine_type in {'bottom', 'top'}
+                spine.set_bounds(0, NP[0] if horizontal else NP[1])
+
+            class PositiveTicks(AutoLocator):
+                def tick_values(self, vmin, vmax):
+                    orig = super().tick_values(vmin, vmax)
+                    return orig[orig >= 0]
+
+            rule_axis.xaxis.set_major_locator(PositiveTicks())
+            rule_axis.yaxis.set_major_locator(PositiveTicks())
+            rule_axis.locator_params(integer=True)
+
+            # set reference frame (N,P), but move (0,0) so it looks comparable
+            rule_axis.set_xbound(NP[0] - NP0[0], NP[0])
+            rule_axis.set_ybound(NP[1] - NP0[1], NP[1])
 
         if title is not None:
             theory_axis.set_title("%s: Theory" % title)
-            rules_fig.suptitle("%s: Rules" % title)  # TODO: intersects plots
-        theory_fig.legend(title="rule: (p,n)")
-
-        # TODO: plot self.refinement_log
+            rules_fig.suptitle("%s: Rules" % title, y=0.02)
+        theory_fig.legend(title="rule: (p,n)", loc='center right')
 
         theory_fig.show()
         rules_fig.show()
