@@ -207,7 +207,7 @@ class TraceCoverage(SeCoBaseImplementation):
 
     - `coverage_log`: list of np.array with shape (n_ancestors, 2)
        This is the log of `best_rule` and (if requested) their `ancestors`.
-       For each `best_rule` +1 it keeps an array with (n,p) for that best rule
+       For each `best_rule` +1 it keeps an array with (p, n) for that best rule
        and its ancestors, in reverse order of creation.
        The last `best_rule` is not part
 
@@ -215,7 +215,7 @@ class TraceCoverage(SeCoBaseImplementation):
        This is the log of all `refinements`. For each `best_rule` (i.e. iteration
        in `abstract_seco`) +1 (which corresponds to the attempts to find
        another rule, aborted by `rule_stopping_criterion`), it keeps an array
-       with (n, p, stop) for each refinement, where `stop` is the boolean
+       with (p, n, stop) for each refinement, where `stop` is the boolean
        result of `inner_stopping_criterion(refinement)`.
 
     - `last_rule_stop`: boolean result of `rule_stopping_criterion` on the last
@@ -224,8 +224,8 @@ class TraceCoverage(SeCoBaseImplementation):
        not part of the theory (the search ended because
        `rule_stopping_criterion` was True).
 
-    - `NP`: np.array of shape (n_best_rules, 2)
-       This is the log of the (N, P) values for each iteration of
+    - `PN`: np.array of shape (n_best_rules, 2)
+       This is the log of the (P, N) values for each iteration of
        `abstract_seco`.
     """
 
@@ -235,7 +235,7 @@ class TraceCoverage(SeCoBaseImplementation):
         self.has_complete_trace = False
         self.coverage_log = []
         self.refinement_log = []
-        self.NP = []
+        self.PN = []
         self.last_rule_stop = None
 
     def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
@@ -249,8 +249,8 @@ class TraceCoverage(SeCoBaseImplementation):
                                       # (list or np.ndarray) of
                                       # np.array [n,p,stop]
             self.last_rule_stop = None
-            self.NP = []  # type while tracing: list of tuple(int, int)
-        self.NP.append((self.N, self.P))
+            self.PN = []  # type while tracing: list of tuple(int, int)
+        self.PN.append((self.P, self.N))
 
         if self.trace_level == 'refinements':
             self.refinement_log.append([])
@@ -258,23 +258,21 @@ class TraceCoverage(SeCoBaseImplementation):
     def inner_stopping_criterion(self, refinement: AugmentedRule) -> bool:
         stop = super().inner_stopping_criterion(refinement)
         p, n = self.count_matches(refinement)
-        self.refinement_log[-1].append(np.array((n, p, stop)))
+        self.refinement_log[-1].append(np.array((p, n, stop)))
         return stop
 
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:
         self.last_rule_stop = super().rule_stopping_criterion(theory, rule)
-        # note usage of (x=n, y=p) instead of (p,n) due to plot coordinates
 
-        def rnp(rule):
-            p, n = self.count_matches(rule)
-            return n, p
+        def pn(rule):
+            return self.count_matches(rule)
 
         if self.trace_level == 'best_rules':
-            self.coverage_log.append( np.array([rnp(rule)]) )
+            self.coverage_log.append( np.array([pn(rule)]) )
         else:  # elif trace_level in ('ancestors', 'refinements'):
             self.coverage_log.append(
-                np.array([rnp(r) for r in rule_ancestors(rule)]) )
+                np.array([pn(r) for r in rule_ancestors(rule)]) )
 
         if self.trace_level == 'refinements':
             self.refinement_log[-1] = np.array(self.refinement_log[-1])
@@ -285,7 +283,7 @@ class TraceCoverage(SeCoBaseImplementation):
         super().unset_context()
         # end of rule search, theory is complete
         self.has_complete_trace = True
-        self.NP = np.array(self.NP)
+        self.PN = np.array(self.PN)
 
     @property
     def n_rules(self):
@@ -320,7 +318,9 @@ class TraceCoverage(SeCoBaseImplementation):
         :return: `(theory_figure, rules_figure)` where rules_figure is a figure
           or a list of figure, depending on `rules_use_subfigure`.
         """
-        # TODO use structured ndarrays & plot(xlabel, ylabel, data) variant
+
+        P, N = 0, 1  # readable indexes, not values!
+
         if not self.has_complete_trace:
             raise NotFittedError("No trace collected yet.")
         if not self.n_rules:
@@ -332,7 +332,7 @@ class TraceCoverage(SeCoBaseImplementation):
                           "Using draw_refinements=False.")
             draw_refinements = False
 
-        NP0 = self.NP[0]
+        NP0 = self.PN[0]
         rnd_style = dict(color='grey', alpha=0.5, linestyle='dotted')
         refinements_style = dict(marker='.', markersize=1, linestyle='',
                                  zorder=-1,)
@@ -343,9 +343,9 @@ class TraceCoverage(SeCoBaseImplementation):
         if theory_figure is None:
             theory_figure = plt.figure()
         theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
-                                        xlim=(0, NP0[0]), ylim=(0, NP0[1]))
+                                        xlim=(0, NP0[N]), ylim=(0, NP0[P]))
         # draw "random theory" reference marker
-        theory_axes.plot([0, NP0[0]], [0, NP0[1]], **rnd_style)
+        theory_axes.plot([0, NP0[N]], [0, NP0[P]], **rnd_style)
 
         if rules_use_subfigures:
             if rules_figure is None:
@@ -376,9 +376,9 @@ class TraceCoverage(SeCoBaseImplementation):
         previous_rule = np.array((0, 0))  # equals (N, P) for some trace
         for rule_idx, (rule_trace, refinements) in \
                 enumerate(zip_longest(self.coverage_log, self.refinement_log)):
-            NP = self.NP[rule_idx]
+            NP = self.PN[rule_idx]
             if draw_refinements == 'nonzero':
-                refts_mask = refinements[:, 1] != 0
+                refts_mask = refinements[:, P] != 0
             elif draw_refinements:
                 refts_mask = slice(None)  # all
             mark_stop = self.last_rule_stop and (rule_idx == self.n_rules -1)
@@ -386,19 +386,20 @@ class TraceCoverage(SeCoBaseImplementation):
             # this rule in theory plot
             rule = rule_trace[0] + previous_rule
             theory_line = theory_axes.plot(
-                rule[0], rule[1], 'x' if mark_stop else '.',
+                rule[N], rule[P], 'x' if mark_stop else '.',
                 label="{i:{i_width}}: ({p:4}, {n:4})"
-                      .format(n=rule[0], p=rule[1], i=rule_idx,
+                      .format(n=rule[N], p=rule[P], i=rule_idx,
                               i_width=math.ceil(np.log10(self.n_rules))))
             rule_color = theory_line[0].get_color()
             if draw_refinements:
                 # draw refinements in theory plot
-                theory_axes.plot(refinements[refts_mask,0] + previous_rule[0],
-                                 refinements[refts_mask,1] + previous_rule[1],
+                theory_axes.plot(refinements[refts_mask, N] + previous_rule[N],
+                                 refinements[refts_mask, P] + previous_rule[P],
                                  color=rule_color, alpha=0.3,
                                  **refinements_style)
             # draw arrows between best_rules
-            theory_axes.annotate("", xytext=previous_rule, xy=rule,
+            # NOTE: invert coordinates because we save (p,n) and plot (x=n,y=p)
+            theory_axes.annotate("", xytext=previous_rule[::-1], xy=rule[::-1],
                                  arrowprops={'arrowstyle': "->"})
             previous_rule = rule
 
@@ -410,21 +411,21 @@ class TraceCoverage(SeCoBaseImplementation):
             else:
                 rule_axis.set_title('Rule #%d' % rule_idx)
             # draw "random theory" reference marker
-            rule_axis.plot([0, NP0[0]], [0, NP0[1]], **rnd_style)
+            rule_axis.plot([0, NP0[N]], [0, NP0[P]], **rnd_style)
             # draw rule_trace
-            rule_axis.plot(rule_trace[:, 0], rule_trace[:, 1], 'o-',
+            rule_axis.plot(rule_trace[:, N], rule_trace[:, P], 'o-',
                            color=rule_color)
             if draw_refinements:
                 # draw refinements as scattered dots
-                rule_axis.plot(refinements[refts_mask, 0],
-                               refinements[refts_mask, 1],
+                rule_axis.plot(refinements[refts_mask, N],
+                               refinements[refts_mask, P],
                                color='black', alpha=0.7, **refinements_style)
 
             # draw x and y axes through (0,0) and hide for negative values
             for spine_type, spine in rule_axis.spines.items():
                 spine.set_position('zero')
                 horizontal = spine_type in {'bottom', 'top'}
-                spine.set_bounds(0, NP[0] if horizontal else NP[1])
+                spine.set_bounds(0, NP[N] if horizontal else NP[P])
 
             class PositiveTicks(AutoLocator):
                 def tick_values(self, vmin, vmax):
@@ -436,8 +437,8 @@ class TraceCoverage(SeCoBaseImplementation):
             rule_axis.locator_params(integer=True)
 
             # set reference frame (N,P), but move (0,0) so it looks comparable
-            rule_axis.set_xbound(NP[0] - NP0[0], NP[0])
-            rule_axis.set_ybound(NP[1] - NP0[1], NP[1])
+            rule_axis.set_xbound(NP[N] - NP0[N], NP[N])
+            rule_axis.set_ybound(NP[P] - NP0[P], NP[P])
 
         if title is not None:
             theory_axes.set_title("%s: Theory" % title)
