@@ -8,10 +8,11 @@ doesn't consume using `super().__init__(**kwargs)`. Users of mixin-composed
 classes will have to use keyword- instead of positional arguments.
 """
 
+import math
+import warnings
 from functools import lru_cache
 from itertools import zip_longest
-from typing import Tuple, Iterable, Optional, Union, List, Sequence
-import warnings
+from typing import Tuple, Iterable, Optional, Union, Sequence
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -244,9 +245,11 @@ class TraceCoverage(SeCoBaseImplementation):
         if self.has_complete_trace:
             self.has_complete_trace = False
             self.coverage_log = []
-            self.refinement_log = []
+            self.refinement_log = []  # type while tracing: list of
+                                      # (list or np.ndarray) of
+                                      # np.array [n,p,stop]
             self.last_rule_stop = None
-            self.NP = []
+            self.NP = []  # type while tracing: list of tuple(int, int)
         self.NP.append((self.N, self.P))
 
         if self.trace_level == 'refinements':
@@ -290,12 +293,14 @@ class TraceCoverage(SeCoBaseImplementation):
 
     # TODO: (de)serialize log to plot separately
 
-    def plot_coverage_log(self, title: Optional[str]=None,
-                          draw_refinements: Union[str, bool]='nonzero',
-                          theory_figure: Optional[Figure]=None,
-                          rules_figure: Union[Figure, Sequence[Figure], None]=None,
-                          rules_use_subfigures: bool = True,
-                          ) -> Tuple[Figure, Union[Figure, List[Figure]]]:
+    def plot_coverage_log(
+            self,
+            title: Optional[str] = None,
+            draw_refinements: Union[str, bool] = 'nonzero',
+            theory_figure: Optional[Figure] = None,
+            rules_figure: Union[Figure, Sequence[Figure], None] = None,
+            rules_use_subfigures: bool = True,
+    ) -> Tuple[Figure, Union[Figure, Sequence[Figure]]]:
         """TODO: doc
 
         :param title: string or None. If not None, set figure titles and use
@@ -338,8 +343,7 @@ class TraceCoverage(SeCoBaseImplementation):
         if theory_figure is None:
             theory_figure = plt.figure()
         theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
-                                     xlim=(0, NP0[0]),
-                                     ylim=(0, NP0[1]))
+                                        xlim=(0, NP0[0]), ylim=(0, NP0[1]))
         # draw "random theory" reference marker
         theory_axes.plot([0, NP0[0]], [0, NP0[1]], **rnd_style)
 
@@ -351,12 +355,12 @@ class TraceCoverage(SeCoBaseImplementation):
             if title is not None:
                 rules_figure.suptitle("%s: Rules" % title, y=0.02)
             # TODO: axis labels when using subfigures
-            subfigure_grid = [int(np.ceil(np.sqrt(self.n_rules)))] * 2
+            subfigure_grid = [math.ceil(np.sqrt(self.n_rules))] * 2
             rule_axes = [rules_figure.add_subplot(*subfigure_grid, rule_idx +1)
                          for rule_idx in range(self.n_rules)]
         else:
             if rules_figure is None:
-                rules_figure = [plt.figure() for i in range(self.n_rules)]
+                rules_figure = [plt.figure() for _ in range(self.n_rules)]
             elif isinstance(rules_figure, Sequence):
                 if len(rules_figure) != self.n_rules:
                     raise ValueError("rules_figure is a list, but length ({}) "
@@ -369,7 +373,7 @@ class TraceCoverage(SeCoBaseImplementation):
             # assume rules_figure is a list of figures
             rule_axes = [f.gca() for f in rules_figure]
 
-        previous_rule = np.array((0,0))  # equals (N, P) for some trace
+        previous_rule = np.array((0, 0))  # equals (N, P) for some trace
         for rule_idx, (rule_trace, refinements) in \
                 enumerate(zip_longest(self.coverage_log, self.refinement_log)):
             NP = self.NP[rule_idx]
@@ -377,20 +381,21 @@ class TraceCoverage(SeCoBaseImplementation):
                 refts_mask = refinements[:, 1] != 0
             elif draw_refinements:
                 refts_mask = slice(None)  # all
-
             mark_stop = self.last_rule_stop and (rule_idx == self.n_rules -1)
+
             # this rule in theory plot
             rule = rule_trace[0] + previous_rule
             theory_line = theory_axes.plot(
                 rule[0], rule[1], 'x' if mark_stop else '.',
-                label="{i}: ({p}, {n})".format(n=rule[0], p=rule[1],
-                                               i=rule_idx))
-            best_rule_color = theory_line[0].get_color()
+                label="{i:{i_width}}: ({p:4}, {n:4})"
+                      .format(n=rule[0], p=rule[1], i=rule_idx,
+                              i_width=math.ceil(np.log10(self.n_rules))))
+            rule_color = theory_line[0].get_color()
             if draw_refinements:
                 # draw refinements in theory plot
                 theory_axes.plot(refinements[refts_mask,0] + previous_rule[0],
                                  refinements[refts_mask,1] + previous_rule[1],
-                                 color=best_rule_color, alpha=0.3,
+                                 color=rule_color, alpha=0.3,
                                  **refinements_style)
             # draw arrows between best_rules
             theory_axes.annotate("", xytext=previous_rule, xy=rule,
@@ -408,7 +413,7 @@ class TraceCoverage(SeCoBaseImplementation):
             rule_axis.plot([0, NP0[0]], [0, NP0[1]], **rnd_style)
             # draw rule_trace
             rule_axis.plot(rule_trace[:, 0], rule_trace[:, 1], 'o-',
-                           color=best_rule_color)
+                           color=rule_color)
             if draw_refinements:
                 # draw refinements as scattered dots
                 rule_axis.plot(refinements[refts_mask, 0],
