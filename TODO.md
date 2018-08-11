@@ -13,7 +13,6 @@
     - autochecks: flake8, `py.test --with-coverage`, typecheck (mypy)
 - optimization <http://www.scipy-lectures.org/advanced/optimizing/index.html>
 
-- rule visualization
 - regression?
 - assert & document possibility to change rule format in SeCoImplementation
     without changing sklearn_seco, i.e. it could be extended to other rule

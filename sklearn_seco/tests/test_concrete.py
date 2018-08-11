@@ -213,7 +213,9 @@ def test_coverage_tracing(binary_categorical, implementation_class):
     assert len(base.theory_) == \
            len(tracer.refinement_log) - tracer.last_rule_stop
     # TODO trace levels
-    tracer.plot_coverage_log(title=implementation_class.__name__)
+    tf, rfs = tracer.plot_coverage_log(title=implementation_class.__name__)
+    tf.show()
+    rfs.show()
 
 
 def test_sklearn_check_estimator(seco_estimator_class):
