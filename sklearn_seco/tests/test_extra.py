@@ -5,16 +5,15 @@ from numpy.testing import assert_array_equal
 
 from sklearn_seco.abstract import SeCoEstimator, _BinarySeCoEstimator
 from sklearn_seco.concrete import SimpleSeCoImplementation, CN2Implementation
-from sklearn_seco.extra import TraceCoverage, plot_coverage_log
+from sklearn_seco.extra import trace_coverage, plot_coverage_log
 
 
 @pytest.mark.parametrize('implementation_class',
                          [SimpleSeCoImplementation, CN2Implementation])
 def test_coverage_tracing(binary_categorical, implementation_class):
-    """Test the `TraceCoverage` mixin, using SimpleSeCo and CN2."""
+    """Test the `trace_coverage` mixin, using SimpleSeCo and CN2."""
 
-    class TracingImpl(TraceCoverage, implementation_class):
-        pass
+    TracingImpl = trace_coverage(implementation_class)
     tracer = TracingImpl()
     estimator = SeCoEstimator(tracer)
     X, y, X_test, y_test = binary_categorical
@@ -33,7 +32,7 @@ def test_coverage_tracing(binary_categorical, implementation_class):
 
     # test (de)serialization
     json_str = tracer.to_json()
-    trace_recovered = TraceCoverage.from_json(json_str)
+    trace_recovered = tracer.from_json(json_str)
     assert tracer.last_rule_stop == trace_recovered["last_rule_stop"]
     for x, y in zip(tracer.coverage_log, trace_recovered["coverage_log"]):
         assert_array_equal(x, y)

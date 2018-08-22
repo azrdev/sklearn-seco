@@ -16,7 +16,7 @@ from sklearn_seco.common import \
     SeCoBaseImplementation, AugmentedRule, Theory, rule_ancestors
 
 
-_JSON_DUMP_DESCRIPTION = "sklearn_seco.extra.TraceCoverage dump"
+_JSON_DUMP_DESCRIPTION = "sklearn_seco.extra.trace_coverage dump"
 
 
 def _json_encode_ndarray(obj):
@@ -25,14 +25,38 @@ def _json_encode_ndarray(obj):
     raise TypeError
 
 
-class TraceCoverage(SeCoBaseImplementation):
+def trace_coverage(cls):
+    """Decorator for SeCoBaseImplementation subclasses, that adds tracing of
+    (p,n) while building the theory, and ability to plot these.
+    Relies on :class:`_TraceCoverage`, for field documentation see there.
+
+    Usage
+    =====
+
+    Use with decorator syntax:
+
+    >>> @trace_coverage
+    >>> class MySeCoImpl(SeCoBaseImplementation):
+    >>>     ...
+
+    or call directly:
+
+    >>> MyTracedSeCoImpl = trace_coverage(MySeCoImpl)
+    """
+    class TracedImplementation(_TraceCoverage, cls):
+        pass
+    return TracedImplementation
+
+
+class _TraceCoverage(SeCoBaseImplementation):
     """Mixin tracing (p,n) while building the theory, able to plot these.
 
-    NOTE: Always make sure to place this before all other Mixins!
-      Otherwise the methods `inner_stopping_criterion` and
-      `rule_stopping_criterion` won't work, because other classes are not
-      required to cooperate on these methods (i.e. call `super()`).
-      TODO: fix uncooperative multi-inheritance for tracing. use @decorator?
+    Note this always has to come first in the mro/inheritance tree, because it
+    overrides some methods not to be overridden. Use the `trace_coverage`
+    decorator to ensure that.
+
+    Class fields / trace content:
+    =====
 
     - `trace_level`
       specifies detail level to trace:
@@ -183,7 +207,7 @@ def plot_coverage_log(
     """Plot the traced (p, n) of a theory.
 
     For parameters `last_rule_stop`, `PN`, `coverage_log` and `refinement_log`,
-    see :class:`TraceCoverage`.
+    see :class:`__TraceCoverage`.
 
     :param title: string or None. If not None, set figure titles and use
       this value as prefix.
