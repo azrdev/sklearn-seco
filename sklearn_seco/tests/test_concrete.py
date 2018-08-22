@@ -1,18 +1,12 @@
 """Tests for `sklearn_seco.concrete`."""
 
 import numpy as np
-import pytest
 from numpy import NINF, PINF
 from numpy.testing import assert_array_equal, assert_array_almost_equal
-from sklearn.datasets import make_blobs
 from sklearn.metrics import accuracy_score
-from sklearn.utils import check_random_state
 from sklearn.utils.estimator_checks import check_estimator
-from sklearn_seco.abstract import _BinarySeCoEstimator, SeCoEstimator
-from sklearn_seco.concrete import \
-    SimpleSeCoEstimator, CN2Estimator, \
-    SimpleSeCoImplementation, CN2Implementation
-from sklearn_seco.extra import TraceCoverage
+from sklearn_seco.abstract import _BinarySeCoEstimator
+from sklearn_seco.concrete import SimpleSeCoImplementation
 
 
 def test_base_trivial():
@@ -71,44 +65,6 @@ def test_base_easyrules():
     assert_array_equal(est.predict(X_test), y_test)
 
 
-@pytest.fixture(params=[SimpleSeCoEstimator, CN2Estimator])
-def seco_estimator_class(request):
-    """Fixture running for each of the pre-defined estimator classes from
-    `sklearn_seco.concrete`.
-
-    :return: An estimator class.
-    """
-    return request.param
-
-
-@pytest.fixture
-def seco_estimator(seco_estimator_class):
-    """Fixture running for each of the pre-defined estimators from
-    `sklearn_seco.concrete`.
-
-    :return: An estimator instance.
-    """
-    return seco_estimator_class()
-
-
-@pytest.fixture
-def trivial_decision_border():
-    """Generate normal distributed, linearly separated binary problem.
-
-    :return: tuple(X, y)
-    """
-    random = check_random_state(42)
-    samples = np.array([random.normal(size=50),
-                        random.random_sample(50),
-                        np.zeros(50)]).T
-    X = samples[:, :-1]  # all but last column
-    y = samples[:, -1]  # last column
-    samples[0:25, 1] += 1
-    y[0:25] = 1
-    np.random.shuffle(samples)
-    return X, y
-
-
 def test_trivial_decision_border(seco_estimator, trivial_decision_border):
     """Check recognition of the linear border in `trivial_decision_border`."""
     seco_estimator.fit(*trivial_decision_border)
@@ -120,32 +76,6 @@ def test_trivial_decision_border(seco_estimator, trivial_decision_border):
     assert len(base.theory_) == 1
     assert_array_almost_equal(base.theory_[0], [[NINF, NINF], [PINF, 1.0]],
                               decimal=1)
-
-
-@pytest.fixture
-def binary_slight_overlap():
-    """Generate two normal distributed, slightly overlapping classes.
-
-    :return: tuple(X_train, y_train, X_test, y_test)
-    """
-    random = check_random_state(42)
-    dim = 8
-    n_samples = 160  # we have 80 samples for each class for each (train, test)
-    mean = np.zeros(dim)
-    cov = np.eye(dim)
-    raw = np.block([
-        [random.multivariate_normal(mean, cov, size=n_samples),  # features
-         np.ones((n_samples, 1))],  # positive class label
-        [random.multivariate_normal(mean + 3, cov, size=n_samples),  # features
-         np.zeros((n_samples, 1))]  # negative class label
-    ])
-    random.shuffle(raw)
-    train, test = np.array_split(raw, 2, axis=0)
-    X = train[:, :-1]  # all but last column
-    y = train[:, -1]  # last column
-    X_test = test[:, :-1]
-    y_test = test[:, -1]
-    return X, y, X_test, y_test
 
 
 def test_blackbox_accuracy_binary(seco_estimator, binary_slight_overlap):
@@ -162,26 +92,6 @@ def test_blackbox_accuracy_binary(seco_estimator, binary_slight_overlap):
     assert accuracy_score(y_test, y_predicted) > 0.8
 
 
-@pytest.fixture
-def binary_categorical():
-    """Generate binary discrete problem with little noise.
-
-    :return: tuple(X, y, X_test, y_test)
-    """
-    distribution = {
-        'n_samples': 100,
-        'n_features': 10,
-        'centers': 2,
-        'cluster_std': 2.5,
-        'random_state': check_random_state(99)
-    }
-    X_numeric, y = make_blobs(**distribution)
-    X = np.rint(X_numeric)
-    X_test_numeric, y_test = make_blobs(**distribution)
-    X_test = np.rint(X_test_numeric)
-    return X, y, X_test, y_test
-
-
 def test_blackbox_accuracy_binary_categorical(seco_estimator,
                                               binary_categorical):
     """Expect high accuracy on `binary_categorical`."""
@@ -194,32 +104,6 @@ def test_blackbox_accuracy_binary_categorical(seco_estimator,
     assert_array_equal(seco_estimator.predict(X), y)
     y_predicted = seco_estimator.predict(X_test)
     assert accuracy_score(y_test, y_predicted) > 0.8
-
-
-@pytest.mark.parametrize('implementation_class', [SimpleSeCoImplementation, CN2Implementation])
-def test_coverage_tracing(binary_categorical, implementation_class):
-    """Test the `TraceCoverage` mixin, using SimpleSeCo and CN2."""
-    class TracingImpl(TraceCoverage, implementation_class):
-        pass
-    tracer = TracingImpl()
-    estimator = SeCoEstimator(tracer)
-    X, y, X_test, y_test = binary_categorical
-    estimator.fit(X, y, categorical_features='all')
-    # check recognition of binary problem
-    base = estimator.base_estimator_
-    assert isinstance(base, _BinarySeCoEstimator)
-    # check consistency of trace
-    assert tracer.has_complete_trace
-    assert isinstance(tracer.last_rule_stop, bool)
-    assert len(base.theory_) == \
-           len(tracer.coverage_log) - tracer.last_rule_stop  # bool is int 0/1
-    assert len(base.theory_) == \
-           len(tracer.refinement_log) - tracer.last_rule_stop
-    # TODO trace levels
-    # test plotting
-    tf, rfs = tracer.plot_coverage_log(title=implementation_class.__name__)
-    tf.show()
-    rfs.show()
 
 
 def test_sklearn_check_estimator(seco_estimator_class):
