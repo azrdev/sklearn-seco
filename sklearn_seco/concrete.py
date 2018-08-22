@@ -228,7 +228,11 @@ class CN2Implementation(BeamSearch,
 
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:
-        """abort search if rule covers no examples"""
+        """Abort search if rule covers no positive examples.
+
+        This corresponds to the "E is empty" condition in Table 3 of
+        (Clark and Niblett 1989).
+        """
         p, n = self.count_matches(rule)
         return p == 0
 

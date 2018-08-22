@@ -170,6 +170,7 @@ def binary_categorical():
     """
     distribution = {
         'n_samples': 100,
+        'n_features': 10,
         'centers': 2,
         'cluster_std': 2.5,
         'random_state': check_random_state(99)
@@ -190,6 +191,7 @@ def test_blackbox_accuracy_binary_categorical(seco_estimator,
     base = seco_estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
     # check accuracy
+    assert_array_equal(seco_estimator.predict(X), y)
     y_predicted = seco_estimator.predict(X_test)
     assert accuracy_score(y_test, y_predicted) > 0.8
 
@@ -214,6 +216,7 @@ def test_coverage_tracing(binary_categorical, implementation_class):
     assert len(base.theory_) == \
            len(tracer.refinement_log) - tracer.last_rule_stop
     # TODO trace levels
+    # test plotting
     tf, rfs = tracer.plot_coverage_log(title=implementation_class.__name__)
     tf.show()
     rfs.show()

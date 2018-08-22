@@ -73,8 +73,7 @@ class TraceCoverage(SeCoBaseImplementation):
             self.has_complete_trace = False
             self.coverage_log = []
             self.refinement_log = []  # type while tracing: list of
-                                      # (list or np.ndarray) of
-                                      # np.array [n,p,stop]
+            # (list or np.ndarray) of np.array [n,p,stop]
             self.last_rule_stop = None
             self.PN = []  # type while tracing: list of tuple(int, int)
         self.PN.append((self.P, self.N))
@@ -159,7 +158,7 @@ class TraceCoverage(SeCoBaseImplementation):
                           "Using draw_refinements=False.")
             draw_refinements = False
 
-        NP0 = self.PN[0]
+        PN0 = self.PN[0]
         rnd_style = dict(color='grey', alpha=0.5, linestyle='dotted')
         refinements_style = dict(marker='.', markersize=1, linestyle='',
                                  zorder=-1,)
@@ -170,9 +169,9 @@ class TraceCoverage(SeCoBaseImplementation):
         if theory_figure is None:
             theory_figure = plt.figure()
         theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
-                                        xlim=(0, NP0[N]), ylim=(0, NP0[P]))
+                                        xlim=(0, PN0[N]), ylim=(0, PN0[P]))
         # draw "random theory" reference marker
-        theory_axes.plot([0, NP0[N]], [0, NP0[P]], **rnd_style)
+        theory_axes.plot([0, PN0[N]], [0, PN0[P]], **rnd_style)
 
         if rules_use_subfigures:
             if rules_figure is None:
@@ -208,7 +207,7 @@ class TraceCoverage(SeCoBaseImplementation):
                 refts_mask = refinements[:, P] != 0
             elif draw_refinements:
                 refts_mask = slice(None)  # all
-            mark_stop = self.last_rule_stop and (rule_idx == self.n_rules -1)
+            mark_stop = self.last_rule_stop and (rule_idx == self.n_rules - 1)
 
             # this rule in theory plot
             rule = rule_trace[0] + previous_rule
@@ -238,7 +237,7 @@ class TraceCoverage(SeCoBaseImplementation):
             else:
                 rule_axis.set_title('Rule #%d' % rule_idx)
             # draw "random theory" reference marker
-            rule_axis.plot([0, NP0[N]], [0, NP0[P]], **rnd_style)
+            rule_axis.plot([0, PN0[N]], [0, PN0[P]], **rnd_style)
             # draw rule_trace
             rule_axis.plot(rule_trace[:, N], rule_trace[:, P], 'o-',
                            color=rule_color)
@@ -264,8 +263,8 @@ class TraceCoverage(SeCoBaseImplementation):
             rule_axis.locator_params(integer=True)
 
             # set reference frame (N,P), but move (0,0) so it looks comparable
-            rule_axis.set_xbound(NP[N] - NP0[N], NP[N])
-            rule_axis.set_ybound(NP[P] - NP0[P], NP[P])
+            rule_axis.set_xbound(NP[N] - PN0[N], NP[N])
+            rule_axis.set_ybound(NP[P] - PN0[P], NP[P])
 
         if title is not None:
             theory_axes.set_title("%s: Theory" % title)

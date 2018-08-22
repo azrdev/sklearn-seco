@@ -6,7 +6,8 @@ import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.multiclass import OneVsRestClassifier, OneVsOneClassifier
 from sklearn.utils import check_X_y, check_array
-from sklearn.utils.multiclass import unique_labels, check_classification_targets
+from sklearn.utils.multiclass import \
+    unique_labels, check_classification_targets
 from sklearn.utils.validation import check_is_fitted
 
 
