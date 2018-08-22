@@ -13,7 +13,7 @@ from typing import Tuple, Iterable
 
 import numpy as np
 
-from sklearn_seco.abstract import Theory, SeCoEstimator
+from sklearn_seco.abstract import Theory, SeCoEstimator, _BinarySeCoEstimator
 from sklearn_seco.common import \
     RuleQueue, SeCoBaseImplementation, AugmentedRule
 
@@ -63,7 +63,7 @@ class TopDownSearch(SeCoBaseImplementation):
     subsequently specializes it.
     """
 
-    def set_context(self, estimator, X, y):
+    def set_context(self, estimator: _BinarySeCoEstimator, X, y):
         super().set_context(estimator, X, y)
         # cached results depend on examples (X, y), which change each iteration
         self.all_feature_values.cache_clear()
@@ -150,7 +150,7 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
     """Mixin using as stopping criterion for rule refinement a significance
     test like CN2.
     """
-    def __init__(self, LRS_threshold: float, **kwargs):
+    def __init__(self, LRS_threshold: float = 0.9, **kwargs):
         super().__init__(**kwargs)
         self.LRS_threshold = LRS_threshold  # FIXME: estimator.set_param not reflected here
 
@@ -182,14 +182,6 @@ class NoPostProcess(SeCoBaseImplementation):
     """Mixin to skip post processing."""
     def post_process(self, theory: Theory) -> Theory:
         return theory
-
-
-
-
-        """TODO: doc
-
-        """
-
 
 
 # Example Algorithm configurations

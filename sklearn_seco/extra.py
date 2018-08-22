@@ -12,6 +12,7 @@ import numpy as np
 from matplotlib.figure import Figure  # needed only for type hints
 from sklearn.exceptions import NotFittedError
 
+from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.common import \
     SeCoBaseImplementation, AugmentedRule, Theory, rule_ancestors
 
@@ -98,7 +99,7 @@ class _TraceCoverage(SeCoBaseImplementation):
         self.PN = []
         self.last_rule_stop = None
 
-    def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
+    def set_context(self, estimator: _BinarySeCoEstimator, X, y):
         # note we're called before each find_best_rule
         super().set_context(estimator, X, y)
         # if we're in a new abstract_seco run: delete the old results
