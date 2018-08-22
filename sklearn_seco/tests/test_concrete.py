@@ -11,7 +11,8 @@ from sklearn.utils.estimator_checks import check_estimator
 from sklearn_seco.abstract import _BinarySeCoEstimator, SeCoEstimator
 from sklearn_seco.concrete import \
     SimpleSeCoEstimator, CN2Estimator, \
-    TraceCoverage, SimpleSeCoImplementation, CN2Implementation
+    SimpleSeCoImplementation, CN2Implementation
+from sklearn_seco.extra import TraceCoverage
 
 
 def test_base_trivial():
