@@ -31,6 +31,17 @@ def test_coverage_tracing(binary_categorical, implementation_class):
            len(tracer.refinement_log) - tracer.last_rule_stop
     # TODO trace levels
 
+    # test (de)serialization
+    json_str = tracer.to_json()
+    trace_recovered = TraceCoverage.from_json(json_str)
+    assert tracer.last_rule_stop == trace_recovered["last_rule_stop"]
+    for x, y in zip(tracer.coverage_log, trace_recovered["coverage_log"]):
+        assert_array_equal(x, y)
+    for x, y in zip(tracer.refinement_log, trace_recovered["refinement_log"]):
+        assert_array_equal(x, y)
+    for x, y in zip(tracer.PN, trace_recovered["PN"]):
+        assert_array_equal(x, y)
+
     # test plotting
     tf, rfs = plot_coverage_log(**trace_recovered,
                                 title=implementation_class.__name__)

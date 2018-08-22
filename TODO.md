@@ -14,7 +14,6 @@
 - optimization <http://www.scipy-lectures.org/advanced/optimizing/index.html>
 
 - regression?
-- serialization
 - assert & document possibility to change rule format in SeCoImplementation
     without changing sklearn_seco, i.e. it could be extended to other rule
     language → language bias

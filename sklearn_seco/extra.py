@@ -2,18 +2,27 @@
 Implementation of SeCo / Covering algorithm:
 Helpers in addition to the algorithms in `concrete.py`.
 """
-
+import json
 import math
 import warnings
 from itertools import zip_longest
-from typing import Optional, Union, Sequence, Tuple
+from typing import Optional, Union, Sequence, Tuple, Mapping
 
 import numpy as np
-from matplotlib.figure import Figure
+from matplotlib.figure import Figure  # needed only for type hints
 from sklearn.exceptions import NotFittedError
 
 from sklearn_seco.common import \
     SeCoBaseImplementation, AugmentedRule, Theory, rule_ancestors
+
+
+_JSON_DUMP_DESCRIPTION = "sklearn_seco.extra.TraceCoverage dump"
+
+
+def _json_encode_ndarray(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    raise TypeError
 
 
 class TraceCoverage(SeCoBaseImplementation):
@@ -115,159 +124,206 @@ class TraceCoverage(SeCoBaseImplementation):
     def n_rules(self):
         return len(self.coverage_log)
 
-    # TODO: (de)serialize log to plot separately
-
-    def plot_coverage_log(
-            self,
-            title: Optional[str] = None,
-            draw_refinements: Union[str, bool] = 'nonzero',
-            theory_figure: Optional[Figure] = None,
-            rules_figure: Union[Figure, Sequence[Figure], None] = None,
-            rules_use_subfigures: bool = True,
-    ) -> Tuple[Figure, Union[Figure, Sequence[Figure]]]:
-        """TODO: doc
-
-        :param title: string or None. If not None, set figure titles and use
-          this value as prefix.
-        :param theory_figure: If None, use `plt.figure()` to create a figure
-          for the theory plot, otherwise use this parameter.
-        :param rules_figure: If `None`, use `plt.figure()` to create a figure
-          (using subfigures) or a list of figures for the rules plot(s),
-          otherwise use this parameter.
-          If `rules_use_subfigure`, `rules_figure` has to be None or a list of
-          figures of same length as `coverage_log`.
-        :param rules_use_subfigures: If True, the rules plots are placed as
-          subfigures in a common figure, otherwise they're drawn as separate
-          figures.
-        :param draw_refinements: If `True`, draw all refinements, if `False`
-          don't. If `'nonzero'` (the default) only draw those with `n > 0`.
-        :return: `(theory_figure, rules_figure)` where rules_figure is a figure
-          or a list of figure, depending on `rules_use_subfigure`.
-        """
-
-        P, N = 0, 1  # readable indexes, not values!
-
+    def to_json(self):
+        """:return: A string containing a JSON representation of the trace."""
         if not self.has_complete_trace:
             raise NotFittedError("No trace collected yet.")
-        if not self.n_rules:
-            # issue a warning, user can decide handling. See module `warnings`
-            warnings.warn("Empty coverage_log collected, useless plot.")
-        if draw_refinements and len(self.refinement_log) < self.n_rules:
-            warnings.warn("draw_refinements=True requested, but no "
-                          "refinement_log collected. "
-                          "Using draw_refinements=False.")
-            draw_refinements = False
+        return json.dumps({
+            "description": _JSON_DUMP_DESCRIPTION,
+            "version": 1,
+            "coverage_log": self.coverage_log,
+            "refinement_log": self.refinement_log,
+            "last_rule_stop": self.last_rule_stop,
+            "PN": self.PN,
+        }, allow_nan=False, default=_json_encode_ndarray)
 
-        PN0 = self.PN[0]
-        rnd_style = dict(color='grey', alpha=0.5, linestyle='dotted')
-        refinements_style = dict(marker='.', markersize=1, linestyle='',
-                                 zorder=-1,)
+    @classmethod
+    def from_json(cls, dump) -> Mapping:
+        """
+        :param dump: A file-like object or string containing JSON.
+        :return: A dict representing the trace dumped previously with
+            `to_json`. To plot, pass its items as kwargs to
+            :func:`plot_coverage_log`: `plot_coverage_log(**from_json(dump))`.
+        """
+        loader = json.loads if isinstance(dump, str) else json.load
+        dec = loader(dump)
 
-        import matplotlib.pyplot as plt
-        from matplotlib.ticker import AutoLocator
+        if dec["description"] != _JSON_DUMP_DESCRIPTION:
+            raise ValueError("No/invalid coverage trace json: %s" % repr(dec))
+        if dec["version"] != 1:
+            raise ValueError("Unsupported coverage trace version: %s"
+                             % dec["version"])
+        del dec["description"]
+        del dec["version"]
+        # convert back to numpy arrays
+        for i in range(len(dec["coverage_log"])):
+            dec["coverage_log"][i] = np.array(dec["coverage_log"][i])
+        for i in range(len(dec["refinement_log"])):
+            dec["refinement_log"][i] = np.array(dec["refinement_log"][i])
+        return dec
 
-        if theory_figure is None:
-            theory_figure = plt.figure()
-        theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
-                                        xlim=(0, PN0[N]), ylim=(0, PN0[P]))
-        # draw "random theory" reference marker
-        theory_axes.plot([0, PN0[N]], [0, PN0[P]], **rnd_style)
+    def plot_coverage_log(self, **kwargs):
+        """Plot the trace, see :func:`plot_coverage_log`."""
+        if not self.has_complete_trace:
+            raise NotFittedError("No trace collected yet.")
+        return plot_coverage_log(self.last_rule_stop, self.PN,
+                                 self.coverage_log, self.refinement_log,
+                                 **kwargs)
 
-        if rules_use_subfigures:
-            if rules_figure is None:
-                rules_figure = plt.figure(figsize=(10.24, 10.24),
-                                          tight_layout=True)
-            # else assume rules_figure is already a figure
-            if title is not None:
-                rules_figure.suptitle("%s: Rules" % title, y=0.02)
-            # TODO: axis labels when using subfigures
-            subfigure_grid = [math.ceil(np.sqrt(self.n_rules))] * 2
-            rule_axes = [rules_figure.add_subplot(*subfigure_grid, rule_idx +1)
-                         for rule_idx in range(self.n_rules)]
-        else:
-            if rules_figure is None:
-                rules_figure = [plt.figure() for _ in range(self.n_rules)]
-            elif isinstance(rules_figure, Sequence):
-                if len(rules_figure) != self.n_rules:
-                    raise ValueError("rules_figure is a list, but length ({}) "
-                                     "differs from self.n_rules ({})."
-                                     .format(len(rules_figure), self.n_rules))
-            else:
-                raise ValueError("got rules_use_subfigures=False, thus "
-                                 "rules_figure has to be None or a list of "
-                                 "figures, instead got " + str(rules_figure))
-            # assume rules_figure is a list of figures
-            rule_axes = [f.gca() for f in rules_figure]
 
-        previous_rule = np.array((0, 0))  # equals (N, P) for some trace
-        for rule_idx, (rule_trace, refinements) in \
-                enumerate(zip_longest(self.coverage_log, self.refinement_log)):
-            NP = self.PN[rule_idx]
-            if draw_refinements == 'nonzero':
-                refts_mask = refinements[:, P] != 0
-            elif draw_refinements:
-                refts_mask = slice(None)  # all
-            mark_stop = self.last_rule_stop and (rule_idx == self.n_rules - 1)
+def plot_coverage_log(
+        last_rule_stop, PN, coverage_log, refinement_log,
+        *,
+        title: Optional[str] = None,
+        draw_refinements: Union[str, bool] = 'nonzero',
+        theory_figure: Optional[Figure] = None,
+        rules_figure: Union[Figure, Sequence[Figure], None] = None,
+        rules_use_subfigures: bool = True,
+) -> Tuple[Figure, Union[Figure, Sequence[Figure]]]:
+    """Plot the traced (p, n) of a theory.
 
-            # this rule in theory plot
-            rule = rule_trace[0] + previous_rule
-            theory_line = theory_axes.plot(
-                rule[N], rule[P], 'x' if mark_stop else '.',
-                label="{i:{i_width}}: ({p:4}, {n:4})"
-                      .format(n=rule[N], p=rule[P], i=rule_idx,
-                              i_width=math.ceil(np.log10(self.n_rules))))
-            rule_color = theory_line[0].get_color()
-            if draw_refinements:
-                # draw refinements in theory plot
-                theory_axes.plot(refinements[refts_mask, N] + previous_rule[N],
-                                 refinements[refts_mask, P] + previous_rule[P],
-                                 color=rule_color, alpha=0.3,
-                                 **refinements_style)
-            # draw arrows between best_rules
-            # NOTE: invert coordinates because we save (p,n) and plot (x=n,y=p)
-            theory_axes.annotate("", xytext=previous_rule[::-1], xy=rule[::-1],
-                                 arrowprops={'arrowstyle': "->"})
-            previous_rule = rule
+    For parameters `last_rule_stop`, `PN`, `coverage_log` and `refinement_log`,
+    see :class:`TraceCoverage`.
 
-            # TODO: move ancestor plot to separate method. how get rule_color?
-            # subplot with ancestors of current rule
-            rule_axis = rule_axes[rule_idx]
-            if mark_stop:
-                rule_axis.set_title('(Rule #%d) Candidate' % rule_idx)
-            else:
-                rule_axis.set_title('Rule #%d' % rule_idx)
-            # draw "random theory" reference marker
-            rule_axis.plot([0, PN0[N]], [0, PN0[P]], **rnd_style)
-            # draw rule_trace
-            rule_axis.plot(rule_trace[:, N], rule_trace[:, P], 'o-',
-                           color=rule_color)
-            if draw_refinements:
-                # draw refinements as scattered dots
-                rule_axis.plot(refinements[refts_mask, N],
-                               refinements[refts_mask, P],
-                               color='black', alpha=0.7, **refinements_style)
+    :param title: string or None. If not None, set figure titles and use
+      this value as prefix.
+    :param theory_figure: If None, use `plt.figure()` to create a figure
+      for the theory plot, otherwise use this parameter.
+    :param rules_figure: If `None`, use `plt.figure()` to create a figure
+      (using subfigures) or a list of figures for the rules plot(s),
+      otherwise use this parameter.
+      If `rules_use_subfigure`, `rules_figure` has to be None or a list of
+      figures of same length as `coverage_log`.
+    :param rules_use_subfigures: If True, the rules plots are placed as
+      subfigures in a common figure, otherwise they're drawn as separate
+      figures.
+    :param draw_refinements: If `True`, draw all refinements, if `False`
+      don't. If `'nonzero'` (the default) only draw those with `n > 0`.
+    :return: `(theory_figure, rules_figure)` where rules_figure is a figure
+      or a list of figure, depending on `rules_use_subfigure`.
+    """
 
-            # draw x and y axes through (0,0) and hide for negative values
-            for spine_type, spine in rule_axis.spines.items():
-                spine.set_position('zero')
-                horizontal = spine_type in {'bottom', 'top'}
-                spine.set_bounds(0, NP[N] if horizontal else NP[P])
+    P, N = 0, 1  # readable indexes, not values!
 
-            class PositiveTicks(AutoLocator):
-                def tick_values(self, vmin, vmax):
-                    orig = super().tick_values(vmin, vmax)
-                    return orig[orig >= 0]
+    n_rules = len(coverage_log)
+    if not n_rules:
+        # issue a warning, user can decide handling. See module `warnings`
+        warnings.warn("Empty coverage_log collected, useless plot.")
+    if draw_refinements and len(refinement_log) < n_rules:
+        warnings.warn("draw_refinements=True requested, but no refinement_log "
+                      "collected. Using draw_refinements=False.")
+        draw_refinements = False
 
-            rule_axis.xaxis.set_major_locator(PositiveTicks())
-            rule_axis.yaxis.set_major_locator(PositiveTicks())
-            rule_axis.locator_params(integer=True)
+    PN0 = PN[0]
+    rnd_style = dict(color='grey', alpha=0.5, linestyle='dotted')
+    refinements_style = dict(marker='.', markersize=1, linestyle='',
+                             zorder=-1,)
 
-            # set reference frame (N,P), but move (0,0) so it looks comparable
-            rule_axis.set_xbound(NP[N] - PN0[N], NP[N])
-            rule_axis.set_ybound(NP[P] - PN0[P], NP[P])
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import AutoLocator
 
+    if theory_figure is None:
+        theory_figure = plt.figure()
+    theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
+                                    xlim=(0, PN0[N]), ylim=(0, PN0[P]))
+    # draw "random theory" reference marker
+    theory_axes.plot([0, PN0[N]], [0, PN0[P]], **rnd_style)
+
+    if rules_use_subfigures:
+        if rules_figure is None:
+            rules_figure = plt.figure(figsize=(10.24, 10.24),
+                                      tight_layout=True)
+        # else assume rules_figure is already a figure
         if title is not None:
-            theory_axes.set_title("%s: Theory" % title)
-        theory_figure.legend(title="rule: (p,n)", loc='center right')
+            rules_figure.suptitle("%s: Rules" % title, y=0.02)
+        # TODO: axis labels when using subfigures
+        subfigure_grid = [math.ceil(np.sqrt(n_rules))] * 2
+        rule_axes = [rules_figure.add_subplot(*subfigure_grid, rule_idx +1)
+                     for rule_idx in range(n_rules)]
+    else:
+        if rules_figure is None:
+            rules_figure = [plt.figure() for _ in range(n_rules)]
+        elif isinstance(rules_figure, Sequence):
+            if len(rules_figure) != n_rules:
+                raise ValueError("rules_figure is a list, but length ({}) "
+                                 "differs from n_rules ({})."
+                                 .format(len(rules_figure), n_rules))
+        else:
+            raise ValueError("got rules_use_subfigures=False, thus "
+                             "rules_figure has to be None or a list of "
+                             "figures, instead got " + str(rules_figure))
+        # assume rules_figure is a list of figures
+        rule_axes = [f.gca() for f in rules_figure]
 
-        return theory_figure, rules_figure
+    previous_rule = np.array((0, 0))  # equals (N, P) for some trace
+    for rule_idx, (rule_trace, refinements) in \
+            enumerate(zip_longest(coverage_log, refinement_log)):
+        PNi = PN[rule_idx]
+        if draw_refinements == 'nonzero':
+            refts_mask = refinements[:, P] != 0
+        elif draw_refinements:
+            refts_mask = slice(None)  # all
+        mark_stop = last_rule_stop and (rule_idx == n_rules - 1)
+
+        # this rule in theory plot
+        rule = rule_trace[0] + previous_rule
+        theory_line = theory_axes.plot(
+            rule[N], rule[P], 'x' if mark_stop else '.',
+            label="{i:{i_width}}: ({p:4}, {n:4})"
+                  .format(n=rule[N], p=rule[P], i=rule_idx,
+                          i_width=math.ceil(np.log10(n_rules))))
+        rule_color = theory_line[0].get_color()
+        if draw_refinements:
+            # draw refinements in theory plot
+            theory_axes.plot(refinements[refts_mask, N] + previous_rule[N],
+                             refinements[refts_mask, P] + previous_rule[P],
+                             color=rule_color, alpha=0.3,
+                             **refinements_style)
+        # draw arrows between best_rules
+        # NOTE: invert coordinates because we save (p,n) and plot (x=n,y=p)
+        theory_axes.annotate("", xytext=previous_rule[::-1], xy=rule[::-1],
+                             arrowprops={'arrowstyle': "->"})
+        previous_rule = rule
+
+        # TODO: move ancestor plot to separate method. how get rule_color?
+        # subplot with ancestors of current rule
+        rule_axis = rule_axes[rule_idx]
+        if mark_stop:
+            rule_axis.set_title('(Rule #%d) Candidate' % rule_idx)
+        else:
+            rule_axis.set_title('Rule #%d' % rule_idx)
+        # draw "random theory" reference marker
+        rule_axis.plot([0, PN0[N]], [0, PN0[P]], **rnd_style)
+        # draw rule_trace
+        rule_axis.plot(rule_trace[:, N], rule_trace[:, P], 'o-',
+                       color=rule_color)
+        if draw_refinements:
+            # draw refinements as scattered dots
+            rule_axis.plot(refinements[refts_mask, N],
+                           refinements[refts_mask, P],
+                           color='black', alpha=0.7, **refinements_style)
+
+        # draw x and y axes through (0,0) and hide for negative values
+        for spine_type, spine in rule_axis.spines.items():
+            spine.set_position('zero')
+            horizontal = spine_type in {'bottom', 'top'}
+            spine.set_bounds(0, PNi[N] if horizontal else PNi[P])
+
+        class PositiveTicks(AutoLocator):
+            def tick_values(self, vmin, vmax):
+                orig = super().tick_values(vmin, vmax)
+                return orig[orig >= 0]
+
+        rule_axis.xaxis.set_major_locator(PositiveTicks())
+        rule_axis.yaxis.set_major_locator(PositiveTicks())
+        rule_axis.locator_params(integer=True)
+
+        # set reference frame (N,P), but move (0,0) so it looks comparable
+        rule_axis.set_xbound(PNi[N] - PN0[N], PNi[N])
+        rule_axis.set_ybound(PNi[P] - PN0[P], PNi[P])
+
+    if title is not None:
+        theory_axes.set_title("%s: Theory" % title)
+    theory_figure.legend(title="rule: (p,n)", loc='center right')
+
+    return theory_figure, rules_figure
