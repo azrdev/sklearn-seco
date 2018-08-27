@@ -251,6 +251,7 @@ def plot_coverage_log(
         theory_figure = plt.figure()
     theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
                                     xlim=(0, PN0[N]), ylim=(0, PN0[P]))
+    theory_axes.locator_params(integer=True)
     # draw "random theory" reference marker
     theory_axes.plot([0, PN0[N]], [0, PN0[P]], **rnd_style)
 
@@ -314,9 +315,13 @@ def plot_coverage_log(
         # subplot with ancestors of current rule
         rule_axis = rule_axes[rule_idx]
         if mark_stop:
-            rule_axis.set_title('(Rule #%d) Candidate' % rule_idx)
+            rule_title_template = '(Rule #%d) Candidate'
         else:
-            rule_axis.set_title('Rule #%d' % rule_idx)
+            rule_title_template = 'Rule #%d'
+        if not rules_use_subfigures and title is not None:
+            # add title before each of the figures
+            rule_title_template = "%s: %s" % (title, rule_title_template)
+        rule_axis.set_title(rule_title_template % rule_idx)
         # draw "random theory" reference marker
         rule_axis.plot([0, PN0[N]], [0, PN0[P]], **rnd_style)
         # draw rule_trace
