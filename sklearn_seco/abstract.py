@@ -2,7 +2,10 @@
 Implementation of SeCo / Covering algorithm: Abstract base algorithm.
 """
 
+from typing import Union
+
 import numpy as np
+
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.multiclass import OneVsRestClassifier, OneVsOneClassifier
 from sklearn.utils import check_X_y, check_array
@@ -13,33 +16,40 @@ from sklearn.utils.validation import check_is_fitted
 
 # noinspection PyAttributeOutsideInit
 class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
-    def __init__(self, implementation: 'SeCoBaseImplementation'):
+    """Binary SeCo Classification, deferring to :class:`SeCoBaseImplementation`
+    for concrete algorithm implementation.
+
+    :param implementation: A `SeCoBaseImplementation` subclass whose methods
+      define the algorithm to be run.
+
+    :param categorical_features: None or “all” or array of indices or mask.
+
+        Specify what features are treated as categorical, i.e. equality
+        tests are used for these features, based on the set of values
+        present in the training data.
+
+        Note that numerical features may be tested in multiple (inequality)
+        conditions of a rule, while multiple equality tests (for a
+        categorical feature) would be useless.
+
+        -   None (default): All features are treated as numerical & ordinal.
+        -   'all': All features are treated as categorical.
+        -   array of indices: Array of categorical feature indices.
+        -   mask: Array of length n_features and with dtype=bool.
+
+        You may instead transform your categorical features beforehand,
+        using e.g. :class:`sklearn.preprocessing.OneHotEncoder` or
+        :class:`sklearn.preprocessing.Binarizer`.
+        TODO: compare performance
+    """
+    def __init__(self,
+                 implementation: 'SeCoBaseImplementation',
+                 categorical_features: Union[None, str, np.ndarray]=None):
         super().__init__()
         self.implementation = implementation
+        self.categorical_features = categorical_features
 
-    def fit(self, X, y, categorical_features=None):
-        """Build the decision rule list from training data `X` with labels `y`.
-
-        :param categorical_features: None or “all” or array of indices or mask.
-
-            Specify what features are treated as categorical, i.e. equality
-            tests are used for these features, based on the set of values
-            present in the training data.
-
-            Note that numerical features may be tested in multiple (inequality)
-            conditions of a rule, while multiple equality tests (for a
-            categorical feature) would be useless.
-
-            -   None (default): All features are treated as numerical & ordinal.
-            -   'all': All features are treated as categorical.
-            -   array of indices: Array of categorical feature indices.
-            -   mask: Array of length n_features and with dtype=bool.
-
-            You may instead transform your categorical features beforehand,
-            using e.g. :class:`sklearn.preprocessing.OneHotEncoder` or
-            :class:`sklearn.preprocessing.Binarizer`.
-            TODO: compare performance
-        """
+    def fit(self, X, y):
         X, y = check_X_y(X, y)
 
         # prepare  target / labels / y
@@ -51,17 +61,19 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         # prepare  attributes / features / X
         self.n_features_ = X.shape[1]
         # categorical_features modeled after OneHotEncoder
-        if (categorical_features is None) or not len(categorical_features):
-            self.categorical_mask_ = np.zeros(self.n_features_, dtype=bool)
-        elif isinstance(categorical_features, np.ndarray):
-            self.categorical_mask_ = np.zeros(self.n_features_, dtype=bool)
-            self.categorical_mask_[np.asarray(categorical_features)] = True
-        elif categorical_features == 'all':
+        self.categorical_mask_ = np.zeros(self.n_features_, dtype=bool)
+        if (self.categorical_features is None) or \
+                not len(self.categorical_features):
+            pass  # keep default "all False"
+        elif isinstance(self.categorical_features, np.ndarray):
+            self.categorical_mask_[
+                np.asarray(self.categorical_features)] = True
+        elif self.categorical_features == 'all':
             self.categorical_mask_ = np.ones(self.n_features_, dtype=bool)
         else:
             raise ValueError("categorical_features must be one of: None,"
                              " 'all', np.ndarray of dtype bool or integer,"
-                             " but got {}.".format(categorical_features))
+                             " but got {}.".format(self.categorical_features))
 
         # run SeCo algorithm
         self.theory_ = self.abstract_seco(X, y)
@@ -167,16 +179,17 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         # TODO: document available kwargs or link `_BinarySeCoEstimator.fit`
         X, y = check_X_y(X, y, multi_output=False)
 
-        self.base_estimator_ = _BinarySeCoEstimator(self.implementation)
+        self.base_estimator_ = _BinarySeCoEstimator(self.implementation,
+                                                    **kwargs)
 
         # copied from GaussianProcessClassifier
         self.classes_ = np.unique(y)
-        self.n_classes_ = self.classes_.size
-        if self.n_classes_ == 1:
+        n_classes_ = self.classes_.size
+        if n_classes_ == 1:
             raise ValueError("SeCoEstimator requires 2 or more distinct "
                              "classes. Only class %s present."
                              % self.classes_[0])
-        elif self.n_classes_ > 2:
+        elif n_classes_ > 2:
             # TODO: multi_class strategy of ripper: OneVsRest, remove C_i after learning rules for it
             if self.multi_class == "one_vs_rest":
                 self.base_estimator_ = OneVsRestClassifier(self.base_estimator_,
@@ -188,7 +201,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
                 raise ValueError("Unknown multi-class mode %s"
                                  % self.multi_class)
 
-        self.base_estimator_.fit(X, y, **kwargs)
+        self.base_estimator_.fit(X, y)
         return self
 
     def predict(self, X):
@@ -203,7 +216,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         C : array, shape = (n_samples,)
             Predicted target values for X, values are from ``classes_``
         """
-        check_is_fitted(self, ["classes_", "n_classes_"])
+        check_is_fitted(self, ["classes_"])
         X = check_array(X)
         return self.base_estimator_.predict(X)
 

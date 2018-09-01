@@ -15,8 +15,8 @@ def test_base_trivial():
     X_train = np.array([[100, 0.0],
                         [111, 1.0]])
     y_train = np.array([1, 2])
-    est = _BinarySeCoEstimator(SimpleSeCoImplementation())
-    est.fit(X_train, y_train, categorical_mask)
+    est = _BinarySeCoEstimator(SimpleSeCoImplementation(), categorical_mask)
+    est.fit(X_train, y_train)
 
     assert est.target_class_ == 1
     assert len(est.theory_) == 1
@@ -45,8 +45,8 @@ def test_base_easyrules():
                         [0,  1.0],
                         [1, -1.0]])
     y_train = np.array([1, 1, 2, 2])
-    est = _BinarySeCoEstimator(SimpleSeCoImplementation())
-    est.fit(X_train, y_train, categorical_mask)
+    est = _BinarySeCoEstimator(SimpleSeCoImplementation(), categorical_mask)
+    est.fit(X_train, y_train)
 
     assert est.target_class_ == 1
     assert len(est.theory_) == 2
