@@ -24,10 +24,9 @@ def test_coverage_tracing(binary_categorical, implementation_class):
     # check consistency of trace
     assert tracer.has_complete_trace
     assert isinstance(tracer.last_rule_stop, bool)
-    assert len(base.theory_) == \
-           len(tracer.coverage_log) - tracer.last_rule_stop  # bool is int 0/1
-    assert len(base.theory_) == \
-           len(tracer.refinement_log) - tracer.last_rule_stop
+    # subtract boolean, autocasts to integer 0/1
+    assert len(base.theory_) == len(tracer.coverage_log) - tracer.last_rule_stop
+    assert len(base.theory_) == len(tracer.refinement_log) - tracer.last_rule_stop
     # TODO trace levels
 
     # test (de)serialization

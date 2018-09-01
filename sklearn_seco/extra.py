@@ -26,6 +26,9 @@ def _json_encode_ndarray(obj):
     raise TypeError
 
 
+# TODO: implement tracing of estimator instances (not only classes)
+
+
 def trace_coverage(cls):
     """Decorator for SeCoBaseImplementation subclasses, that adds tracing of
     (p,n) while building the theory, and ability to plot these.
@@ -129,10 +132,10 @@ class _TraceCoverage(SeCoBaseImplementation):
             return self.count_matches(rule)
 
         if self.trace_level == 'best_rules':
-            self.coverage_log.append( np.array([pn(rule)]) )
+            self.coverage_log.append(np.array([pn(rule)]))
         else:  # elif trace_level in ('ancestors', 'refinements'):
             self.coverage_log.append(
-                np.array([pn(r) for r in rule_ancestors(rule)]) )
+                np.array([pn(r) for r in rule_ancestors(rule)]))
 
         if self.trace_level == 'refinements':
             self.refinement_log[-1] = np.array(self.refinement_log[-1])
@@ -264,7 +267,7 @@ def plot_coverage_log(
             rules_figure.suptitle("%s: Rules" % title, y=0.02)
         # TODO: axis labels when using subfigures
         subfigure_grid = [math.ceil(np.sqrt(n_rules))] * 2
-        rule_axes = [rules_figure.add_subplot(*subfigure_grid, rule_idx +1)
+        rule_axes = [rules_figure.add_subplot(*subfigure_grid, rule_idx + 1)
                      for rule_idx in range(n_rules)]
     else:
         if rules_figure is None:

@@ -44,7 +44,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     """
     def __init__(self,
                  implementation: 'SeCoBaseImplementation',
-                 categorical_features: Union[None, str, np.ndarray]=None):
+                 categorical_features: Union[None, str, np.ndarray] = None):
         super().__init__()
         self.implementation = implementation
         self.categorical_features = categorical_features
@@ -161,6 +161,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         prediction = self.predict(X) == self.target_class_
         return np.where(prediction[:, np.newaxis],
+                        # TODO: use rule metric as probability
                         np.array([[1, 0]]),
                         np.array([[0, 1]]))
 

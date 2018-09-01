@@ -38,6 +38,8 @@ def test_base_trivial():
 # FIXME: broken since inner_stopping_criterion = (n == 0), commit 2d6f261
 def test_base_easyrules():
     """Test SimpleSeCo with a linearly separable, 4 instance binary test set.
+
+    Compare `docs/test_base_easyrules_featurespace.png`.
     """
     categorical_mask = np.array([True, False])
     X_train = np.array([[0, -1.0],
