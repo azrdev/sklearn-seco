@@ -8,6 +8,19 @@ from sklearn.utils import check_random_state
 from sklearn_seco.concrete import SimpleSeCoEstimator, CN2Estimator
 
 
+# pyteest plugin, to print theory on test failure
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    default = yield
+    report = default.result
+    if report.failed and report.user_properties:
+        for name, prop in report.user_properties:
+            if name == 'theory':
+                report.longrepr.addsection(name, str(prop))
+                break
+    return default
+
+
 @pytest.fixture(params=[SimpleSeCoEstimator, CN2Estimator])
 def seco_estimator_class(request):
     """Fixture running for each of the pre-defined estimator classes from

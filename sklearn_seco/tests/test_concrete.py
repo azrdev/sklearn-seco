@@ -9,7 +9,7 @@ from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.concrete import SimpleSeCoImplementation
 
 
-def test_base_trivial():
+def test_base_trivial(record_property):
     """Test SimpleSeCo with a trivial test set of 2 instances."""
     categorical_mask = np.array([True, False])
     X_train = np.array([[100, 0.0],
@@ -17,6 +17,7 @@ def test_base_trivial():
     y_train = np.array([1, 2])
     est = _BinarySeCoEstimator(SimpleSeCoImplementation(), categorical_mask)
     est.fit(X_train, y_train)
+    record_property("theory", est.theory_)
 
     assert est.target_class_ == 1
     assert len(est.theory_) == 1
@@ -36,7 +37,7 @@ def test_base_trivial():
 
 
 # FIXME: broken since inner_stopping_criterion = (n == 0), commit 2d6f261
-def test_base_easyrules():
+def test_base_easyrules(record_property):
     """Test SimpleSeCo with a linearly separable, 4 instance binary test set.
 
     Compare `docs/test_base_easyrules_featurespace.png`.
@@ -49,6 +50,7 @@ def test_base_easyrules():
     y_train = np.array([1, 1, 2, 2])
     est = _BinarySeCoEstimator(SimpleSeCoImplementation(), categorical_mask)
     est.fit(X_train, y_train)
+    record_property("theory", est.theory_)
 
     assert est.target_class_ == 1
     assert len(est.theory_) == 2
@@ -67,12 +69,15 @@ def test_base_easyrules():
     assert_array_equal(est.predict(X_test), y_test)
 
 
-def test_trivial_decision_border(seco_estimator, trivial_decision_border):
+def test_trivial_decision_border(seco_estimator,
+                                 trivial_decision_border,
+                                 record_property):
     """Check recognition of the linear border in `trivial_decision_border`."""
     seco_estimator.fit(*trivial_decision_border)
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
+    record_property("theory", base.theory_)
     assert base.target_class_ == 0
     # check expected rule
     assert len(base.theory_) == 1
@@ -80,7 +85,9 @@ def test_trivial_decision_border(seco_estimator, trivial_decision_border):
                               decimal=1)
 
 
-def test_blackbox_accuracy_binary(seco_estimator, binary_slight_overlap):
+def test_blackbox_accuracy_binary(seco_estimator,
+                                  binary_slight_overlap,
+                                  record_property):
     """Expect high accuracy_score on `binary_slight_overlap`."""
     X, y, X_test, y_test = binary_slight_overlap
 
@@ -88,6 +95,7 @@ def test_blackbox_accuracy_binary(seco_estimator, binary_slight_overlap):
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
+    record_property("theory", base.theory_)
     assert base.target_class_ == 0
     # check accuracy
     y_predicted = seco_estimator.predict(X_test)
@@ -95,12 +103,14 @@ def test_blackbox_accuracy_binary(seco_estimator, binary_slight_overlap):
 
 
 def test_blackbox_accuracy_binary_categorical(seco_estimator,
-                                              binary_categorical):
+                                              binary_categorical,
+                                              record_property):
     """Expect high accuracy on `binary_categorical`."""
     X, y, X_test, y_test = binary_categorical
     seco_estimator.fit(X, y, categorical_features='all')
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
+    record_property("theory", base.theory_)
     assert isinstance(base, _BinarySeCoEstimator)
     # check accuracy
     assert_array_equal(seco_estimator.predict(X), y)

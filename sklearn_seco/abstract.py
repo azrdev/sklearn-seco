@@ -76,7 +76,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                              " but got {}.".format(self.categorical_features))
 
         # run SeCo algorithm
-        self.theory_ = self.abstract_seco(X, y)
+        self.theory_ = np.array(self.abstract_seco(X, y))
         return self
 
     def find_best_rule(self) -> 'AugmentedRule':
