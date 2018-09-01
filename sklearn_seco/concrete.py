@@ -8,6 +8,7 @@ doesn't consume using `super().__init__(**kwargs)`. Users of mixin-composed
 classes will have to use keyword- instead of positional arguments.
 """
 
+from abc import abstractmethod
 from functools import lru_cache
 from typing import Tuple, Iterable
 
@@ -147,6 +148,15 @@ class LaplaceHeuristic(SeCoBaseImplementation):
         return (laplace, p, -rule.instance_no)  # tie-breaking by pos. coverage
 
 
+class InformationGainHeuristic(SeCoBaseImplementation):
+    def evaluate_rule(self, rule: AugmentedRule):
+        p, n = self.count_matches(rule)
+        P, N = self.P, self.N  # TODO: maybe count_matches(rule.original) is meant here?
+        info_gain = p * (np.log(p / (p + n)) - np.log(P / (P + N)))
+        # tie-breaking by positive coverage p and rule discovery order
+        return (info_gain, p, -rule.instance_no)
+
+
 class SignificanceStoppingCriterion(SeCoBaseImplementation):
     """Mixin using as stopping criterion for rule refinement a significance
     test like CN2.
@@ -190,6 +200,40 @@ class NoPostProcess(SeCoBaseImplementation):
     """Mixin to skip post processing."""
     def post_process(self, theory: Theory) -> Theory:
         return theory
+
+
+class RipperPostPruning(SeCoBaseImplementation):
+
+    @abstractmethod
+    def pruning_evaluation(self, rule: AugmentedRule) -> Tuple[float, ...]:
+        """TODO: doc"""
+        raise NotImplementedError
+
+    def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
+        """TODO: doc
+
+        NOTE: this overrides AugmentedRule._sort_key (i.e. the evaluation of
+          the rule under the growing heuristic) with the pruning heuristic,
+          during the runtime of this method.
+
+        :return: An improved version of `rule`.
+        """
+        candidates = [rule]
+        # dropping all final (i.e. last added) sets of conditions
+        generalization = rule
+        for condition in reversed(rule.condition_trace):
+            generalization = generalization.copy()
+            # TODO: since we collapse overlapping boundaries already at creation (in refine_rule), we cannot prune back to a lesser boundary here
+            generalization.set_condition(condition, np.NaN)
+            candidates.append(generalization)
+        for candidate in candidates:
+            candidate._sort_key = self.pruning_evaluation(candidate)
+        candidates.sort()
+        # XXX: JRip counts coverage for each condition and use laplace (p+1/p+n+2), this contradicts paper (cohen95 which has p-n/p+n)
+
+        best_rule = candidates.pop()
+        self.rate_rule(best_rule)  # ensure rating by grow-heuristic
+        return best_rule
 
 
 # Example Algorithm configurations
@@ -247,6 +291,28 @@ class CN2Estimator(SeCoEstimator):
                          multi_class, n_jobs)
         # sklearn assumes all parameters are class fields, so copy this here
         self.LRS_threshold = LRS_threshold
+
+
+class RipperImplementation(BeamSearch,
+                           TopDownSearch,
+                           InformationGainHeuristic,
+                           RipperPostPruning,
+                           NoPostProcess  # TODO: ripper post-optimization
+                           ):
+    """Ripper as defined by (Cohen 1995).
+
+    TODO: since we collapse overlapping boundaries already at creation (in refine_rule), we cannot prune the same way as the paper and JRip
+    """
+    def __init__(self, description_length: int = 64, **kwargs):
+        super().__init__(**kwargs)
+        self.description_length = description_length
+
+
+class RipperEstimator(SeCoEstimator):
+    def __init__(self,
+                 multi_class="one_vs_rest",
+                 n_jobs=1):
+        super().__init__(RipperImplementation(), multi_class, n_jobs)
 
 
 # TODO: don't require definition of 2 classes, add *Estimator factory method in SeCoBaseImplementation

@@ -211,6 +211,7 @@ class SeCoBaseImplementation(ABC):
       equivalent to `X.shape[1]`.
     - `P` and `N`: The count of positive and negative examples (in self.X)
     - `target_class`
+    - `trace_feature_order`
     """
 
     def __calculate_PN(self):
