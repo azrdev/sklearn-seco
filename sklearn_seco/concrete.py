@@ -195,7 +195,7 @@ class SimpleSeCoImplementation(BeamSearch,
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         p, n = self.count_matches(rule)
-        return n == 0
+        return False
 
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:

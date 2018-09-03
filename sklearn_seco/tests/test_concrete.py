@@ -46,7 +46,6 @@ def test_base_trivial(record_property):
     assert_array_equal(est.predict(X_test), y_test)
 
 
-# FIXME: broken since inner_stopping_criterion = (n == 0), commit 2d6f261
 def test_base_easyrules(record_property):
     """Test SimpleSeCo with a linearly separable, 4 instance binary test set.
 
