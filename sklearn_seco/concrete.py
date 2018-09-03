@@ -12,6 +12,7 @@ from functools import lru_cache
 from typing import Tuple, Iterable
 
 import numpy as np
+from scipy.special import xlogy
 
 from sklearn_seco.abstract import Theory, SeCoEstimator, _BinarySeCoEstimator
 from sklearn_seco.common import \
@@ -155,18 +156,19 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
         self.LRS_threshold = LRS_threshold  # FIXME: estimator.set_param not reflected here
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
-        """*Significance test* as defined by (Clark and Niblett 1989), but used
+        """
+        *Significance test* as defined by (Clark and Niblett 1989), but used
         there for rule evaluation, here instead used as stopping criterion
         following (Clark and Boswell 1991).
         """
         p, n = self.count_matches(rule)
         P, N = self.P, self.N
-        if 0 in (p, n, P, N):
+        if 0 in (p, P, N):
             return True
         purity = p / (p + n)
         impurity = n / (p + n)
         CE = (- purity * np.log(purity / (P / (P + N)))  # cross entropy
-              - impurity * np.log(impurity / (N / P + N)))
+              - xlogy(impurity, impurity / (N / (P + N))))
         J = p * CE  # J-Measure
         LRS = 2 * (P + N) * J  # likelihood ratio statistics
         return LRS <= self.LRS_threshold
