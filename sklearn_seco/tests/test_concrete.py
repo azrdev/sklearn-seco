@@ -5,7 +5,9 @@ from numpy import NINF, PINF
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 from sklearn.metrics import accuracy_score
 from sklearn.utils.estimator_checks import check_estimator
+
 from sklearn_seco.abstract import _BinarySeCoEstimator
+from sklearn_seco.common import UPPER
 from sklearn_seco.concrete import SimpleSeCoImplementation
 
 
@@ -111,7 +113,7 @@ def test_blackbox_accuracy_binary(seco_estimator,
 
 def test_perfectly_correlated_categories_multiclass(
         seco_estimator, perfectly_correlated_multiclass, record_property):
-    """Expect perfect rules on multiclass problem with (feature_i == class_i).
+    """Expect perfect rules on categorical multiclass problem with (feature_i == class_i).
     """
     x, y = perfectly_correlated_multiclass
     # check recognition of multiclass problem
@@ -126,6 +128,7 @@ def test_perfectly_correlated_categories_multiclass(
         theory = base.theory_
         assert len(theory) == 1
         assert count_conditions(theory) == 1
+        assert count_conditions(theory[:, UPPER]) == 0
     assert_array_equal(y, seco_estimator.predict(x))
 
 
@@ -139,8 +142,11 @@ def test_blackbox_accuracy_binary_categorical(seco_estimator,
     base = seco_estimator.base_estimator_
     record_property("theory", base.theory_)
     assert isinstance(base, _BinarySeCoEstimator)
-    # check accuracy
-    assert_array_equal(seco_estimator.predict(X), y)
+    assert count_conditions(base.theory_[:, UPPER]) == 0
+    # check precision on training data
+    y_predicted_train = seco_estimator.predict(X)
+    assert accuracy_score(y, y_predicted_train) > 0.9
+    # check accuracy on test data
     y_predicted = seco_estimator.predict(X_test)
     assert accuracy_score(y_test, y_predicted) > 0.8
 

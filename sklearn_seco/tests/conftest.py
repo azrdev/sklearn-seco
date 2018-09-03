@@ -55,7 +55,7 @@ def trivial_decision_border():
     y = samples[:, -1]  # last column
     samples[0:25, 1] += 1
     y[0:25] = 1
-    np.random.shuffle(samples)
+    random.shuffle(samples)
     return X, y
 
 
@@ -91,18 +91,13 @@ def binary_categorical():
 
     :return: tuple(X, y, X_test, y_test)
     """
-    distribution = {
-        'n_samples': 100,
-        'n_features': 10,
-        'centers': 2,
-        'cluster_std': 2.5,
-        'random_state': check_random_state(99)
-    }
-    X_numeric, y = make_blobs(**distribution)
+    dim = 8
+    n = 100
+    X_numeric, y8 = make_blobs(n_samples=2 * n, n_features=dim, centers=dim,
+                               random_state=7)
     X = np.rint(X_numeric)
-    X_test_numeric, y_test = make_blobs(**distribution)
-    X_test = np.rint(X_test_numeric)
-    return X, y, X_test, y_test
+    y = y8 % 2 + 10
+    return X[:n], y[:n], X[n:], y[n:]
 
 
 @pytest.fixture
