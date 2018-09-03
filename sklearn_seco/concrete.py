@@ -151,7 +151,7 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
     """Mixin using as stopping criterion for rule refinement a significance
     test like CN2.
     """
-    def __init__(self, LRS_threshold: float = 0.9, **kwargs):
+    def __init__(self, LRS_threshold: float = 0.0, **kwargs):
         super().__init__(**kwargs)
         self.LRS_threshold = LRS_threshold  # FIXME: estimator.set_param not reflected here
 
@@ -165,12 +165,18 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
         P, N = self.P, self.N
         if 0 in (p, P, N):
             return True
-        purity = p / (p + n)
-        impurity = n / (p + n)
-        CE = (- purity * np.log(purity / (P / (P + N)))  # cross entropy
-              - xlogy(impurity, impurity / (N / (P + N))))
-        J = p * CE  # J-Measure
-        LRS = 2 * (P + N) * J  # likelihood ratio statistics
+        # purity = p / (p + n)
+        # impurity = n / (p + n)
+        # # cross entropy
+        # CE = (- purity * np.log(purity / (P / (P + N)))
+        #       - xlogy(impurity, impurity / (N / (P + N))))
+        # # J-Measure
+        # J = p * CE
+        # # likelihood ratio statistics
+        # LRS = 2 * (P + N) * J
+        e_p = (p + n) * P / (P + N)
+        e_n = (p + n) * N / (P + N)
+        LRS = 2 * (xlogy(p, p / e_p) + xlogy(n, n / e_n))
         return LRS <= self.LRS_threshold
 
 
@@ -234,7 +240,7 @@ class CN2Implementation(BeamSearch,
 class CN2Estimator(SeCoEstimator):
     """Estimator using :class:`CN2Implementation`."""
     def __init__(self,
-                 LRS_threshold: float = 0.9,
+                 LRS_threshold: float = 0.0,
                  multi_class="one_vs_rest",
                  n_jobs=1):
         super().__init__(CN2Implementation(LRS_threshold=LRS_threshold),
