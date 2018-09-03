@@ -9,6 +9,14 @@ from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.concrete import SimpleSeCoImplementation
 
 
+def count_conditions(theory):
+    """
+    :return: the number of conditions (i.e. non-infinite bounds) of all rules
+      in `theory`.
+    """
+    return np.count_nonzero(np.isfinite(theory))
+
+
 def test_base_trivial(record_property):
     """Test SimpleSeCo with a trivial test set of 2 instances."""
     categorical_mask = np.array([True, False])
@@ -90,7 +98,6 @@ def test_blackbox_accuracy_binary(seco_estimator,
                                   record_property):
     """Expect high accuracy_score on `binary_slight_overlap`."""
     X, y, X_test, y_test = binary_slight_overlap
-
     seco_estimator.fit(X, y)
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
@@ -100,6 +107,26 @@ def test_blackbox_accuracy_binary(seco_estimator,
     # check accuracy
     y_predicted = seco_estimator.predict(X_test)
     assert accuracy_score(y_test, y_predicted) > 0.8
+
+
+def test_perfectly_correlated_categories_multiclass(
+        seco_estimator, perfectly_correlated_multiclass, record_property):
+    """Expect perfect rules on multiclass problem with (feature_i == class_i).
+    """
+    x, y = perfectly_correlated_multiclass
+    # check recognition of multiclass problem
+    seco_estimator.fit(x, y, categorical_features='all')
+    assert not isinstance(seco_estimator.base_estimator_, _BinarySeCoEstimator)
+    bases = seco_estimator.base_estimator_.estimators_
+    for base in bases:
+        assert isinstance(base, _BinarySeCoEstimator)
+    record_property("theory", [b.theory_ for b in bases])
+    # check rules
+    for base in bases:
+        theory = base.theory_
+        assert len(theory) == 1
+        assert count_conditions(theory) == 1
+    assert_array_equal(y, seco_estimator.predict(x))
 
 
 def test_blackbox_accuracy_binary_categorical(seco_estimator,

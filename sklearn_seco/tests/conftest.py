@@ -103,3 +103,15 @@ def binary_categorical():
     X_test_numeric, y_test = make_blobs(**distribution)
     X_test = np.rint(X_test_numeric)
     return X, y, X_test, y_test
+
+
+@pytest.fixture
+def perfectly_correlated_multiclass():
+    """Generate 10-class problem with 10 features each matching one class.
+
+    :return: tuple(x,y)
+    """
+    n = 10
+    y = np.arange(1, n + 1)
+    x = np.eye(n, dtype=int) * y
+    return x, y
