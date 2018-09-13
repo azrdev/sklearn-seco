@@ -9,6 +9,7 @@ from sklearn.utils.estimator_checks import check_estimator
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.common import UPPER
 from sklearn_seco.concrete import SimpleSeCoImplementation
+from .conftest import record_theory
 
 
 def count_conditions(theory):
@@ -19,7 +20,7 @@ def count_conditions(theory):
     return np.count_nonzero(np.isfinite(theory))
 
 
-def test_base_trivial(record_property):
+def test_base_trivial(record_theory):
     """Test SimpleSeCo with a trivial test set of 2 instances."""
     categorical_mask = np.array([True, False])
     X_train = np.array([[100, 0.0],
@@ -27,7 +28,7 @@ def test_base_trivial(record_property):
     y_train = np.array([1, 2])
     est = _BinarySeCoEstimator(SimpleSeCoImplementation(), categorical_mask)
     est.fit(X_train, y_train)
-    record_property("theory", est.theory_)
+    record_theory(est.theory_)
 
     assert est.target_class_ == 1
     assert len(est.theory_) == 1
@@ -46,7 +47,7 @@ def test_base_trivial(record_property):
     assert_array_equal(est.predict(X_test), y_test)
 
 
-def test_base_easyrules(record_property):
+def test_base_easyrules(record_theory):
     """Test SimpleSeCo with a linearly separable, 4 instance binary test set.
 
     Compare `docs/test_base_easyrules_featurespace.png`.
@@ -59,7 +60,7 @@ def test_base_easyrules(record_property):
     y_train = np.array([1, 1, 2, 2])
     est = _BinarySeCoEstimator(SimpleSeCoImplementation(), categorical_mask)
     est.fit(X_train, y_train)
-    record_property("theory", est.theory_)
+    record_theory(est.theory_)
 
     assert est.target_class_ == 1
     assert len(est.theory_) == 2
@@ -78,15 +79,14 @@ def test_base_easyrules(record_property):
     assert_array_equal(est.predict(X_test), y_test)
 
 
-def test_trivial_decision_border(seco_estimator,
-                                 trivial_decision_border,
-                                 record_property):
+def test_trivial_decision_border(seco_estimator, trivial_decision_border,
+                                 record_theory):
     """Check recognition of the linear border in `trivial_decision_border`."""
     seco_estimator.fit(*trivial_decision_border)
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
-    record_property("theory", base.theory_)
+    record_theory(base.theory_)
     assert base.target_class_ == 0
     # check expected rule
     assert len(base.theory_) == 1
@@ -94,16 +94,14 @@ def test_trivial_decision_border(seco_estimator,
                               decimal=1)
 
 
-def test_accuracy_binary_numeric(seco_estimator,
-                                 binary_slight_overlap,
-                                 record_property):
+def test_accuracy_binary_numeric(seco_estimator, binary_slight_overlap, record_theory):
     """Expect high accuracy_score on `binary_slight_overlap`."""
     X, y, X_test, y_test = binary_slight_overlap
     seco_estimator.fit(X, y)
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
-    record_property("theory", base.theory_)
+    record_theory(base.theory_)
     assert base.target_class_ == 0
     # check accuracy
     y_predicted = seco_estimator.predict(X_test)
@@ -111,7 +109,7 @@ def test_accuracy_binary_numeric(seco_estimator,
 
 
 def test_perfectly_correlated_categories_multiclass(
-        seco_estimator, perfectly_correlated_multiclass, record_property):
+        seco_estimator, perfectly_correlated_multiclass, record_theory):
     """Expect perfect rules on categorical multiclass problem with (feature_i == class_i).
     """
     x, y = perfectly_correlated_multiclass
@@ -121,7 +119,7 @@ def test_perfectly_correlated_categories_multiclass(
     bases = seco_estimator.base_estimator_.estimators_
     for base in bases:
         assert isinstance(base, _BinarySeCoEstimator)
-    record_property("theory", [b.theory_ for b in bases])
+    record_theory([b.theory_ for b in bases])
     # check rules
     for base in bases:
         theory = base.theory_
@@ -131,16 +129,15 @@ def test_perfectly_correlated_categories_multiclass(
     assert_array_equal(y, seco_estimator.predict(x))
 
 
-def test_accuracy_binary_categorical(seco_estimator,
-                                     binary_categorical,
-                                     record_property):
+def test_accuracy_binary_categorical(seco_estimator, binary_categorical,
+                                     record_theory):
     """Expect high accuracy on `binary_categorical`."""
     X, y, X_test, y_test = binary_categorical
     seco_estimator.fit(X, y, categorical_features='all')
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
-    record_property("theory", base.theory_)
+    record_theory(base.theory_)
     assert count_conditions(base.theory_[:, UPPER]) == 0
     # check precision on training data
     y_predicted_train = seco_estimator.predict(X)
@@ -150,14 +147,15 @@ def test_accuracy_binary_categorical(seco_estimator,
     assert accuracy_score(y_test, y_predicted) > 0.8
 
 
-def test_accuracy_binary_mixed(seco_estimator, binary_mixed, record_property):
+def test_accuracy_binary_mixed(seco_estimator, binary_mixed,
+                               record_theory):
     """Assert accuracy on problem with categorical and numeric features."""
     cm, X, y, X_test, y_test = binary_mixed
     seco_estimator.fit(X, y, categorical_features=cm)
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
-    record_property("theory", base.theory_)
+    record_theory(base.theory_)
     assert count_conditions(base.theory_[:, UPPER, cm]) == 0
     # check precision on training data
     y_predicted_train = seco_estimator.predict(X)
@@ -167,13 +165,13 @@ def test_accuracy_binary_mixed(seco_estimator, binary_mixed, record_property):
     assert accuracy_score(y_test, y_predicted) > 0.8
 
 
-def test_xor(seco_estimator, xor_2d, record_property):
+def test_xor(seco_estimator, xor_2d, record_theory):
     x, y, x_test, y_test = xor_2d
     seco_estimator.fit(x, y)
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
-    record_property("theory", base.theory_)
+    record_theory(base.theory_)
     # check precision on training data
     y_predicted_train = seco_estimator.predict(x)
     assert accuracy_score(y, y_predicted_train) > 0.9
@@ -184,13 +182,13 @@ def test_xor(seco_estimator, xor_2d, record_property):
 
 def test_checkerboard_binary_categorical(seco_estimator,
                                          checkerboard_2d_binary_categorical,
-                                         record_property):
+                                         record_theory):
     x, y, x_test, y_test = checkerboard_2d_binary_categorical
     seco_estimator.fit(x, y, categorical_features='all')
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
-    record_property("theory", base.theory_)
+    record_theory(base.theory_)
     assert count_conditions(base.theory_[:, UPPER]) == 0
     # check precision on training data
     y_predicted_train = seco_estimator.predict(x)

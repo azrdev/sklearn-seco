@@ -1,5 +1,6 @@
 """pytest fixtures for the test cases in this directory."""
 import itertools
+from typing import Union, List
 
 import numpy as np
 import pytest
@@ -9,17 +10,27 @@ from sklearn.utils import check_random_state
 from sklearn_seco.concrete import SimpleSeCoEstimator, CN2Estimator
 
 
-# pyteest plugin, to print theory on test failure
+# pytest plugin, to print theory on test failure
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     default = yield
-    report = default.result
+    report = default.get_result()
     if report.failed and report.user_properties:
         for name, prop in report.user_properties:
             if name == 'theory':
                 report.longrepr.addsection(name, str(prop))
                 break
     return default
+
+
+@pytest.fixture
+def record_theory(record_property):
+    def _record(theory: Union[np.ndarray, List[np.ndarray]]):
+        record_property("theory", theory)
+    return _record
+
+
+# fixtures
 
 
 @pytest.fixture(params=[SimpleSeCoEstimator, CN2Estimator])
