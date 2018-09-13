@@ -1,4 +1,5 @@
 """pytest fixtures for the test cases in this directory."""
+import itertools
 
 import numpy as np
 import pytest
@@ -98,6 +99,78 @@ def binary_categorical():
     X = np.rint(X_numeric)
     y = y8 % 2 + 10
     return X[:n], y[:n], X[n:], y[n:]
+
+
+@pytest.fixture
+def binary_mixed():
+    """
+    Generate medium-size binary problem with categorical and numeric features.
+
+    :return: tuple(categorical_mask, X, y, X_test, y_test)
+    """
+    dim = 5
+    n = 128
+    categorical_mask = np.array([True, False, True, True, False])
+    xnum, ymc = make_blobs(n_samples=2 * n, n_features=dim, centers=dim,
+                           random_state=2)
+    x = np.where(categorical_mask, np.rint(xnum), xnum)
+    y = ymc % 2 + 20
+    return categorical_mask, x[:n], y[:n], x[n:], y[n:]
+
+
+@pytest.fixture
+def xor_2d():
+    """Generate numeric low-noise 2D binary XOR problem"""
+    rnd = check_random_state(11)
+    n = 100
+    centers = itertools.product([0, 4], [0, 4])
+    t = np.vstack(np.hstack((rnd.normal(loc=(x, y), size=(n, 2)),
+                             [[99 + (x == y)]] * n))
+                  for x, y in centers)
+    rnd.shuffle(t)
+    split = len(t) // 2
+    x_train = t[:split, :-1]
+    y_train = t[:split, -1]
+    x_test = t[split:, :-1]
+    y_test = t[split:, -1]
+    return x_train, y_train, x_test, y_test
+
+
+@pytest.fixture
+def checkerboard_2d():
+    """
+    Generate huge low-noise 2D multi-class problem with interleaved class clusters (similar to XOR)
+
+    :return: tuple(X, y, X_test, y_test)
+    """
+    rnd = check_random_state(1)
+    n = 99999
+    centers = itertools.product([1, 5, 9], [4, -1, 8])
+    t = np.vstack(
+        np.hstack((rnd.normal(loc=(x, y), size=(n, 2)), [[x * y]] * n))
+        for x, y in centers)
+    rnd.shuffle(t)
+    split = len(t) // 2
+    x_train = t[:split, :-1]
+    y_train = t[:split, -1]
+    x_test = t[split:, :-1]
+    y_test = t[split:, -1]
+    return x_train, y_train, x_test, y_test
+
+
+@pytest.fixture
+def checkerboard_2d_binary(checkerboard_2d):
+    """Generate a binary (2 class) variant of `checkerboard_2d`."""
+    x_train, y_train, x_test, y_test = checkerboard_2d
+    return x_train, y_train % 2, x_test, y_test % 2
+
+
+@pytest.fixture
+def checkerboard_2d_binary_categorical(checkerboard_2d_binary):
+    """Generate a categorical, binary (2 class) variant of `checkerboard_2d`.
+    """
+    x_train, y_train, x_test, y_test = checkerboard_2d_binary
+    return np.rint(x_train), y_train, np.rint(x_test), y_test
 
 
 @pytest.fixture
