@@ -18,6 +18,6 @@
     without changing sklearn_seco, i.e. it could be extended to other rule
     language → language bias
 
-- python2 compatibility, esp. type hints
+- python2, python3 < 3.7 compatibility, esp. type hints
 - submission to upstream: sklearn-contrib? future maintainer needed?
     - add paper references to documentation
