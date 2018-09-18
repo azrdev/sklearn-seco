@@ -9,7 +9,7 @@ from sklearn.utils.estimator_checks import check_estimator
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.common import UPPER
 from sklearn_seco.concrete import SimpleSeCoImplementation
-from .conftest import count_conditions, record_theory
+from .conftest import count_conditions
 
 
 def test_base_trivial(record_theory):
@@ -74,7 +74,8 @@ def test_base_easyrules(record_theory):
 def test_trivial_decision_border(seco_estimator, trivial_decision_border,
                                  record_theory):
     """Check recognition of the linear border in `trivial_decision_border`."""
-    seco_estimator.fit(*trivial_decision_border)
+    seco_estimator.fit(trivial_decision_border.x_train,
+                       trivial_decision_border.y_train)
     # check recognition of binary problem
     base = seco_estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
@@ -86,31 +87,13 @@ def test_trivial_decision_border(seco_estimator, trivial_decision_border,
                               decimal=1)
 
 
-def test_accuracy_binary_numeric(seco_estimator, binary_slight_overlap, record_theory):
-    """Expect high accuracy_score on `binary_slight_overlap`."""
-    X, y, X_test, y_test, cm = binary_slight_overlap
-    seco_estimator.fit(X, y)
-    # check recognition of binary problem
-    base = seco_estimator.base_estimator_
-    assert isinstance(base, _BinarySeCoEstimator)
-    record_theory(base.theory_)
-    assert base.target_class_ == 0
-    # check accuracy
-    y_predicted = seco_estimator.predict(X_test)
-    assert accuracy_score(y_test, y_predicted) > 0.8
-
-
 def test_perfectly_correlated_categories_multiclass(
         seco_estimator, perfectly_correlated_multiclass, record_theory):
     """Expect perfect rules on `perfectly_correlated_multiclass` problem."""
     dataset = perfectly_correlated_multiclass
-    # check recognition of multiclass problem
     seco_estimator.fit(dataset.x_train, dataset.y_train,
                        categorical_features=dataset.categorical_features)
-    assert not isinstance(seco_estimator.base_estimator_, _BinarySeCoEstimator)
-    bases = seco_estimator.base_estimator_.estimators_
-    for base in bases:
-        assert isinstance(base, _BinarySeCoEstimator)
+    bases = assert_multiclass_problem(seco_estimator)
     record_theory([b.theory_ for b in bases])
     # check rules
     for base in bases:
@@ -121,76 +104,6 @@ def test_perfectly_correlated_categories_multiclass(
                        seco_estimator.predict(dataset.x_train))
 
 
-def test_accuracy_binary_categorical(seco_estimator, binary_categorical,
-                                     record_theory):
-    """Expect high accuracy on `binary_categorical`."""
-    X, y, X_test, y_test, cm = binary_categorical
-    seco_estimator.fit(X, y, categorical_features=cm)
-    # check recognition of binary problem
-    base = seco_estimator.base_estimator_
-    assert isinstance(base, _BinarySeCoEstimator)
-    record_theory(base.theory_)
-    assert count_conditions(base.theory_[:, UPPER]) == 0
-    # check precision on training data
-    y_predicted_train = seco_estimator.predict(X)
-    assert accuracy_score(y, y_predicted_train) > 0.9
-    # check accuracy on test data
-    y_predicted = seco_estimator.predict(X_test)
-    assert accuracy_score(y_test, y_predicted) > 0.8
-
-
-def test_accuracy_binary_mixed(seco_estimator, binary_mixed,
-                               record_theory):
-    """Assert accuracy on problem with categorical and numeric features."""
-    X, y, X_test, y_test, cm = binary_mixed
-    seco_estimator.fit(X, y, categorical_features=cm)
-    # check recognition of binary problem
-    base = seco_estimator.base_estimator_
-    assert isinstance(base, _BinarySeCoEstimator)
-    record_theory(base.theory_)
-    assert count_conditions(base.theory_[:, UPPER, cm]) == 0
-    # check precision on training data
-    y_predicted_train = seco_estimator.predict(X)
-    assert accuracy_score(y, y_predicted_train) > 0.9
-    # check accuracy on test data
-    y_predicted = seco_estimator.predict(X_test)
-    assert accuracy_score(y_test, y_predicted) > 0.8
-
-
-def test_xor(seco_estimator, xor_2d,
-             record_theory):
-    x, y, x_test, y_test, cm = xor_2d
-    seco_estimator.fit(x, y)
-    # check recognition of binary problem
-    base = seco_estimator.base_estimator_
-    assert isinstance(base, _BinarySeCoEstimator)
-    record_theory(base.theory_)
-    # check precision on training data
-    y_predicted_train = seco_estimator.predict(x)
-    assert accuracy_score(y, y_predicted_train) > 0.9
-    # check accuracy on test data
-    y_predicted = seco_estimator.predict(x_test)
-    assert accuracy_score(y_test, y_predicted) > 0.8
-
-
-def test_checkerboard_binary_categorical(seco_estimator,
-                                         checkerboard_2d_binary_categorical,
-                                         record_theory):
-    x, y, x_test, y_test, cm = checkerboard_2d_binary_categorical
-    seco_estimator.fit(x, y, categorical_features=cm)
-    # check recognition of binary problem
-    base = seco_estimator.base_estimator_
-    assert isinstance(base, _BinarySeCoEstimator)
-    record_theory(base.theory_)
-    assert count_conditions(base.theory_[:, UPPER]) == 0
-    # check precision on training data
-    y_predicted_train = seco_estimator.predict(x)
-    assert accuracy_score(y, y_predicted_train) > 0.9
-    # check accuracy on test data
-    y_predicted = seco_estimator.predict(x_test)
-    assert accuracy_score(y_test, y_predicted) > 0.8
-
-
 def test_sklearn_check_estimator(seco_estimator_class):
     """Run check_estimator from `sklearn.utils.estimator_checks`.
 
@@ -198,3 +111,67 @@ def test_sklearn_check_estimator(seco_estimator_class):
     our report shows which ones actually failed. Waiting for <https://github.com/scikit-learn/scikit-learn/issues/11622>
     """
     check_estimator(seco_estimator_class)
+
+
+def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
+    """Expect high accuracy from each of our blackbox test cases"""
+    x_train, y_train, x_test, y_test, cm = blackbox_test
+    seco_estimator.fit(x_train, y_train, categorical_features=cm)
+
+    is_binary = len(np.unique(y_train)) == 2
+    if is_binary:
+        base = assert_binary_problem(seco_estimator)
+        record_theory(base.theory_)
+        print("{} rules:\n{}".format(len(base.theory_), base.theory_))
+    else:
+        bases = assert_multiclass_problem(seco_estimator)
+        record_theory([b.theory_ for b in bases])
+        print("{} theories:\n".format(len(bases)))
+        for base_ in bases:
+            print("{} rules:\n{}\n".format(len(base_.theory_), base_.theory_))
+
+    assert_prediction_performance(seco_estimator,
+                                  x_train, y_train, x_test, y_test)
+
+
+# helpers
+
+def assert_binary_problem(estimator):
+    """Check recognition of binary problem by `estimator`.
+
+    :return: the "base_estimator_" `_BinarySeCoEstimator` instance
+    """
+    base = estimator.base_estimator_
+    assert isinstance(base, _BinarySeCoEstimator)
+    if base.categorical_mask_.all():  # only categorical features
+        assert count_conditions(base.theory_[:, UPPER]) == 0
+    return base
+
+
+def assert_multiclass_problem(estimator):
+    """Check recognition of multi-class problem.
+
+    :return: the list of "base_estimator_" `_BinarySeCoEstimator` instance
+    """
+    assert not isinstance(estimator.base_estimator_, _BinarySeCoEstimator)
+    bases = estimator.base_estimator_.estimators_
+    for base_ in bases:
+        assert isinstance(base_, _BinarySeCoEstimator)
+        if base_.categorical_mask_.all():  # only categorical features
+            assert count_conditions(base_.theory_[:, UPPER]) == 0
+    return bases
+
+
+def assert_prediction_performance(estimator, x_train, y_train, x_test, y_test):
+    # check accuracy,precision on training data
+    y_predicted_train = estimator.predict(x_train)
+    assert accuracy_score(y_train, y_predicted_train) > 0.9
+    if x_test is not None:
+        # check accuracy on test data
+        y_predicted = estimator.predict(x_test)
+        assert accuracy_score(y_test, y_predicted) > 0.8
+
+        from sklearn.metrics import classification_report, confusion_matrix
+        print()
+        print(confusion_matrix(y_test, y_predicted))
+        print(classification_report(y_test, y_predicted))
