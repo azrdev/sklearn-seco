@@ -50,7 +50,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         self.categorical_features = categorical_features
 
     def fit(self, X, y):
-        X, y = check_X_y(X, y)
+        X, y = check_X_y(X, y, dtype=np.floating)
 
         # prepare  target / labels / y
 

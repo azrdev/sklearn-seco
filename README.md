@@ -1,6 +1,6 @@
 # sklearn-SeCo
 
-WIP implementation of the *Separate and Conquer* or *Covering*-Algorithm for scikit-learn.
+WIP implementation of the *Separate and Conquer* or *Covering*-Algorithm for [scikit-learn](http://scikit-learn.org).
 
 It aims to be
 - computationally fast,

@@ -15,6 +15,7 @@ Limitations / Assumptions (TODO)
     - for categorical only ==
     - for numerical only <= and >=
 - numerical features always assumed to be ordinal
+- only float data supported (due to usage of np.inf in Rules)
 - no NaN, inf, or -inf values in data
 - no weighting
 """
