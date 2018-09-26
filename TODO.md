@@ -9,8 +9,6 @@
     - test data sets: <http://scikit-learn.org/stable/datasets/index.html>
 
 - CI
-    - `setup.py`
-    - autochecks: flake8, `py.test --with-coverage`, typecheck (mypy)
 - optimization <http://www.scipy-lectures.org/advanced/optimizing/index.html>
 
 - regression?
