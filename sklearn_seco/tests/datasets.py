@@ -1,9 +1,9 @@
 import itertools
-from collections.__init__ import namedtuple
+from collections import namedtuple
 from typing import Union
 
 import numpy as np
-from sklearn.datasets import make_blobs
+from sklearn.datasets import make_blobs, make_classification
 from sklearn.utils import check_random_state
 
 
@@ -20,41 +20,41 @@ def Dataset(x_train: np.ndarray,
 # datasets
 
 
-def binary_categorical():
+def binary_categorical(n_features=8, n_samples=100, random=7):
     """Generate binary discrete problem with little noise.
     """
-    dim = 8
-    n = 100
-    X_numeric, y8 = make_blobs(n_samples=2 * n, n_features=dim, centers=dim,
-                               random_state=7)
+    X_numeric, y8 = make_blobs(n_samples=2 * n_samples, n_features=n_features,
+                               centers=n_features, random_state=random)
     X = np.rint(X_numeric)
     y = y8 % 2 + 10
-    return Dataset(X[:n], y[:n], X[n:], y[n:], 'all')
+    return Dataset(X[:n_samples], y[:n_samples], X[n_samples:], y[n_samples:],
+                   'all')
 
 
-def binary_mixed():
+def binary_mixed(n_samples=128, n_features=5, random=2):
     """
     Generate medium-size binary problem with categorical and numeric features.
     """
-    dim = 5
-    n = 128
-    categorical = np.array([True, False, True, True, False])
-    xnum, ymc = make_blobs(n_samples=2 * n, n_features=dim, centers=dim,
-                           random_state=2)
+    categorical = np.array([True, False] * n_features)[:n_features]  # T,F,T,…
+    xnum, ymc = make_blobs(n_samples=2 * n_samples, n_features=n_features,
+                           centers=n_features, random_state=random)
     x = np.where(categorical, np.rint(xnum), xnum)
     y = ymc % 2 + 20
-    return Dataset(x[:n], y[:n], x[n:], y[n:], categorical)
+    return Dataset(x[:n_samples], y[:n_samples],
+                   x[n_samples:], y[n_samples:],
+                   categorical)
 
 
-def xor_2d():
+def xor_2d(n_samples=400, random=None):
     """Generate numeric low-noise 2D binary XOR problem"""
-    rnd = check_random_state(11)
-    n = 100
+    if random is None:
+        random = check_random_state(11)
+    n = n_samples // 4
     centers = itertools.product([0, 4], [0, 4])
-    t = np.vstack(np.hstack((rnd.normal(loc=(x, y), size=(n, 2)),
+    t = np.vstack(np.hstack((random.normal(loc=(x, y), size=(n, 2)),
                              [[99 + (x == y)]] * n))
                   for x, y in centers)
-    rnd.shuffle(t)
+    random.shuffle(t)
     split = len(t) // 2
     x_train = t[:split, :-1]
     y_train = t[:split, -1]
@@ -63,21 +63,23 @@ def xor_2d():
     return Dataset(x_train, y_train, x_test, y_test)
 
 
-def checkerboard_2d(binary=True, categorical=True):
+def checkerboard_2d(n_samples=10**5, binary=True, categorical=True,
+                    random=None):
     """
-    Generate huge low-noise 2D multi-class problem with interleaved class clusters (similar to XOR)
+    Generate huge 2D multi-class problem with interleaved class clusters (similar to XOR)
 
     :param binary: If True, data has 2 classes, otherwise 9.
     :param categorical: If True, features are few distinct integers, otherwise
         a float distribution.
     """
-    rnd = check_random_state(1)
-    n = 99999
-    centers = itertools.product([1, 5, 9], [4, -1, 8])
+    if random is None:
+        random = check_random_state(1)
+    centers = itertools.product([0, 7, 15], [20, 30, 39])
+    n = n_samples
     t = np.vstack(
-        np.hstack((rnd.normal(loc=(x, y), size=(n, 2)), [[x * y]] * n))
-        for x, y in centers)
-    rnd.shuffle(t)
+        np.hstack((random.normal(loc=(x, y), size=(n_samples, 2)), [[cls]] * n_samples))
+        for cls, (x, y) in enumerate(centers))
+    random.shuffle(t)
     split = len(t) // 2
     x_train = t[:split, :-1]
     y_train = t[:split, -1]
@@ -94,13 +96,15 @@ def checkerboard_2d(binary=True, categorical=True):
     return Dataset(x_train, y_train, x_test, y_test, cm)
 
 
-def binary_slight_overlap():
+def binary_slight_overlap(
+        n_samples=160,  # 80 samples for each class and each of (train, test)
+        n_features=8,
+        random=None):
     """Generate two normal distributed, slightly overlapping classes."""
-    random = check_random_state(42)
-    dim = 8
-    n_samples = 160  # we have 80 samples for each class for each (train, test)
-    mean = np.zeros(dim)
-    cov = np.eye(dim)
+    if random is None:
+        random = check_random_state(42)
+    mean = np.zeros(n_features)
+    cov = np.eye(n_features)
     raw = np.block([
         [random.multivariate_normal(mean, cov, size=n_samples),  # features
          np.ones((n_samples, 1))],  # positive class label
@@ -114,3 +118,20 @@ def binary_slight_overlap():
     X_test = test[:, :-1]
     y_test = test[:, -1]
     return Dataset(X, y, X_test, y_test)
+
+
+def sklearn_make_classification(n_samples=100, n_features=2,
+                                random=1,
+                                *, categorize=False, **kwargs):
+    n_informative = max(2, n_features // 3 * 2)
+    x, y = make_classification(n_samples, n_features,
+                               n_informative=n_informative,
+                               n_redundant=0,
+                               class_sep=1.5,
+                               random_state=random,
+                               **kwargs)
+    cf = None
+    if categorize:
+        x = np.rint(x)
+        cf = 'all'
+    return Dataset(x, y, categorical_features=cf)
