@@ -50,8 +50,8 @@ def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
 @total_ordering
 class AugmentedRule:
     """A `Rule` and associated data, like coverage (p, n) of current examples,
-    a `sort_key` defining a total order between instances, and for rules forked
-    from others (with `copy()`) a reference to the original rule.
+    a `_sort_key` defining a total order between instances, and for rules
+    forked from others (with `copy()`) a reference to the original rule.
 
     Lifetime of an AugmentedRule is from its creation (in `init_rule` or
     `refine_rule`) until its `conditions` are added to the theory in
@@ -130,7 +130,7 @@ class AugmentedRule:
         return self._sort_key < other._sort_key
 
     def __eq__(self, other):
-        if not hasattr(other, 'sort_key'):
+        if not hasattr(other, '_sort_key'):
             return NotImplemented
         return self._sort_key == other._sort_key
 
