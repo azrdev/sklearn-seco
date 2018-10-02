@@ -6,18 +6,19 @@ from numpy.testing import assert_array_equal
 from sklearn_seco.abstract import SeCoEstimator, _BinarySeCoEstimator
 from sklearn_seco.concrete import SimpleSeCoImplementation, CN2Implementation
 from sklearn_seco.extra import trace_coverage, plot_coverage_log
+from sklearn_seco.tests.datasets import binary_categorical
 
 
 @pytest.mark.parametrize('implementation_class',
                          [SimpleSeCoImplementation, CN2Implementation])
-def test_coverage_tracing(binary_categorical, implementation_class):
+def test_coverage_tracing(implementation_class):
     """Test the `trace_coverage` mixin, using SimpleSeCo and CN2."""
 
     TracingImpl = trace_coverage(implementation_class)
     tracer = TracingImpl()
     estimator = SeCoEstimator(tracer)
-    X, y, X_test, y_test = binary_categorical
-    estimator.fit(X, y, categorical_features='all')
+    X, y, X_test, y_test, cm = binary_categorical()
+    estimator.fit(X, y, categorical_features=cm)
     # check recognition of binary problem
     base = estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
