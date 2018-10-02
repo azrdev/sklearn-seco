@@ -75,9 +75,9 @@ def checkerboard_2d(n_samples=10**5, binary=True, categorical=True,
     if random is None:
         random = check_random_state(1)
     centers = itertools.product([0, 7, 15], [20, 30, 39])
-    n = n_samples
+    n = (n_samples * 2) // 10
     t = np.vstack(
-        np.hstack((random.normal(loc=(x, y), size=(n_samples, 2)), [[cls]] * n_samples))
+        np.hstack((random.normal(loc=(x, y), size=(n, 2)), [[cls]] * n))
         for cls, (x, y) in enumerate(centers))
     random.shuffle(t)
     split = len(t) // 2
