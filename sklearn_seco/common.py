@@ -5,7 +5,7 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import NewType, Tuple, Iterable, List, Union
+from typing import NewType, Tuple, Iterable, List, Union, NamedTuple
 import numpy as np
 
 
@@ -47,6 +47,10 @@ def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
         rule = rule.original
 
 
+condition_trace_entry = NamedTuple('condition_trace_entry',
+                                   [('boundary', int), ('index', int),
+                                    ('value', float),('old_value', float)])
+
 @total_ordering
 class AugmentedRule:
     """A `Rule` and associated data, like coverage (p, n) of current examples,
@@ -71,6 +75,11 @@ class AugmentedRule:
     original: AugmentedRule or None
         Another rule this one has been forked from, using `copy()`.
 
+    condition_trace: list of tuple(int, int, float)
+        Contains a tuple(UPPER/LOWER, feature_index, value) for each value that
+        was set in conditions, like they were applied to the initially
+        constructed rule to get to this rule.
+
     _sort_key: tuple of floats
         Define an order of rules for `RuleQueue` and finding a `best_rule`,
         using operator `<` (i.e. higher values == better rule == later in the
@@ -86,7 +95,7 @@ class AugmentedRule:
     __rule_counter = 0
 
     def __init__(self, *, conditions: Rule = None, n_features: int = None,
-                 original=None):
+                 original: 'AugmentedRule' = None):
         """Construct an `AugmentedRule` with either `n_features` or the given
         `conditions`.
 
@@ -105,7 +114,11 @@ class AugmentedRule:
         else:
             raise ValueError("Exactly one of (conditions, n_features) "
                              "must be not None.")
-        # init fields for stats
+        # init fields
+        if original:
+            self.condition_trace = original.condition_trace
+        else:
+            self.condition_trace = []
         self._p = None
         self._n = None
         self._sort_key = None
@@ -116,13 +129,21 @@ class AugmentedRule:
 
     @property
     def lower(self) -> np.ndarray:
-        """The "lower" part of the rules' conditions, i.e. `rule.lower <= X`."""
+        """The "lower" part of the rules' conditions, i.e. `rule.lower <= X`.
+        """
         return self.conditions[LOWER]
 
     @property
     def upper(self) -> np.ndarray:
-        """The "upper" part of the rules' conditions, i.e. `rule.upper >= X`."""
+        """The "upper" part of the rules' conditions, i.e. `rule.upper >= X`.
+        """
         return self.conditions[UPPER]
+
+    def set_condition(self, boundary: int, index: int, value):
+        self.condition_trace.append(
+            condition_trace_entry(boundary, index, value,
+                                  self.conditions[boundary, index]))
+        self.conditions[boundary, index] = value
 
     def __lt__(self, other):
         if not hasattr(other, '_sort_key'):
@@ -211,7 +232,8 @@ class SeCoBaseImplementation(ABC):
       equivalent to `X.shape[1]`.
     - `P` and `N`: The count of positive and negative examples (in self.X)
     - `target_class`
-    - `trace_feature_order`
+    - `trace_feature_order`: If True, all our `AugmentedRule` instances use
+      their `condition_trace` property to log all values set to each condition.
     """
 
     def __calculate_PN(self):

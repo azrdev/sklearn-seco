@@ -17,7 +17,7 @@ from scipy.special import xlogy
 
 from sklearn_seco.abstract import Theory, SeCoEstimator, _BinarySeCoEstimator
 from sklearn_seco.common import \
-    RuleQueue, SeCoBaseImplementation, AugmentedRule
+    RuleQueue, SeCoBaseImplementation, AugmentedRule, LOWER, UPPER
 
 
 def pairwise(iterable):
@@ -96,7 +96,7 @@ class TopDownSearch(SeCoBaseImplementation):
             # argwhere returns each index in separate list, ravel() unpacks
             for value in all_feature_values(index):
                 specialization = rule.copy()
-                specialization.lower[index] = value
+                specialization.set_condition(LOWER, index, value)
                 yield specialization
 
         for feature_index in np.nonzero(~self.categorical_mask)[0]:
@@ -111,14 +111,16 @@ class TopDownSearch(SeCoBaseImplementation):
                     # don't test contradiction (e.g. f < 4 && f > 6)
                     if no_old_upper or new_threshold < old_upper:
                         specialization = rule.copy()
-                        specialization.lower[feature_index] = new_threshold
+                        specialization.set_condition(LOWER, feature_index,
+                                                     new_threshold)
                         yield specialization
                 # override is collation of upper bounds
                 if no_old_upper or new_threshold < old_upper:
                     # don't test contradiction
                     if no_old_lower or new_threshold > old_lower:
                         specialization = rule.copy()
-                        specialization.upper[feature_index] = new_threshold
+                        specialization.set_condition(UPPER, feature_index,
+                                                     new_threshold)
                         yield specialization
 
 
@@ -212,19 +214,17 @@ class RipperPostPruning(SeCoBaseImplementation):
     def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
         """TODO: doc
 
-        NOTE: this overrides AugmentedRule._sort_key (i.e. the evaluation of
-          the rule under the growing heuristic) with the pruning heuristic,
+        NOTE: Overrides `AugmentedRule._sort_key` (i.e. the evaluation of
+          the rule under the growing heuristic) with the pruning heuristic
           during the runtime of this method.
 
         :return: An improved version of `rule`.
         """
         candidates = [rule]
         # dropping all final (i.e. last added) sets of conditions
-        generalization = rule
-        for condition in reversed(rule.condition_trace):
-            generalization = generalization.copy()
-            # TODO: since we collapse overlapping boundaries already at creation (in refine_rule), we cannot prune back to a lesser boundary here
-            generalization.set_condition(condition, np.NaN)
+        for boundary, index, value, old_value in reversed(rule.condition_trace):
+            generalization = rule.copy()
+            generalization.set_condition(boundary,index, old_value)
             candidates.append(generalization)
         for candidate in candidates:
             candidate._sort_key = self.pruning_evaluation(candidate)
