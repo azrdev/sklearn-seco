@@ -5,7 +5,8 @@ import numpy as np
 import pytest
 from sklearn.utils import check_random_state
 
-from sklearn_seco.concrete import SimpleSeCoEstimator, CN2Estimator
+from sklearn_seco.concrete import \
+    SimpleSeCoEstimator, CN2Estimator, RipperEstimator
 
 
 from .datasets import Dataset, \
@@ -41,7 +42,7 @@ def count_conditions(theory):
     return np.count_nonzero(np.isfinite(theory))
 
 
-@pytest.fixture(params=[SimpleSeCoEstimator, CN2Estimator])
+@pytest.fixture(params=[SimpleSeCoEstimator, CN2Estimator, RipperEstimator])
 def seco_estimator_class(request):
     """Fixture running for each of the pre-defined estimator classes from
     `sklearn_seco.concrete`.
