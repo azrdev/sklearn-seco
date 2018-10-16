@@ -49,7 +49,8 @@ def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
 
 condition_trace_entry = NamedTuple('condition_trace_entry',
                                    [('boundary', int), ('index', int),
-                                    ('value', float),('old_value', float)])
+                                    ('value', float), ('old_value', float)])
+
 
 @total_ordering
 class AugmentedRule:

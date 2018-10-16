@@ -8,7 +8,6 @@ doesn't consume using `super().__init__(**kwargs)`. Users of mixin-composed
 classes will have to use keyword- instead of positional arguments.
 """
 
-from abc import abstractmethod
 from functools import lru_cache
 from typing import Tuple, Iterable
 
@@ -153,7 +152,7 @@ class LaplaceHeuristic(SeCoBaseImplementation):
 class InformationGainHeuristic(SeCoBaseImplementation):
     def evaluate_rule(self, rule: AugmentedRule):
         p, n = self.count_matches(rule)
-        P, N = self.P, self.N  # TODO: maybe count_matches(rule.original) is meant here?
+        P, N = self.P, self.N  # TODO: maybe count_matches(rule.original) is meant here? book fig6.4 says code is correct
         info_gain = p * (np.log(p / (p + n)) - np.log(P / (P + N)))
         # tie-breaking by positive coverage p and rule discovery order
         return (info_gain, p, -rule.instance_no)
@@ -206,10 +205,12 @@ class NoPostProcess(SeCoBaseImplementation):
 
 class RipperPostPruning(SeCoBaseImplementation):
 
-    @abstractmethod
     def pruning_evaluation(self, rule: AugmentedRule) -> Tuple[float, ...]:
-        """TODO: doc"""
-        raise NotImplementedError
+        """Laplace heuristic, as defined by (Clark and Boswell 1991)."""
+        p, n = self.count_matches(rule)
+        laplace = (p + 1) / (p + n + 2)
+        # tie-breaking by positive coverage p and rule discovery order
+        return (laplace, p, -rule.instance_no)
 
     def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
         """TODO: doc
@@ -224,12 +225,12 @@ class RipperPostPruning(SeCoBaseImplementation):
         # dropping all final (i.e. last added) sets of conditions
         for boundary, index, value, old_value in reversed(rule.condition_trace):
             generalization = rule.copy()
-            generalization.set_condition(boundary,index, old_value)
+            generalization.set_condition(boundary, index, old_value)
             candidates.append(generalization)
         for candidate in candidates:
             candidate._sort_key = self.pruning_evaluation(candidate)
         candidates.sort()
-        # XXX: JRip counts coverage for each condition and use laplace (p+1/p+n+2), this contradicts paper (cohen95 which has p-n/p+n)
+        # XXX: JRip counts coverage for each condition and uses laplace (p+1/p+n+2), this contradicts paper (cohen95) which has p-n/p+n
 
         best_rule = candidates.pop()
         self.rate_rule(best_rule)  # ensure rating by grow-heuristic
@@ -299,13 +300,72 @@ class RipperImplementation(BeamSearch,
                            RipperPostPruning,
                            NoPostProcess  # TODO: ripper post-optimization
                            ):
-    """Ripper as defined by (Cohen 1995).
+    """Ripper as defined by (Cohen 1995)."""
 
-    TODO: since we collapse overlapping boundaries already at creation (in refine_rule), we cannot prune the same way as the paper and JRip
-    """
-    def __init__(self, description_length: int = 64, **kwargs):
+    def __init__(self,
+                 check_error_rate: bool = True,
+                 description_length_surplus: int = 64,
+                 **kwargs):
         super().__init__(**kwargs)
-        self.description_length = description_length
+        self.check_error_rate = check_error_rate
+        self.description_length_surplus = description_length_surplus
+
+    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
+        # WIP: extracted from weka
+        p, n = self.count_matches(rule)
+        accuracy_rate = (p + 1) / (p + n + 1)
+        return accuracy_rate < 1
+
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
+                                ) -> bool:
+        # XXX: WIP taken from weka
+        # rstats.getSimpleStats: 0: coverage; 1:uncoverage; 2: true positive; 3: true negatives; 4: false positives; 5: false negatives
+
+        p, n = self.count_matches(rule)
+        if self.description_length(rule) > \
+                (self.best_description_length +  # best_ == minDL
+                 self.description_length_surplus):
+            return True
+        if p <= 0:
+            return True
+        if self.check_error_rate and (n / (p + n)) >= 0.5:  # error rate
+            return True
+        return False
+
+    def description_length(self, rule: AugmentedRule):
+        """description length as defined in RIPPER patent p.14
+        """
+        S = self.subset_description_length
+
+        k = np.count_nonzero(rule.conditions)  # number of conditions
+        n_cond = np.product(rule.conditions.shape)  # possible no. of conditions
+        kbits = np.log2(k)  # number of bits to send integer `k`
+        dl_theory = kbits + S(n_cond, k, k / n_cond)
+
+        def dl_exceptions(
+                T,  # no. of exceptions
+                C,  # no. of examples covered
+                U,  # no. of examples uncovered
+                fp,  # no. of false positive errors
+                fn,  # no. of false negative errors
+                e,  # no. of errors
+        ):
+            """description length of exceptions, see (Quinlan 1995)
+            or the ripper patent p.14
+            """
+            if C > (T / 2):
+                return np.log(T + 1) + S(C, fp, e / (2 * C)) + S(U, fn, fn / U)
+            else:
+                return np.log(T + 1) + S(U, fn, e / (2 * U)) + S(C, fp, fp / C)
+
+        p, n = self.count_matches(rule)
+        fn = self.P - p
+        U = len(self.X) - self.P - self.N
+        return 0.5 * dl_theory + dl_exceptions(T, p + n, U, n, fn, n + fn)
+
+    @staticmethod
+    def subset_description_length(n, k, p):
+        return -k * np.log2(p) - (n - k) * np.log2(1 - p)
 
 
 class RipperEstimator(SeCoEstimator):
