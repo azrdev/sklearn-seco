@@ -203,14 +203,14 @@ class NoPostProcess(SeCoBaseImplementation):
         return theory
 
 
-class RipperPostPruning(SeCoBaseImplementation):
+class GrowPruneSplit(SeCoBaseImplementation):
+    """TODO: Implement a split of the examples into growing and pruning set."""
 
+
+class RipperPostPruning(SeCoBaseImplementation):
+    @abstractmethod
     def pruning_evaluation(self, rule: AugmentedRule) -> Tuple[float, ...]:
-        """Laplace heuristic, as defined by (Clark and Boswell 1991)."""
-        p, n = self.count_matches(rule)
-        laplace = (p + 1) / (p + n + 2)
-        # tie-breaking by positive coverage p and rule discovery order
-        return (laplace, p, -rule.instance_no)
+        """Rate rule to allow finding the best refinement, while pruning."""
 
     def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
         """TODO: doc
@@ -297,6 +297,7 @@ class CN2Estimator(SeCoEstimator):
 class RipperImplementation(BeamSearch,
                            TopDownSearch,
                            InformationGainHeuristic,
+                           GrowPruneSplit,
                            RipperPostPruning,
                            NoPostProcess  # TODO: ripper post-optimization
                            ):
@@ -309,6 +310,20 @@ class RipperImplementation(BeamSearch,
         super().__init__(**kwargs)
         self.check_error_rate = check_error_rate
         self.description_length_surplus = description_length_surplus
+
+    def pruning_evaluation(self, rule: AugmentedRule
+                           ) -> Tuple[float, float, int]:
+        """Laplace heuristic, as defined by (Clark and Boswell 1991).
+
+        JRip documentation states:
+        "The pruning metric is (p-n)/(p+n) -- but it's actually 2p/(p+n) -1, so
+        in this implementation we simply use p/(p+n) (actually (p+1)/(p+n+2),
+        thus if p+n is 0, it's 0.5)."
+        """
+        p, n = self.count_matches(rule)
+        laplace = (p + 1) / (p + n + 2)
+        # tie-breaking by positive coverage p and rule discovery order
+        return (laplace, p, -rule.instance_no)
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         # WIP: extracted from weka
@@ -375,4 +390,36 @@ class RipperEstimator(SeCoEstimator):
         super().__init__(RipperImplementation(), multi_class, n_jobs)
 
 
+class IrepImplementation(BeamSearch,
+                         TopDownSearch,
+                         InformationGainHeuristic,
+                         GrowPruneSplit,
+                         RipperPostPruning,
+                         NoPostProcess):
+    """IREP as defined by (Cohen 1995), originally by (Fürnkranz, Widmer 1994).
+    """
+
+    def pruning_evaluation(self, rule: AugmentedRule) -> Tuple[float, ...]:
+        p, n = self.count_matches(rule)
+        P, N = self.P, self.N
+        v = (p + N - n) / (P + N)
+        return (v, p, -rule.instance_no)
+
+    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
+        """[refine] until the rule covers no negative examples"""
+        p, n = self.count_matches(rule)
+        return n == 0
+
+    def rule_stopping_criterion(self, theory: Theory,
+                                rule: AugmentedRule) -> bool:
+        p, n = self.count_matches(rule)
+        return p / (p + n) < 0.5
+
+
+class IrepEstimator(SeCoEstimator):
+    def __init__(self, multi_class="one_vs_rest", n_jobs=1):
+        super().__init__(IrepImplementation(), multi_class, n_jobs)
+
+
 # TODO: don't require definition of 2 classes, add *Estimator factory method in SeCoBaseImplementation
+# TODO: dedup stopping criteria

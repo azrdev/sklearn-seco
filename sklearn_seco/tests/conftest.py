@@ -6,8 +6,7 @@ import pytest
 from sklearn.utils import check_random_state
 
 from sklearn_seco.concrete import \
-    SimpleSeCoEstimator, CN2Estimator, RipperEstimator
-
+    SimpleSeCoEstimator, CN2Estimator, IrepEstimator, RipperEstimator
 
 from .datasets import Dataset, \
     binary_slight_overlap, binary_categorical, \
@@ -42,7 +41,10 @@ def count_conditions(theory):
     return np.count_nonzero(np.isfinite(theory))
 
 
-@pytest.fixture(params=[SimpleSeCoEstimator, CN2Estimator, RipperEstimator])
+@pytest.fixture(params=[SimpleSeCoEstimator,
+                        CN2Estimator,
+                        IrepEstimator,
+                        RipperEstimator])
 def seco_estimator_class(request):
     """Fixture running for each of the pre-defined estimator classes from
     `sklearn_seco.concrete`.
