@@ -41,13 +41,19 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         using e.g. :class:`sklearn.preprocessing.OneHotEncoder` or
         :class:`sklearn.preprocessing.Binarizer`.
         TODO: compare performance
+
+    :param explicit_target_class: Use as positive/target class for learning. If
+        `None` (the default), use the first class from `np.unique(y)` (which is
+        sorted).
     """
     def __init__(self,
                  implementation: 'SeCoBaseImplementation',
-                 categorical_features: Union[None, str, np.ndarray] = None):
+                 categorical_features: Union[None, str, np.ndarray] = None,
+                 explicit_target_class = None):
         super().__init__()
         self.implementation = implementation
         self.categorical_features = categorical_features
+        self.explicit_target_class = explicit_target_class
 
     def fit(self, X, y):
         X, y = check_X_y(X, y, dtype=np.floating)
@@ -56,7 +62,10 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         check_classification_targets(y)
         self.classes_ = unique_labels(y)
-        self.target_class_ = self.classes_[0]
+        if self.explicit_target_class is not None:
+            self.target_class_ = self.explicit_target_class
+        else:
+            self.target_class_ = self.classes_[0]
 
         # prepare  attributes / features / X
         self.n_features_ = X.shape[1]
@@ -193,9 +202,11 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         elif n_classes_ > 2:
             # TODO: multi_class strategy of ripper: OneVsRest, remove C_i after learning rules for it
             if self.multi_class == "one_vs_rest":
+                self.base_estimator_.set_params(explicit_target_class=1)
                 self.base_estimator_ = OneVsRestClassifier(self.base_estimator_,
                                                            n_jobs=self.n_jobs)
             elif self.multi_class == "one_vs_one":
+                # TODO: tell _BinarySeCoEstimator about classes, i.e. which is positive
                 self.base_estimator_ = OneVsOneClassifier(self.base_estimator_,
                                                           n_jobs=self.n_jobs)
             else:
