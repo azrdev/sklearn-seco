@@ -7,7 +7,7 @@ multi-inheritance, each class has to declare **kwargs and forward anything it
 doesn't consume using `super().__init__(**kwargs)`. Users of mixin-composed
 classes will have to use keyword- instead of positional arguments.
 """
-
+from abc import abstractmethod
 from functools import lru_cache
 from typing import Tuple, Iterable
 
@@ -298,9 +298,19 @@ class RipperImplementation(BeamSearch,
                            InformationGainHeuristic,
                            GrowPruneSplit,
                            RipperPostPruning,
-                           NoPostProcess  # TODO: ripper post-optimization
+                           NoPostProcess
                            ):
-    """Ripper as defined by (Cohen 1995)."""
+    """Ripper as defined by (Cohen 1995).
+
+    NOTE: The global post-optimization phase is currently not implemented
+        (that would be the `post_process` method).
+
+    fields
+    =====
+    - `best_description_length`: The minimal DL found in the current search so
+      far, `minDL` in weka/JRip.
+    - `description_length_`: The DL of the current theory, `dl` in weka/JRip.
+    """
 
     def __init__(self,
                  check_error_rate: bool = True,
@@ -309,6 +319,7 @@ class RipperImplementation(BeamSearch,
         super().__init__(**kwargs)
         self.check_error_rate = check_error_rate
         self.description_length_surplus = description_length_surplus
+        self.description_length_ = None
 
     def pruning_evaluation(self, rule: AugmentedRule
                            ) -> Tuple[float, float, int]:
@@ -324,62 +335,129 @@ class RipperImplementation(BeamSearch,
         # tie-breaking by positive coverage p and rule discovery order
         return (laplace, p, -rule.instance_no)
 
+    def set_context(self, estimator: _BinarySeCoEstimator, X, y):
+        super().set_context(estimator, X, y)
+
+        if self.description_length_ is None:
+            positives = np.count_nonzero(y == self.target_class)
+            # set expected fp/(err = fp+fn) rate := proportion of the class
+            self.expected_fp_over_err = positives / len(y)
+            # set default DL (only data, empty theory)
+            self.description_length_ = \
+            self.best_description_length = \
+                self.data_description_length(covered=0, uncovered=len(y),
+                                             fp=0, fn=positives)
+
+    def unset_context(self):
+        super().unset_context()
+        self.description_length_ = None
+        self.best_description_length = None
+        self.expected_fp_over_err = None
+
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
-        # WIP: extracted from weka
+        """TODO: accuRate from JRip"""
         p, n = self.count_matches(rule)
         accuracy_rate = (p + 1) / (p + n + 1)
-        return accuracy_rate < 1
+        return accuracy_rate >= 1
 
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:
-        # XXX: WIP taken from weka
-        # rstats.getSimpleStats: 0: coverage; 1:uncoverage; 2: true positive; 3: true negatives; 4: false positives; 5: false negatives
+        """TODO: MDL-based, taken from JRip"""
 
-        p, n = self.count_matches(rule)
-        if self.description_length(rule) > \
-                (self.best_description_length +  # best_ == minDL
-                 self.description_length_surplus):
+        self.description_length_ += \
+            self.relative_description_length(theory, rule)
+        self.best_description_length = min(self.best_description_length,
+                                           self.description_length_)
+        if self.description_length_ > (self.best_description_length +
+                                       self.description_length_surplus):
             return True
+        p, n = self.count_matches(rule)
         if p <= 0:
             return True
         if self.check_error_rate and (n / (p + n)) >= 0.5:  # error rate
             return True
         return False
 
-    def description_length(self, rule: AugmentedRule):
-        """description length as defined in RIPPER patent p.14
+    def relative_description_length(self, theory: Theory, rule: AugmentedRule):
+        """TODO: from JRip
+
+        note JRip has the index parameter which is only !=last_rule in global optimization
         """
-        S = self.subset_description_length
-
-        k = np.count_nonzero(rule.conditions)  # number of conditions
-        n_cond = np.product(rule.conditions.shape)  # possible no. of conditions
-        kbits = np.log2(k)  # number of bits to send integer `k`
-        dl_theory = kbits + S(n_cond, k, k / n_cond)
-
-        def dl_exceptions(
-                T,  # no. of exceptions
-                C,  # no. of examples covered
-                U,  # no. of examples uncovered
-                fp,  # no. of false positive errors
-                fn,  # no. of false negative errors
-                e,  # no. of errors
-        ):
-            """description length of exceptions, see (Quinlan 1995)
-            or the ripper patent p.14
-            """
-            if C > (T / 2):
-                return np.log(T + 1) + S(C, fp, e / (2 * C)) + S(U, fn, fn / U)
-            else:
-                return np.log(T + 1) + S(U, fn, e / (2 * U)) + S(C, fp, fp / C)
-
-        p, n = self.count_matches(rule)
-        fn = self.P - p
-        U = len(self.X) - self.P - self.N
-        return 0.5 * dl_theory + dl_exceptions(T, p + n, U, n, fn, n + fn)
+        minDataDLIfExists = self.minDataDLIfExists(theory, rule)
+        rule_DL = self.rule_description_length(rule)
+        minDataDLIfDeleted = self.minDataDLIfDeleted(theory, rule)
+        return minDataDLIfExists + rule_DL - minDataDLIfDeleted
 
     @staticmethod
     def subset_description_length(n, k, p):
-        return -k * np.log2(p) - (n - k) * np.log2(1 - p)
+        rt = -k * math.log2(p) if p > 0 else 0
+        rt2 = - (n - k) * math.log2(1 - p) if p < 1 else 0
+        return rt + rt2
+
+    def rule_description_length(self, rule: AugmentedRule):
+        n_conditions = np.count_nonzero(rule.conditions)  # no. of conditions
+        max_n_conditions = rule.conditions.size  # possible no. of conditions
+        # TODO: JRip counts all thresholds (RuleStats.numAllConditions())
+
+        kbits = math.log2(n_conditions)  # no. of bits to send `n_conditions`
+        if n_conditions > 1:
+            kbits += 2 * math.log2(kbits)
+        rule_dl = kbits + self.subset_description_length(
+            max_n_conditions, n_conditions, n_conditions / max_n_conditions)
+        return rule_dl * 0.5  # redundancy factor
+
+    def data_description_length(self, covered, uncovered, fp, fn):
+        """TODO"""
+        S = self.subset_description_length
+        total_bits = math.log2(covered + uncovered + 1)
+        if covered > uncovered:
+            expected_error = self.expected_fp_over_err * (fp + fn)
+            covered_bits = S(covered, fp, expected_error / covered)
+            if uncovered > 0:
+                uncovered_bits = S(uncovered, fn, fn / uncovered)
+            else:
+                uncovered_bits = 0
+        else:
+            expected_error = (1 - self.expected_fp_over_err) * (fp + fn)
+            if covered > 0:
+                covered_bits = S(covered, fp, fp / covered)
+            else:
+                covered_bits = 0
+            uncovered_bits = S(uncovered, fn, expected_error / uncovered)
+        return total_bits + covered_bits + uncovered_bits
+
+    def minDataDLIfExists(self, theory: Theory, rule: AugmentedRule):
+        cm = self.count_matches
+        p, n = cm(rule)
+        P, N = self.P, self.N
+        # XXX: cache (p,n) for rule in theory
+        theory_pn = [cm(rule) for rule in theory]  # [(p,n), …]
+        return self.data_description_length(
+            covered=sum(th_p + th_n for th_p, th_n in theory_pn),  # of theory
+            uncovered=P + N - p - n, # of rule
+            fp=sum(th_n for th_p, th_n in theory_pn),  # of theory
+            fn=N - n,  # of rule
+        )
+
+    def minDataDLIfDeleted(self, theory: Theory, rule: AugmentedRule):
+        cm = self.count_matches
+        p, n = cm(rule)
+        P, N = self.P, self.N
+        # XXX: cache (p,n) for rule in theory
+        theory_pn = [cm(rule) for rule in theory]  # [(p,n), …]
+        # covered stats cumulate over theory
+        coverage = sum(th_p + th_n for th_p, th_n in theory_pn)
+        fp = sum(th_n for th_p, th_n in theory_pn)
+        # uncovered stats are those of the last rule
+        if theory:
+            uncoverage = P + N - p -n
+            fn = N - n
+        else:
+            # we're at the first rule
+            uncoverage = P + N # == coverage + uncoverage
+            fn = p + N - n  # tp + fn
+        return self.data_description_length(
+            covered=coverage, uncovered=uncoverage, fp=fp, fn=fn)
 
 
 class RipperEstimator(SeCoEstimator):

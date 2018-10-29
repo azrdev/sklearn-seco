@@ -6,6 +6,7 @@
 - performance comparison
     - with sklearn.RandomForest, CART
     - with weka.JRip J48 PRISM CN2
+        - `java -cp /usr/share/java/weka/weka.jar weka.Run JRip -t iris.arff -no-cv -O 0`
     - test data sets: <http://scikit-learn.org/stable/datasets/index.html>
 
 - CI
