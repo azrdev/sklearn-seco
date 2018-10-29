@@ -116,10 +116,10 @@ class AugmentedRule:
             raise ValueError("Exactly one of (conditions, n_features) "
                              "must be not None.")
         # init fields
+        self.condition_trace = []
         if original:
-            self.condition_trace = original.condition_trace
-        else:
-            self.condition_trace = []
+            # copy trace, but into a new list
+            self.condition_trace[:] = original.condition_trace
         self._p = None
         self._n = None
         self._sort_key = None
@@ -271,9 +271,8 @@ class SeCoBaseImplementation(ABC):
         return match_rule(self.X, rule.conditions, self.categorical_mask)
 
     def match_rule_raw(self, rule: Rule, X):
-        """
+        """Apply `rule` to X, telling for each sample if it matched.
 
-        :param rule:
         :param X: The samples to test.
         :return: An array of dtype bool and shape `(n_samples,)`.
         """

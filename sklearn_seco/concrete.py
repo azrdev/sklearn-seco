@@ -28,7 +28,7 @@ def pairwise(iterable):
     return zip(a, b)
 
 
-# Mixins providing implementation facettes
+# Mixins providing implementation facets
 
 
 class BeamSearch(SeCoBaseImplementation):
@@ -223,17 +223,16 @@ class RipperPostPruning(SeCoBaseImplementation):
         """
         candidates = [rule]
         # dropping all final (i.e. last added) sets of conditions
+        generalization = rule
         for boundary, index, value, old_value in reversed(rule.condition_trace):
-            generalization = rule.copy()
+            generalization = generalization.copy()
             generalization.set_condition(boundary, index, old_value)
+            generalization._sort_key = self.pruning_evaluation(generalization)
             candidates.append(generalization)
-        for candidate in candidates:
-            candidate._sort_key = self.pruning_evaluation(candidate)
         candidates.sort()
-        # XXX: JRip counts coverage for each condition and uses laplace (p+1/p+n+2), this contradicts paper (cohen95) which has p-n/p+n
 
         best_rule = candidates.pop()
-        self.rate_rule(best_rule)  # ensure rating by grow-heuristic
+        self.rate_rule(best_rule)  # restore rating by grow-heuristic
         return best_rule
 
 
