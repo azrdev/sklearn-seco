@@ -49,7 +49,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     def __init__(self,
                  implementation: 'SeCoBaseImplementation',
                  categorical_features: Union[None, str, np.ndarray] = None,
-                 explicit_target_class = None):
+                 explicit_target_class=None):
         super().__init__()
         self.implementation = implementation
         self.categorical_features = categorical_features

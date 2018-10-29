@@ -7,6 +7,7 @@ multi-inheritance, each class has to declare **kwargs and forward anything it
 doesn't consume using `super().__init__(**kwargs)`. Users of mixin-composed
 classes will have to use keyword- instead of positional arguments.
 """
+import math
 from abc import abstractmethod
 from functools import lru_cache
 from typing import Tuple, Iterable
@@ -153,7 +154,9 @@ class InformationGainHeuristic(SeCoBaseImplementation):
     def evaluate_rule(self, rule: AugmentedRule):
         p, n = self.count_matches(rule)
         P, N = self.P, self.N  # TODO: maybe count_matches(rule.original) is meant here? book fig6.4 says code is correct
-        info_gain = p * (np.log(p / (p + n)) - np.log(P / (P + N)))
+        # info_gain = p * (log2(p / (p + n)) - log2(P / (P + N)))
+        info_gain = p * (math.log2(p) - math.log2(p + n)
+                         - math.log2(P) + math.log2(P + N)) if p > 0 else 0
         # tie-breaking by positive coverage p and rule discovery order
         return (info_gain, p, -rule.instance_no)
 
@@ -179,7 +182,7 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
         # purity = p / (p + n)
         # impurity = n / (p + n)
         # # cross entropy
-        # CE = (- purity * np.log(purity / (P / (P + N)))
+        # CE = (- purity * math.log(purity / (P / (P + N)))
         #       - xlogy(impurity, impurity / (N / (P + N))))
         # # J-Measure
         # J = p * CE
@@ -344,7 +347,7 @@ class RipperImplementation(BeamSearch,
             self.expected_fp_over_err = positives / len(y)
             # set default DL (only data, empty theory)
             self.description_length_ = \
-            self.best_description_length = \
+                self.best_description_length = \
                 self.data_description_length(covered=0, uncovered=len(y),
                                              fp=0, fn=positives)
 
@@ -434,7 +437,7 @@ class RipperImplementation(BeamSearch,
         theory_pn = [cm(rule) for rule in theory]  # [(p,n), …]
         return self.data_description_length(
             covered=sum(th_p + th_n for th_p, th_n in theory_pn),  # of theory
-            uncovered=P + N - p - n, # of rule
+            uncovered=P + N - p - n,  # of rule
             fp=sum(th_n for th_p, th_n in theory_pn),  # of theory
             fn=N - n,  # of rule
         )
@@ -450,11 +453,11 @@ class RipperImplementation(BeamSearch,
         fp = sum(th_n for th_p, th_n in theory_pn)
         # uncovered stats are those of the last rule
         if theory:
-            uncoverage = P + N - p -n
+            uncoverage = P + N - p - n
             fn = N - n
         else:
             # we're at the first rule
-            uncoverage = P + N # == coverage + uncoverage
+            uncoverage = P + N  # == coverage + uncoverage
             fn = p + N - n  # tp + fn
         return self.data_description_length(
             covered=coverage, uncovered=uncoverage, fp=fp, fn=fn)
