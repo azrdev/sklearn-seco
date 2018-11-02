@@ -20,3 +20,6 @@
 - python2, python3 < 3.7 compatibility, esp. type hints
 - submission to upstream: sklearn-contrib? future maintainer needed?
     - add paper references to documentation
+
+- categorical features as bitvectors <https://stackoverflow.com/questions/5602155/numpy-boolean-array-with-1-bit-entries>
+    (problem: NaN == no rule test)

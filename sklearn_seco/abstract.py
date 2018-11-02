@@ -85,7 +85,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                              " but got {}.".format(self.categorical_features))
 
         # run SeCo algorithm
-        self.theory_ = np.array(self.abstract_seco(X, y))
+        self.theory_ = np.array(self.abstract_seco(X, y), ndmin=3)
         return self
 
     def find_best_rule(self) -> 'AugmentedRule':
@@ -109,7 +109,8 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         rules: RuleQueue = [best_rule]
         while len(rules):
             for candidate in select_candidate_rules(rules):
-                for refinement in refine_rule(candidate):  # TODO: parallelize here?
+                # TODO: parallelize here:
+                for refinement in refine_rule(candidate):
                     rate_rule(refinement)
                     if not inner_stopping_criterion(refinement):
                         rules.append(refinement)

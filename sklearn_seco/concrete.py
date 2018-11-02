@@ -44,7 +44,7 @@ class BeamSearch(SeCoBaseImplementation):
     Rule selection is done in `filter_rules`, while `select_candidate_rules`
     always returns the whole queue as candidates.
     """
-    def __init__(self, beam_width: int = 1, **kwargs):
+    def __init__(self, *, beam_width: int = 1, **kwargs):
         super().__init__(**kwargs)
         self.beam_width_ = beam_width
 
@@ -166,7 +166,7 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
     """Mixin using as stopping criterion for rule refinement a significance
     test like CN2.
     """
-    def __init__(self, LRS_threshold: float = 0.0, **kwargs):
+    def __init__(self, *,  LRS_threshold: float = 0.0, **kwargs):
         super().__init__(**kwargs)
         self.LRS_threshold = LRS_threshold  # FIXME: estimator.set_param not reflected here
 
