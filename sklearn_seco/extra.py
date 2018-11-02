@@ -288,6 +288,7 @@ def plot_coverage_log(
     for rule_idx, (rule_trace, refinements) in \
             enumerate(zip_longest(coverage_log, refinement_log)):
         PNi = PN[rule_idx]
+        # TODO: visualize whether refinement was rejected due to inner_stop
         if draw_refinements == 'nonzero':
             refts_mask = refinements[:, P] != 0
         elif draw_refinements:
