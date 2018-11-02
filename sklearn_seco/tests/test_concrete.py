@@ -10,6 +10,7 @@ from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.common import UPPER
 from sklearn_seco.concrete import SimpleSeCoImplementation
 from .conftest import count_conditions
+from .datasets import perfectly_correlated_multiclass
 
 
 def test_base_trivial(record_theory):
@@ -87,10 +88,10 @@ def test_trivial_decision_border(seco_estimator, trivial_decision_border,
                               decimal=1)
 
 
-def test_perfectly_correlated_categories_multiclass(
-        seco_estimator, perfectly_correlated_multiclass, record_theory):
+def test_perfectly_correlated_categories_multiclass(seco_estimator,
+                                                    record_theory):
     """Expect perfect rules on `perfectly_correlated_multiclass` problem."""
-    dataset = perfectly_correlated_multiclass
+    dataset = perfectly_correlated_multiclass()
     seco_estimator.fit(dataset.x_train, dataset.y_train,
                        categorical_features=dataset.categorical_features)
     bases = assert_multiclass_problem(seco_estimator)
@@ -151,7 +152,7 @@ def assert_binary_problem(estimator):
 def assert_multiclass_problem(estimator):
     """Check recognition of multi-class problem.
 
-    :return: the list of "base_estimator_" `_BinarySeCoEstimator` instance
+    :return: the list of "base_estimator_" `_BinarySeCoEstimator` instances
     """
     assert not isinstance(estimator.base_estimator_, _BinarySeCoEstimator)
     bases = estimator.base_estimator_.estimators_

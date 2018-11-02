@@ -10,7 +10,7 @@ from sklearn_seco.concrete import \
 
 from .datasets import Dataset, \
     binary_slight_overlap, binary_categorical, \
-    binary_mixed, xor_2d, checkerboard_2d
+    binary_mixed, xor_2d, checkerboard_2d, perfectly_correlated_multiclass
 
 
 # pytest plugin, to print theory on test failure
@@ -82,16 +82,8 @@ def trivial_decision_border():
     return Dataset(X, y)
 
 
-@pytest.fixture
-def perfectly_correlated_multiclass():
-    """Generate 10-class problem with 10 features each matching one class."""
-    n = 10
-    y = np.arange(1, n + 1)
-    x = np.eye(n, dtype=int) * y
-    return Dataset(x, y, categorical_features='all')
-
-
-@pytest.fixture(params=[binary_categorical,
+@pytest.fixture(params=[perfectly_correlated_multiclass,
+                        binary_categorical,
                         binary_mixed,
                         xor_2d,
                         checkerboard_2d,

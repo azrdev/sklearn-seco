@@ -19,6 +19,12 @@ def Dataset(x_train: np.ndarray,
 
 # datasets
 
+def perfectly_correlated_multiclass(n_features=10):
+    """Generate multiclass problem with n features each matching one class."""
+    y = np.arange(1, n_features + 1)
+    x = np.eye(n_features, dtype=int) * y
+    return Dataset(x, y, categorical_features='all')
+
 
 def binary_categorical(n_features=8, n_samples=100, random=7):
     """Generate binary discrete problem with little noise.
