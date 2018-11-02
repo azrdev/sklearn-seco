@@ -263,6 +263,16 @@ class SeCoBaseImplementation(ABC):
         self.__calculate_PN()
         return self._N
 
+    @property
+    def X(self):
+        """The current training data features"""
+        return self._X
+
+    @property
+    def y(self):
+        """The current training data labels/classification"""
+        return self._y
+
     def match_rule(self, rule: AugmentedRule):
         """Apply `rule`, telling for each sample if it matched.
 
@@ -297,7 +307,7 @@ class SeCoBaseImplementation(ABC):
         return (rule._p, rule._n)
 
     def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
-        """New invocation of `_BinarySeCoEstimator._find_best_rule`.
+        """New invocation of `_BinarySeCoEstimator.find_best_rule`.
 
         Override this hook if you need to keep state across all invocations of
         the callbacks from one find_best_rule run, e.g. (candidate) rule
@@ -310,8 +320,8 @@ class SeCoBaseImplementation(ABC):
         self.n_features = estimator.n_features_
         self.target_class = estimator.target_class_
         # depend on examples (X, y), which change each iteration
-        self.X = X
-        self.y = y
+        self._X = X
+        self._y = y
         self._P = None
         self._N = None
 
@@ -319,8 +329,9 @@ class SeCoBaseImplementation(ABC):
         """Called after the last invocation of
         `_BinarySeCoEstimator._find_best_rule`.
         """
-        self.X = None
-        self.y = None
+        # cleanup memory
+        self._X = None
+        self._y = None
         self._P = None
         self._N = None
 
@@ -328,7 +339,7 @@ class SeCoBaseImplementation(ABC):
         """Wrapper around `evaluate_rule`."""
         rule._sort_key = self.evaluate_rule(rule)
 
-    # TODO: maybe separate callbacks for find_best_rule context into own class?
+    # TODO: separate callbacks for find_best_rule context into own class
     # abstract interface
 
     @abstractmethod

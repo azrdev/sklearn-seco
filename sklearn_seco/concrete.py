@@ -14,6 +14,7 @@ from typing import Tuple, Iterable
 
 import numpy as np
 from scipy.special import xlogy
+from sklearn.utils import check_random_state
 
 from sklearn_seco.abstract import Theory, SeCoEstimator, _BinarySeCoEstimator
 from sklearn_seco.common import \
@@ -207,10 +208,57 @@ class NoPostProcess(SeCoBaseImplementation):
 
 
 class GrowPruneSplit(SeCoBaseImplementation):
-    """TODO: Implement a split of the examples into growing and pruning set."""
+    """Implement a split of the examples into growing and pruning set once per
+    iteration (i.e. for each `find_best_rule` call).
+
+    This works by overriding the getters for the properties `X` and `y`.
+    By default, and after each reset of the training data (i.e. `set_context`)
+    this returns the growing set. As soon as the algorithm wants to switch to
+    the pruning set (e.g. at the head of `simplify_rule`) it has to set
+    `self.growing = False`.
+
+    :param pruning_split_ratio: float between 0.0 and 1.0
+      The relative size of the pruning set.
+
+    :param grow_prune_random: None | int | instance of RandomState
+      RNG to perform splitting. Passed to `sklearn.utils.check_random_state`.
+
+    :var growing: bool
+      If True (the default), let `self.X` and `self.y` return the growing set,
+      otherwise the pruning set.
+    """
+    def __init__(self, *,
+                 pruning_split_ratio: float = 0.25,
+                 grow_prune_random=None,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.pruning_split_ratio = pruning_split_ratio
+        self.growing = True
+        self._grow_prune_random = check_random_state(grow_prune_random)
+
+    def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
+        super().set_context(estimator, X, y)
+
+        n_samples = len(y)
+        shuffled = self._grow_prune_random.permutation(n_samples)
+        split_point = int(n_samples * self.pruning_split_ratio)
+        # FIXME: stratify, i.e. preserve imbalanced class distribution
+        self._growing_X = X[shuffled][:split_point]
+        self._growing_y = y[shuffled][:split_point]
+        self._pruning_X = X[shuffled][split_point:]
+        self._pruning_y = y[shuffled][split_point:]
+        self.growing = True
+
+    @property
+    def X(self):
+        return self._growing_X if self.growing else self._pruning_X
+
+    @property
+    def y(self):
+        return self._growing_y if self.growing else self._pruning_y
 
 
-class RipperPostPruning(SeCoBaseImplementation):
+class RipperPostPruning(GrowPruneSplit):
     @abstractmethod
     def pruning_evaluation(self, rule: AugmentedRule) -> Tuple[float, ...]:
         """Rate rule to allow finding the best refinement, while pruning."""
@@ -224,6 +272,8 @@ class RipperPostPruning(SeCoBaseImplementation):
 
         :return: An improved version of `rule`.
         """
+        self.growing = False  # tell GrowPruneSplit to use pruning set
+
         candidates = [rule]
         # dropping all final (i.e. last added) sets of conditions
         generalization = rule
@@ -299,8 +349,7 @@ class CN2Estimator(SeCoEstimator):
 class RipperImplementation(BeamSearch,
                            TopDownSearch,
                            InformationGainHeuristic,
-                           GrowPruneSplit,
-                           RipperPostPruning,
+                           RipperPostPruning,  # already pulls GrowPruneSplit
                            NoPostProcess
                            ):
     """Ripper as defined by (Cohen 1995).
@@ -473,8 +522,7 @@ class RipperEstimator(SeCoEstimator):
 class IrepImplementation(BeamSearch,
                          TopDownSearch,
                          InformationGainHeuristic,
-                         GrowPruneSplit,
-                         RipperPostPruning,
+                         RipperPostPruning,  # already pulls GrowPruneSplit
                          NoPostProcess):
     """IREP as defined by (Cohen 1995), originally by (Fürnkranz, Widmer 1994).
     """

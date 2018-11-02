@@ -130,11 +130,8 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         rule_stopping_criterion = self.implementation.rule_stopping_criterion
         find_best_rule = self.find_best_rule
         simplify_rule = self.implementation.simplify_rule
-        unset_context = self.implementation.unset_context
-        post_process = self.implementation.post_process
-        match_rule = self.implementation.match_rule
+        match_rule_raw = self.implementation.match_rule_raw
 
-        # TODO: split growing/pruning set for ripper
         # main loop
         target_class = self.target_class_
         theory: Theory = list()
@@ -145,12 +142,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             if rule_stopping_criterion(theory, rule):
                 break
             # ignore the rest of theory, because it already covered
-            uncovered = ~ match_rule(rule)
+            uncovered = ~ match_rule_raw(rule.conditions, X)
             X = X[uncovered]  # TODO: use mask array instead of copy?
             y = y[uncovered]
             theory.append(rule.conditions)  # throw away augmentation
-        unset_context()
-        return post_process(theory)
+        self.implementation.unset_context()
+        return self.implementation.post_process(theory)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
