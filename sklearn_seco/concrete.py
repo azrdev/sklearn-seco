@@ -371,7 +371,11 @@ class RipperImplementation(BeamSearch,
         super().__init__(**kwargs)
         self.check_error_rate = check_error_rate
         self.description_length_surplus = description_length_surplus
+        # init fields
         self.description_length_ = None
+        self.best_description_length = None
+        self.expected_fp_over_err = None
+        self.theory_pn = None
 
     def pruning_evaluation(self, rule: AugmentedRule
                            ) -> Tuple[float, float, int]:
@@ -399,12 +403,14 @@ class RipperImplementation(BeamSearch,
                 self.best_description_length = \
                 self.data_description_length(covered=0, uncovered=len(y),
                                              fp=0, fn=positives)
+        self.theory_pn = []
 
     def unset_context(self):
         super().unset_context()
         self.description_length_ = None
         self.best_description_length = None
         self.expected_fp_over_err = None
+        self.theory_pn = None
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         """TODO: accuRate from JRip"""
@@ -415,6 +421,7 @@ class RipperImplementation(BeamSearch,
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:
         """TODO: MDL-based, taken from JRip"""
+        self.theory_pn.append((self.P, self.N))
 
         self.description_length_ += \
             self.relative_description_length(theory, rule)
@@ -463,43 +470,35 @@ class RipperImplementation(BeamSearch,
         S = self.subset_description_length
         total_bits = math.log2(covered + uncovered + 1)
         if covered > uncovered:
+            assert covered > 0
             expected_error = self.expected_fp_over_err * (fp + fn)
             covered_bits = S(covered, fp, expected_error / covered)
-            if uncovered > 0:
-                uncovered_bits = S(uncovered, fn, fn / uncovered)
-            else:
-                uncovered_bits = 0
+            uncovered_bits = S(uncovered, fn, fn / uncovered) \
+                if uncovered > 0 else 0
         else:
+            assert uncovered > 0
             expected_error = (1 - self.expected_fp_over_err) * (fp + fn)
-            if covered > 0:
-                covered_bits = S(covered, fp, fp / covered)
-            else:
-                covered_bits = 0
+            covered_bits = S(covered, fp, fp / covered) \
+                if covered > 0 else 0
             uncovered_bits = S(uncovered, fn, expected_error / uncovered)
         return total_bits + covered_bits + uncovered_bits
 
     def minDataDLIfExists(self, theory: Theory, rule: AugmentedRule):
-        cm = self.count_matches
-        p, n = cm(rule)
+        p, n = self.count_matches(rule)
         P, N = self.P, self.N
-        # XXX: cache (p,n) for rule in theory
-        theory_pn = [cm(rule) for rule in theory]  # [(p,n), …]
         return self.data_description_length(
-            covered=sum(th_p + th_n for th_p, th_n in theory_pn),  # of theory
+            covered=sum(th_p + th_n for th_p, th_n in self.theory_pn),  # of theory
             uncovered=P + N - p - n,  # of rule
-            fp=sum(th_n for th_p, th_n in theory_pn),  # of theory
+            fp=sum(th_n for th_p, th_n in self.theory_pn),  # of theory
             fn=N - n,  # of rule
         )
 
     def minDataDLIfDeleted(self, theory: Theory, rule: AugmentedRule):
-        cm = self.count_matches
-        p, n = cm(rule)
+        p, n = self.count_matches(rule)
         P, N = self.P, self.N
-        # XXX: cache (p,n) for rule in theory
-        theory_pn = [cm(rule) for rule in theory]  # [(p,n), …]
         # covered stats cumulate over theory
-        coverage = sum(th_p + th_n for th_p, th_n in theory_pn)
-        fp = sum(th_n for th_p, th_n in theory_pn)
+        coverage = sum(th_p + th_n for th_p, th_n in self.theory_pn)
+        fp = sum(th_n for th_p, th_n in self.theory_pn)
         # uncovered stats are those of the last rule
         if theory:
             uncoverage = P + N - p - n
