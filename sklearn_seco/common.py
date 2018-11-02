@@ -246,10 +246,10 @@ class SeCoBaseImplementation(ABC):
                 assert self._N is None
             else:
                 return  # already calculated
-        positives = self.y == self.target_class
-        self._P = np.count_nonzero(positives)
-        self._N = np.count_nonzero(~positives)
-        assert self._P + self._N == len(self.y) == self.X.shape[0]
+        self._P = np.count_nonzero(self.y == self.target_class)
+        self._N = len(self.y) - self._P
+        assert self._N == np.count_nonzero(self.y == self.target_class)
+        assert self._P + self._N == len(self.y)
 
     @property
     def P(self):
