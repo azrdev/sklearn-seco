@@ -1,3 +1,5 @@
+"""Artificial dataset (generator functions) for the sklearn_seco unittests."""
+
 import itertools
 from collections import namedtuple
 from typing import Union

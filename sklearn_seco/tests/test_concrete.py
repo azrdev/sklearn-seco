@@ -144,8 +144,8 @@ def assert_binary_problem(estimator):
     """
     base = estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
+    assert len(base.theory_)
     assert count_conditions(
-        # TODO: IndexError if theory empty
         base.theory_[:, UPPER, base.categorical_mask_]) == 0
     return base
 
@@ -161,7 +161,6 @@ def assert_multiclass_problem(estimator):
         assert isinstance(base_, _BinarySeCoEstimator)
         assert len(base_.theory_)
         assert count_conditions(
-            # TODO: IndexError if theory empty
             base_.theory_[:, UPPER, base_.categorical_mask_]) == 0
     return bases
 
