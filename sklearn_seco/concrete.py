@@ -10,7 +10,7 @@ classes will have to use keyword- instead of positional arguments.
 import math
 from abc import abstractmethod
 from functools import lru_cache
-from typing import Tuple, Iterable
+from typing import Tuple, Iterable, SupportsFloat
 
 import numpy as np
 from scipy.special import xlogy
@@ -28,6 +28,11 @@ def pairwise(iterable):
     a, b = tee(iterable)
     next(b, None)
     return zip(a, b)
+
+
+def log2(x: SupportsFloat) -> float:
+    """`log2(x) if x > 0 else 0`"""
+    return math.log2(x) if x > 0 else 0.0
 
 
 # Mixins providing implementation facets
@@ -156,8 +161,8 @@ class InformationGainHeuristic(SeCoBaseImplementation):
         p, n = self.count_matches(rule)
         P, N = self.P, self.N  # TODO: maybe count_matches(rule.original) is meant here? book fig6.4 says code is correct
         # info_gain = p * (log2(p / (p + n)) - log2(P / (P + N)))
-        info_gain = p * (math.log2(p) - math.log2(p + n)
-                         - math.log2(P) + math.log2(P + N)) if p > 0 else 0
+        info_gain = p * (log2(p) - log2(p + n) - log2(P) + log2(P + N)) \
+            if p > 0 else 0
         # tie-breaking by positive coverage p and rule discovery order
         return (info_gain, p, -rule.instance_no)
 
@@ -449,26 +454,24 @@ class RipperImplementation(BeamSearch,
 
     @staticmethod
     def subset_description_length(n, k, p):
-        rt = -k * math.log2(p) if p > 0 else 0
-        rt2 = - (n - k) * math.log2(1 - p) if p < 1 else 0
-        return rt + rt2
+        return -k * log2(p) - (n - k) * log2(1 - p)
 
     def rule_description_length(self, rule: AugmentedRule):
         n_conditions = np.count_nonzero(rule.conditions)  # no. of conditions
         max_n_conditions = rule.conditions.size  # possible no. of conditions
         # TODO: JRip counts all thresholds (RuleStats.numAllConditions())
 
-        kbits = math.log2(n_conditions)  # no. of bits to send `n_conditions`
+        kbits = log2(n_conditions)  # no. of bits to send `n_conditions`
         if n_conditions > 1:
-            kbits += 2 * math.log2(kbits)
+            kbits += 2 * log2(kbits)
         rule_dl = kbits + self.subset_description_length(
             max_n_conditions, n_conditions, n_conditions / max_n_conditions)
         return rule_dl * 0.5  # redundancy factor
 
     def data_description_length(self, covered, uncovered, fp, fn):
-        """TODO"""
+        """XXX"""
         S = self.subset_description_length
-        total_bits = math.log2(covered + uncovered + 1)
+        total_bits = log2(covered + uncovered + 1)
         if covered > uncovered:
             assert covered > 0
             expected_error = self.expected_fp_over_err * (fp + fn)
