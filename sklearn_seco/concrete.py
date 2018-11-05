@@ -238,8 +238,8 @@ class GrowPruneSplit(SeCoBaseImplementation):
                  **kwargs):
         super().__init__(**kwargs)
         self.pruning_split_ratio = pruning_split_ratio
-        self.growing = True
         self._grow_prune_random = check_random_state(grow_prune_random)
+        self.__growing = True
 
     def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
         super().set_context(estimator, X, y)
@@ -253,6 +253,17 @@ class GrowPruneSplit(SeCoBaseImplementation):
         self._pruning_X = X[shuffled][split_point:]
         self._pruning_y = y[shuffled][split_point:]
         self.growing = True
+
+    @property
+    def growing(self):
+        return self.__growing
+
+    @growing.setter
+    def growing(self, value):
+        if self.__growing != value:
+            self._P = None
+            self._N = None
+        self.__growing = value
 
     @property
     def X(self):
@@ -279,16 +290,19 @@ class RipperPostPruning(GrowPruneSplit):
         """
         self.growing = False  # tell GrowPruneSplit to use pruning set
 
+        pruning_evaluation = self.pruning_evaluation
+
+        rule._sort_key = pruning_evaluation(rule)
         candidates = [rule]
         # dropping all final (i.e. last added) sets of conditions
         generalization = rule
         for boundary, index, value, old_value in reversed(rule.condition_trace):
             generalization = generalization.copy()
             generalization.set_condition(boundary, index, old_value)
-            generalization._sort_key = self.pruning_evaluation(generalization)
+            generalization._sort_key = pruning_evaluation(generalization)
             candidates.append(generalization)
-        candidates.sort()
 
+        candidates.sort()
         best_rule = candidates.pop()
         self.rate_rule(best_rule)  # restore rating by grow-heuristic
         return best_rule

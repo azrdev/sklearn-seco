@@ -85,7 +85,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                              " but got {}.".format(self.categorical_features))
 
         # run SeCo algorithm
-        self.theory_ = np.array(self.abstract_seco(X, y), ndmin=3)
+        self.theory_ = np.array(self.abstract_seco(X, y))
         return self
 
     def find_best_rule(self) -> 'AugmentedRule':
@@ -139,6 +139,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         while np.any(y == target_class):
             set_context(self, X, y)
             rule = find_best_rule()
+            # TODO: ensure grow-rating is not used in pruning. use property & override in GrowPruneSplit ?
             rule = simplify_rule(rule)
             if rule_stopping_criterion(theory, rule):
                 break

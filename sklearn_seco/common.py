@@ -248,7 +248,7 @@ class SeCoBaseImplementation(ABC):
                 return  # already calculated
         self._P = np.count_nonzero(self.y == self.target_class)
         self._N = len(self.y) - self._P
-        assert self._N == np.count_nonzero(self.y == self.target_class)
+        assert self._N == np.count_nonzero(self.y != self.target_class)
         assert self._P + self._N == len(self.y)
 
     @property
