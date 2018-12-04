@@ -152,10 +152,15 @@ class TopDownSearch(SeCoBaseImplementation):
                              **self.rule_prototype_arguments)
 
     def refine_rule(self, rule: AugmentedRule) -> Iterable[AugmentedRule]:
+        """Create refinements of `rule` by adding a test for each of the
+        (unused) attributes, one at a time, trying all possible attribute
+        values / thresholds.
+        """
         all_feature_values = self.all_feature_values
+        categorical_mask = self.categorical_mask
         # TODO: mark constant features for exclusion in future specializations
 
-        for index in np.argwhere(self.categorical_mask
+        for index in np.argwhere(categorical_mask
                                  & ~np.isfinite(rule.lower)  # unused features
                                  ).ravel():
             # argwhere returns each index in separate list, ravel() unpacks
@@ -164,7 +169,7 @@ class TopDownSearch(SeCoBaseImplementation):
                 specialization.set_condition(LOWER, index, value)
                 yield specialization
 
-        for feature_index in np.nonzero(~self.categorical_mask)[0]:
+        for feature_index in np.nonzero(~categorical_mask)[0]:
             old_lower = rule.lower[feature_index]
             no_old_lower = ~np.isfinite(old_lower)
             old_upper = rule.upper[feature_index]
