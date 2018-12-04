@@ -2,10 +2,11 @@
 Implementation of SeCo / Covering algorithm:
 Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 """
-
+import math
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import NewType, Tuple, Iterable, List, Union, NamedTuple
+from typing import \
+    NewType, Tuple, Iterable, List, Union, NamedTuple, SupportsFloat
 import numpy as np
 
 
@@ -29,6 +30,11 @@ LOWER = 0
 UPPER = 1
 Theory = List[Rule]
 RuleQueue = List['AugmentedRule']
+
+
+def log2(x: SupportsFloat) -> float:
+    """`log2(x) if x > 0 else 0`"""
+    return math.log2(x) if x > 0 else 0.0
 
 
 def make_empty_rule(n_features: int) -> Rule:

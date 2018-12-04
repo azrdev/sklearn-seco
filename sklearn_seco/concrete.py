@@ -11,7 +11,7 @@ classes will have to use keyword- instead of positional arguments.
 import math
 from abc import abstractmethod
 from functools import lru_cache
-from typing import Tuple, Iterable, SupportsFloat
+from typing import Tuple, Iterable
 
 import numpy as np
 from scipy.special import xlogy
@@ -19,7 +19,7 @@ from sklearn.utils import check_random_state
 
 from sklearn_seco.abstract import Theory, SeCoEstimator, _BinarySeCoEstimator
 from sklearn_seco.common import \
-    RuleQueue, SeCoBaseImplementation, AugmentedRule, LOWER, UPPER
+    RuleQueue, SeCoBaseImplementation, AugmentedRule, LOWER, UPPER, log2
 
 
 def pairwise(iterable):
@@ -29,11 +29,6 @@ def pairwise(iterable):
     a, b = tee(iterable)
     next(b, None)
     return zip(a, b)
-
-
-def log2(x: SupportsFloat) -> float:
-    """`log2(x) if x > 0 else 0`"""
-    return math.log2(x) if x > 0 else 0.0
 
 
 def grow_prune_split(y,
