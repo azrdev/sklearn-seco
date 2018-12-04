@@ -77,9 +77,13 @@ class AugmentedRule:
         Another rule this one has been forked from, using `copy()`.
 
     condition_trace: list of tuple(int, int, float)
+        (Only used if `enable_condition_trace` is True).
         Contains a tuple(UPPER/LOWER, feature_index, value) for each value that
         was set in conditions, like they were applied to the initially
         constructed rule to get to this rule.
+
+    enable_condition_trace: bool
+        Enable filling of the `condition_trace` field. Default `False`.
 
     _sort_key: tuple of floats
         Define an order of rules for `RuleQueue` and finding a `best_rule`,
@@ -95,8 +99,10 @@ class AugmentedRule:
     """
     __rule_counter = 0
 
-    def __init__(self, *, conditions: Rule = None, n_features: int = None,
-                 original: 'AugmentedRule' = None):
+    def __init__(self, *,
+                 conditions: Rule = None, n_features: int = None,
+                 original: 'AugmentedRule' = None,
+                 enable_condition_trace: bool = False):
         """Construct an `AugmentedRule` with either `n_features` or the given
         `conditions`.
 
@@ -116,6 +122,7 @@ class AugmentedRule:
             raise ValueError("Exactly one of (conditions, n_features) "
                              "must be not None.")
         # init fields
+        self.enable_condition_trace = enable_condition_trace
         self.condition_trace = []
         if original:
             # copy trace, but into a new list
@@ -232,10 +239,14 @@ class SeCoBaseImplementation(ABC):
     - `n_features`: The number of features in the dataset,
       equivalent to `X.shape[1]`.
     - `P` and `N`: The count of positive and negative examples (in self.X)
+    - `rule_prototype_arguments`: kwargs that should be passed to the
+      constructor of `AugmentedRule` by any subclass calling it.
     - `target_class`
     - `trace_feature_order`: If True, all our `AugmentedRule` instances use
       their `condition_trace` property to log all values set to each condition.
     """
+    def __init__(self):
+        self.rule_prototype_arguments = {}
 
     def __calculate_PN(self):
         """Calculate values of properties P, N."""

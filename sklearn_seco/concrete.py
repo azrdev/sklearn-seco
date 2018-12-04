@@ -148,7 +148,8 @@ class TopDownSearch(SeCoBaseImplementation):
         return np.unique(self.X[:, feature_index])
 
     def init_rule(self) -> AugmentedRule:
-        return AugmentedRule(n_features=self.n_features)
+        return AugmentedRule(n_features=self.n_features,
+                             **self.rule_prototype_arguments)
 
     def refine_rule(self, rule: AugmentedRule) -> Iterable[AugmentedRule]:
         all_feature_values = self.all_feature_values
@@ -339,12 +340,21 @@ class GrowPruneSplit(SeCoBaseImplementation):
 
 
 class RipperPostPruning(GrowPruneSplit):
+    """Post-Pruning as performed by RIPPER, directly after growing
+    (`find_best_rule`) each rule.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.rule_prototype_arguments["enable_condition_trace"] = True
+
     @abstractmethod
     def pruning_evaluation(self, rule: AugmentedRule) -> Tuple[float, ...]:
         """Rate rule to allow finding the best refinement, while pruning."""
 
     def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
-        """TODO: doc
+        """Find the best simplification of `rule` by dropping conditions and
+        evaluating using `pruning_evaluation`.
 
         NOTE: Overrides `AugmentedRule._sort_key` (i.e. the evaluation of
           the rule under the growing heuristic) with the pruning heuristic
@@ -358,7 +368,7 @@ class RipperPostPruning(GrowPruneSplit):
 
         rule._sort_key = pruning_evaluation(rule)
         candidates = [rule]
-        # dropping all final (i.e. last added) sets of conditions
+        # drop all final (i.e. last added) sets of conditions
         generalization = rule
         for boundary, index, value, old_value in reversed(rule.condition_trace):
             generalization = generalization.copy()
