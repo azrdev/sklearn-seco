@@ -7,6 +7,7 @@ multi-inheritance, each class has to declare **kwargs and forward anything it
 doesn't consume using `super().__init__(**kwargs)`. Users of mixin-composed
 classes will have to use keyword- instead of positional arguments.
 """
+
 import math
 from abc import abstractmethod
 from functools import lru_cache
@@ -33,6 +34,63 @@ def pairwise(iterable):
 def log2(x: SupportsFloat) -> float:
     """`log2(x) if x > 0 else 0`"""
     return math.log2(x) if x > 0 else 0.0
+
+
+def grow_prune_split(y,
+                     target_class,
+                     split_ratio: float,
+                     rng):
+    """
+    Split `y` into grow and pruning set according to `split_ratio` for RIPPER.
+
+    Make sure that `target_class` is included in the growing set, if it has
+    little instances.
+
+    Partially adapted from `sklearn.model_selection.StratifiedShuffleSplit`.
+
+    :param split_ratio: float between [0,1].
+      Size of pruning set.
+    :param y: array-like of single dimension.
+      The y/class values of all instances.
+    :param target_class: dtype of `y`.
+      The class which should always if possible be present in the growing set.
+      To disable this behaviour, just pass a value which is not in `y`.
+    :param rng: np.random.RandomState
+      RNG to perform splitting.
+    :return: tuple(np.ndarray, np.ndarray), both arrays of single dimension.
+      `(grow, prune)` arrays which each list the indices into `y` for the
+      respective set.
+    """
+    classes, y_indices, class_counts = \
+        np.unique(y, return_inverse=True, return_counts=True)
+
+    # handle target class first, to always round down its pruning count
+    class_index = target_index = np.argwhere(classes == target_class)[0]
+    n_prune = math.floor(class_counts[class_index] * split_ratio)
+    y_indices_shuffled = \
+        rng.permutation(np.nonzero(y_indices == class_index)[0]).tolist()
+    prune = y_indices_shuffled[:n_prune]
+    grow = y_indices_shuffled[n_prune:]
+
+    for class_index, class_count in enumerate(class_counts):
+        if class_index == target_index:
+            continue  # handled separately beforehand
+        n_prune = class_count * split_ratio
+        # decide how to round (up/down) by looking at the previous bias
+        ratio_pre = len(prune) / (len(prune) + len(grow))
+        if ratio_pre > split_ratio:
+            n_prune = math.floor(n_prune)
+        else:
+            n_prune = math.ceil(n_prune)
+
+        y_indices_shuffled = \
+            rng.permutation(np.nonzero(y_indices == class_index)[0]).tolist()
+        prune.extend(y_indices_shuffled[:n_prune])
+        grow.extend(y_indices_shuffled[n_prune:])
+
+    grow = rng.permutation(grow)
+    prune = rng.permutation(prune)
+    return grow, prune
 
 
 # Mixins providing implementation facets
@@ -222,6 +280,10 @@ class GrowPruneSplit(SeCoBaseImplementation):
     the pruning set (e.g. at the head of `simplify_rule`) it has to set
     `self.growing = False`.
 
+    The split is stratified (i.e. class proportions are retained).
+    Note that JRip (and presumably the original RIPPER) state their
+    stratification is bugged.
+
     :param pruning_split_ratio: float between 0.0 and 1.0
       The relative size of the pruning set.
 
@@ -243,15 +305,17 @@ class GrowPruneSplit(SeCoBaseImplementation):
 
     def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
         super().set_context(estimator, X, y)
+        assert 0 <= self.pruning_split_ratio <= 1
 
-        n_samples = len(y)
-        shuffled = self._grow_prune_random.permutation(n_samples)
-        split_point = int(n_samples * self.pruning_split_ratio)
-        # FIXME: stratify, i.e. preserve imbalanced class distribution
-        self._growing_X = X[shuffled][:split_point]
-        self._growing_y = y[shuffled][:split_point]
-        self._pruning_X = X[shuffled][split_point:]
-        self._pruning_y = y[shuffled][split_point:]
+        grow_idx, prune_idx = grow_prune_split(y,
+                                               self.target_class,
+                                               self.pruning_split_ratio,
+                                               self._grow_prune_random,)
+        self._growing_X = X[grow_idx]
+        self._growing_y = y[grow_idx]
+        self._pruning_X = X[prune_idx]
+        self._pruning_y = y[prune_idx]
+
         self.growing = True
 
     @property

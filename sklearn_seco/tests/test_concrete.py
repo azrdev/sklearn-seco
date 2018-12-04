@@ -1,16 +1,46 @@
 """Tests for `sklearn_seco.concrete`."""
 
+from numbers import Real as RealNumber
 import numpy as np
+import pytest
 from numpy import NINF, PINF
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 from sklearn.metrics import accuracy_score
+from sklearn.utils import check_random_state
 from sklearn.utils.estimator_checks import check_estimator
 
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.common import UPPER
-from sklearn_seco.concrete import SimpleSeCoImplementation
+from sklearn_seco.concrete import SimpleSeCoImplementation, grow_prune_split
 from .conftest import count_conditions
 from .datasets import perfectly_correlated_multiclass
+
+
+@pytest.mark.parametrize(
+    ['y', 'ratio', 'grow', 'prune'],
+    [pytest.param([10, 20], 0.5, [1], [0], id="2 samples, ratio 1/2, test indices"),
+     pytest.param([10, 20], 0, [0, 1], [], id="2 samples, ratio 0, test indices"),
+     pytest.param([10, 20], 1, [], [0, 1], id="2 samples, ratio 1, test indices"),
+     pytest.param([10, 20]*4, 0.5, 0.5, 0.5, id="8 samples, ratio 1/2 test"),
+     pytest.param([10, 20]*4, 0, 1, 0, id="8 samples, ratio 0 test"),
+     pytest.param([10, 20]*4, 1, 0, 1, id="8 samples, ratio 1 test"),
+     pytest.param([10, 20, 20, 50]*250, 1, 0, 1, id="1k samples, ratio 1/3 test"),
+     ])
+def test_grow_prune_split(y, ratio, grow, prune):
+    grow_act, prune_act = grow_prune_split(y, 20, ratio, check_random_state(1))
+    # cv, cc = np.unique(y[grow_act], return_counts=True)
+    assert np.ndim(grow_act) == 1
+    assert np.ndim(prune_act) == 1
+    if isinstance(grow, RealNumber):
+        # assert cc[0] > grow_act  # TODO: ratio of positive. TODO: non-binary
+        assert len(grow_act) / len(y) >= grow
+    else:
+        assert_array_equal(grow, sorted(grow_act))
+    if isinstance(prune, RealNumber):
+        assert len(prune_act) / len(y) <= prune
+        # assert cc[1] > prune_act  # TODO: ratio of negative. TODO: non-binary
+    else:
+        assert_array_equal(prune, sorted(prune_act))
 
 
 def test_base_trivial(record_theory):
@@ -135,7 +165,7 @@ def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
                                   x_train, y_train, x_test, y_test)
 
 
-# helpers
+# test helpers
 
 def assert_binary_problem(estimator):
     """Check recognition of binary problem by `estimator`.

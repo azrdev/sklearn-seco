@@ -141,7 +141,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             rule = find_best_rule()
             # TODO: ensure grow-rating is not used in pruning. use property & override in GrowPruneSplit ?
             rule = simplify_rule(rule)
-            if rule_stopping_criterion(theory, rule):
+            if rule_stopping_criterion(theory, rule):  # TODO: use pruning or growing+pruning?
                 break
             # ignore the rest of theory, because it already covered
             uncovered = ~ match_rule_raw(rule.conditions, X)
