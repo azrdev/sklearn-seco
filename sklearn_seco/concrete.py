@@ -20,6 +20,8 @@ from sklearn.utils import check_random_state
 from sklearn_seco.abstract import Theory, SeCoEstimator, _BinarySeCoEstimator
 from sklearn_seco.common import \
     RuleQueue, SeCoBaseImplementation, AugmentedRule, LOWER, UPPER, log2
+from sklearn_seco.ripper_mdl import \
+    data_description_length, relative_description_length
 
 
 def pairwise(iterable):
@@ -439,6 +441,72 @@ class CN2Estimator(SeCoEstimator):
         self.LRS_threshold = LRS_threshold
 
 
+class RipperMdlStop(SeCoBaseImplementation):
+    """MDL (minimum description length) stopping criterion used by RIPPER.
+
+    Abort search if the last found rule has a `description_length_` higher than
+    the best so far + some margin (`description_length_surplus`), or `p=0` or
+    (if `check_error_rate is True`) `n >= p`.
+
+    NOTE: Reconstructed mainly from JRip.java source, no guarantee on all
+      details being corect an identical to other implementation(s).
+    """
+
+    def __init__(self, *,
+                 check_error_rate: bool = True,
+                 description_length_surplus: int = 64,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.check_error_rate = check_error_rate
+        self.description_length_surplus = description_length_surplus
+        # init fields
+        self.description_length_ = None
+        self.best_description_length = None
+        self.expected_fp_over_err = None
+        self.theory_pn = None
+
+    def set_context(self, estimator: _BinarySeCoEstimator, X, y):
+        super().set_context(estimator, X, y)
+
+        if self.description_length_ is None:
+            # initialize at start of abstract_seco
+            positives = np.count_nonzero(y == self.target_class)
+            # set expected fp/(err = fp+fn) rate := proportion of the class
+            self.expected_fp_over_err = positives / len(y)
+            # set default DL (only data, empty theory)
+            self.description_length_ = self.best_description_length = \
+                data_description_length(
+                    expected_fp_over_err=self.expected_fp_over_err,
+                    covered=0, uncovered=len(y), fp=0, fn=positives)
+        self.theory_pn = []
+
+    def unset_context(self):
+        super().unset_context()
+        self.description_length_ = None
+        self.best_description_length = None
+        self.expected_fp_over_err = None
+        self.theory_pn = None
+
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
+                                ) -> bool:
+        p, n = self.count_matches(rule)
+        P, N = self.P, self.N
+        self.theory_pn.append((P, N))
+
+        self.description_length_ += relative_description_length(
+            rule, self.expected_fp_over_err, p, n, P, N, self.theory_pn)
+        self.best_description_length = min(self.best_description_length,
+                                           self.description_length_)
+        if self.description_length_ > (self.best_description_length +
+                                       self.description_length_surplus):
+            return True
+        if p <= 0:
+            return True
+        if self.check_error_rate and (n / (p + n)) >= 0.5:  # error rate  # XXX: eq. n >= p
+            return True
+        return False
+
+
 class RipperImplementation(BeamSearch,
                            TopDownSearch,
                            InformationGainHeuristic,
@@ -457,19 +525,6 @@ class RipperImplementation(BeamSearch,
     - `description_length_`: The DL of the current theory, `dl` in weka/JRip.
     """
 
-    def __init__(self,
-                 check_error_rate: bool = True,
-                 description_length_surplus: int = 64,
-                 **kwargs):
-        super().__init__(**kwargs)
-        self.check_error_rate = check_error_rate
-        self.description_length_surplus = description_length_surplus
-        # init fields
-        self.description_length_ = None
-        self.best_description_length = None
-        self.expected_fp_over_err = None
-        self.theory_pn = None
-
     def pruning_evaluation(self, rule: AugmentedRule
                            ) -> Tuple[float, float, int]:
         """Laplace heuristic, as defined by (Clark and Boswell 1991).
@@ -484,122 +539,11 @@ class RipperImplementation(BeamSearch,
         # tie-breaking by positive coverage p and rule discovery order
         return (laplace, p, -rule.instance_no)
 
-    def set_context(self, estimator: _BinarySeCoEstimator, X, y):
-        super().set_context(estimator, X, y)
-
-        if self.description_length_ is None:
-            positives = np.count_nonzero(y == self.target_class)
-            # set expected fp/(err = fp+fn) rate := proportion of the class
-            self.expected_fp_over_err = positives / len(y)
-            # set default DL (only data, empty theory)
-            self.description_length_ = \
-                self.best_description_length = \
-                self.data_description_length(covered=0, uncovered=len(y),
-                                             fp=0, fn=positives)
-        self.theory_pn = []
-
-    def unset_context(self):
-        super().unset_context()
-        self.description_length_ = None
-        self.best_description_length = None
-        self.expected_fp_over_err = None
-        self.theory_pn = None
-
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
-        """TODO: accuRate from JRip"""
+        """XXX: accuRate from JRip"""
         p, n = self.count_matches(rule)
         accuracy_rate = (p + 1) / (p + n + 1)
         return accuracy_rate >= 1
-
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
-                                ) -> bool:
-        """TODO: MDL-based, taken from JRip"""
-        self.theory_pn.append((self.P, self.N))
-
-        self.description_length_ += \
-            self.relative_description_length(theory, rule)
-        self.best_description_length = min(self.best_description_length,
-                                           self.description_length_)
-        if self.description_length_ > (self.best_description_length +
-                                       self.description_length_surplus):
-            return True
-        p, n = self.count_matches(rule)
-        if p <= 0:
-            return True
-        if self.check_error_rate and (n / (p + n)) >= 0.5:  # error rate
-            return True
-        return False
-
-    def relative_description_length(self, theory: Theory, rule: AugmentedRule):
-        """TODO: from JRip
-
-        note JRip has the index parameter which is only !=last_rule in global optimization
-        """
-        minDataDLIfExists = self.minDataDLIfExists(theory, rule)
-        rule_DL = self.rule_description_length(rule)
-        minDataDLIfDeleted = self.minDataDLIfDeleted(theory, rule)
-        return minDataDLIfExists + rule_DL - minDataDLIfDeleted
-
-    @staticmethod
-    def subset_description_length(n, k, p):
-        return -k * log2(p) - (n - k) * log2(1 - p)
-
-    def rule_description_length(self, rule: AugmentedRule):
-        n_conditions = np.count_nonzero(rule.conditions)  # no. of conditions
-        max_n_conditions = rule.conditions.size  # possible no. of conditions
-        # TODO: JRip counts all thresholds (RuleStats.numAllConditions())
-
-        kbits = log2(n_conditions)  # no. of bits to send `n_conditions`
-        if n_conditions > 1:
-            kbits += 2 * log2(kbits)
-        rule_dl = kbits + self.subset_description_length(
-            max_n_conditions, n_conditions, n_conditions / max_n_conditions)
-        return rule_dl * 0.5  # redundancy factor
-
-    def data_description_length(self, covered, uncovered, fp, fn):
-        """XXX"""
-        S = self.subset_description_length
-        total_bits = log2(covered + uncovered + 1)
-        if covered > uncovered:
-            assert covered > 0
-            expected_error = self.expected_fp_over_err * (fp + fn)
-            covered_bits = S(covered, fp, expected_error / covered)
-            uncovered_bits = S(uncovered, fn, fn / uncovered) \
-                if uncovered > 0 else 0
-        else:
-            assert uncovered > 0
-            expected_error = (1 - self.expected_fp_over_err) * (fp + fn)
-            covered_bits = S(covered, fp, fp / covered) \
-                if covered > 0 else 0
-            uncovered_bits = S(uncovered, fn, expected_error / uncovered)
-        return total_bits + covered_bits + uncovered_bits
-
-    def minDataDLIfExists(self, theory: Theory, rule: AugmentedRule):
-        p, n = self.count_matches(rule)
-        P, N = self.P, self.N
-        return self.data_description_length(
-            covered=sum(th_p + th_n for th_p, th_n in self.theory_pn),  # of theory
-            uncovered=P + N - p - n,  # of rule
-            fp=sum(th_n for th_p, th_n in self.theory_pn),  # of theory
-            fn=N - n,  # of rule
-        )
-
-    def minDataDLIfDeleted(self, theory: Theory, rule: AugmentedRule):
-        p, n = self.count_matches(rule)
-        P, N = self.P, self.N
-        # covered stats cumulate over theory
-        coverage = sum(th_p + th_n for th_p, th_n in self.theory_pn)
-        fp = sum(th_n for th_p, th_n in self.theory_pn)
-        # uncovered stats are those of the last rule
-        if theory:
-            uncoverage = P + N - p - n
-            fn = N - n
-        else:
-            # we're at the first rule
-            uncoverage = P + N  # == coverage + uncoverage
-            fn = p + N - n  # tp + fn
-        return self.data_description_length(
-            covered=coverage, uncovered=uncoverage, fp=fp, fn=fn)
 
 
 class RipperEstimator(SeCoEstimator):
