@@ -131,7 +131,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         rule_stopping_criterion = self.implementation.rule_stopping_criterion
         find_best_rule = self.find_best_rule
         simplify_rule = self.implementation.simplify_rule
-        match_rule_raw = self.implementation.match_rule_raw
+        match_rule_raw = self.implementation.match_rule
 
         # main loop
         target_class = self.target_class_
@@ -155,7 +155,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
         X: np.ndarray = check_array(X)
         target_class = self.target_class_
-        match_rule = self.implementation.match_rule_raw
+        match_rule = self.implementation.match_rule
         result = np.repeat(self.classes_[1],  # negative class
                            X.shape[0])
 

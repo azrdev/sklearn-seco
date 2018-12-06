@@ -240,7 +240,7 @@ class SeCoBaseImplementation(ABC):
 
     - `categorical_mask`: An array of shape `(n_features,)` and type bool,
       indicating if a feature is categorical (`True`) or numerical (`False`).
-    - `match_rule()` and `match_rule_raw()`
+    - `match_rule()`
     - `count_matches()`
     - `n_features`: The number of features in the dataset,
       equivalent to `X.shape[1]`.
@@ -290,15 +290,8 @@ class SeCoBaseImplementation(ABC):
         """The current training data labels/classification"""
         return self._y
 
-    def match_rule(self, rule: AugmentedRule):
-        """Apply `rule`, telling for each sample if it matched.
-
-        :return: An array of dtype bool and shape `(n_samples,)`.
-        """
-        return match_rule(self.X, rule.conditions, self.categorical_mask)
-
-    def match_rule_raw(self, rule: Rule, X):
-        """Apply `rule` to X, telling for each sample if it matched.
+    def match_rule(self, rule: Rule, X):
+        """Apply `rule` to `X`, telling for each sample if it matched.
 
         :param X: The samples to test.
         :return: An array of dtype bool and shape `(n_samples,)`.
