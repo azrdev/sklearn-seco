@@ -415,9 +415,6 @@ class CN2Implementation(BeamSearch,
                         NoPostPruning,
                         NoPostProcess):
     """CN2 as refined by (Clark and Boswell 1991)."""
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:
         """Abort search if rule covers no positive examples.
@@ -510,6 +507,7 @@ class RipperMdlStop(SeCoBaseImplementation):
 class RipperImplementation(BeamSearch,
                            TopDownSearch,
                            InformationGainHeuristic,
+                           RipperMdlStop,
                            RipperPostPruning,  # already pulls GrowPruneSplit
                            NoPostProcess
                            ):
@@ -540,7 +538,7 @@ class RipperImplementation(BeamSearch,
         return (laplace, p, -rule.instance_no)
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
-        """XXX: accuRate from JRip"""
+        """Laplace-based criterion. Field `accuRate` in JRip.java."""
         p, n = self.count_matches(rule)
         accuracy_rate = (p + 1) / (p + n + 1)
         return accuracy_rate >= 1
@@ -575,7 +573,7 @@ class IrepImplementation(BeamSearch,
     def rule_stopping_criterion(self, theory: Theory,
                                 rule: AugmentedRule) -> bool:
         p, n = self.count_matches(rule)
-        return p / (p + n) < 0.5
+        return p / (p + n) < 0.5  # TODO: eq. p < n
 
 
 class IrepEstimator(SeCoEstimator):
