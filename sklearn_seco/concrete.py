@@ -196,13 +196,11 @@ class PurityHeuristic(SeCoBaseImplementation):
     positive examples among the examples covered by the rule.
     """
 
-    def evaluate_rule(self, rule: AugmentedRule) -> Tuple[float, float, int]:
+    def growing_heuristic(self, rule: AugmentedRule) -> float:
         p, n = self.count_matches(rule)
         if p + n == 0:
-            return (0, p, -rule.instance_no)
-        purity = p / (p + n)
-        # tie-breaking by pos. coverage and rule creation order: older = better
-        return (purity, p, -rule.instance_no)
+            return 0
+        return p / (p + n)  # purity
 
 
 class LaplaceHeuristic(SeCoBaseImplementation):
@@ -210,22 +208,20 @@ class LaplaceHeuristic(SeCoBaseImplementation):
 
     The Laplace estimate was defined by (Clark and Boswell 1991) for CN2.
     """
-    def evaluate_rule(self, rule: AugmentedRule) -> Tuple[float, float, int]:
+    def growing_heuristic(self, rule: AugmentedRule) -> float:
         """Laplace heuristic, as defined by (Clark and Boswell 1991)."""
         p, n = self.count_matches(rule)
-        laplace = (p + 1) / (p + n + 2)
-        return (laplace, p, -rule.instance_no)  # tie-breaking by pos. coverage
+        return (p + 1) / (p + n + 2)  # laplace
 
 
 class InformationGainHeuristic(SeCoBaseImplementation):
-    def evaluate_rule(self, rule: AugmentedRule):
+    def growing_heuristic(self, rule: AugmentedRule) -> float:
         p, n = self.count_matches(rule)
         P, N = self.P, self.N  # TODO: maybe count_matches(rule.original) is meant here? book fig6.4 says code is correct
-        # info_gain = p * (log2(p / (p + n)) - log2(P / (P + N)))
-        info_gain = p * (log2(p) - log2(p + n) - log2(P) + log2(P + N)) \
-            if p > 0 else 0
-        # tie-breaking by positive coverage p and rule discovery order
-        return (info_gain, p, -rule.instance_no)
+        if p > 0:
+            return 0
+        # return p * (log2(p / (p + n)) - log2(P / (P + N)))  # info_gain
+        return p * (log2(p) - log2(p + n) - log2(P) + log2(P + N))  # info_gain
 
 
 class SignificanceStoppingCriterion(SeCoBaseImplementation):
@@ -321,6 +317,22 @@ class GrowPruneSplit(SeCoBaseImplementation):
 
         self.growing = True
 
+    def evaluate_rule(self, rule: AugmentedRule) -> None:
+        """Copy `SeCoBaseImplementation.evaluate_rule` but use
+        `pruning_heuristic` while pruning.
+        """
+        if self.growing:
+            super().evaluate_rule(rule)
+        else:
+            p, n = self.count_matches(rule)
+            rule._sort_key = (self.pruning_heuristic(rule),
+                              p,
+                              -rule.instance_no)
+
+    @abstractmethod
+    def pruning_heuristic(self, rule: AugmentedRule) -> float:
+        """Rate rule to allow finding the best refinement, while pruning."""
+
     @property
     def growing(self):
         return self.__growing
@@ -330,6 +342,7 @@ class GrowPruneSplit(SeCoBaseImplementation):
         if self.__growing != value:
             self._P = None
             self._N = None
+            # TODO: ensure rule._sort_key is not mixed. use two incomparable tuple-types?
         self.__growing = value
 
     @property
@@ -350,13 +363,9 @@ class RipperPostPruning(GrowPruneSplit):
         super().__init__(**kwargs)
         self.rule_prototype_arguments["enable_condition_trace"] = True
 
-    @abstractmethod
-    def pruning_evaluation(self, rule: AugmentedRule) -> Tuple[float, ...]:
-        """Rate rule to allow finding the best refinement, while pruning."""
-
     def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
         """Find the best simplification of `rule` by dropping conditions and
-        evaluating using `pruning_evaluation`.
+        evaluating using `pruning_heuristic`.
 
         NOTE: Overrides `AugmentedRule._sort_key` (i.e. the evaluation of
           the rule under the growing heuristic) with the pruning heuristic
@@ -364,23 +373,25 @@ class RipperPostPruning(GrowPruneSplit):
 
         :return: An improved version of `rule`.
         """
+        evaluate_rule = self.evaluate_rule
+
         self.growing = False  # tell GrowPruneSplit to use pruning set
-
-        pruning_evaluation = self.pruning_evaluation
-
-        rule._sort_key = pruning_evaluation(rule)
+        evaluate_rule(rule)
         candidates = [rule]
         # drop all final (i.e. last added) sets of conditions
         generalization = rule
         for boundary, index, value, old_value in reversed(rule.condition_trace):
             generalization = generalization.copy()
             generalization.set_condition(boundary, index, old_value)
-            generalization._sort_key = pruning_evaluation(generalization)
+            evaluate_rule(generalization)
             candidates.append(generalization)
 
         candidates.sort()
         best_rule = candidates.pop()
-        self.rate_rule(best_rule)  # restore rating by grow-heuristic
+
+        # restore rating by grow-heuristic
+        self.growing = True
+        evaluate_rule(best_rule)
         return best_rule
 
 
@@ -523,8 +534,8 @@ class RipperImplementation(BeamSearch,
     - `description_length_`: The DL of the current theory, `dl` in weka/JRip.
     """
 
-    def pruning_evaluation(self, rule: AugmentedRule
-                           ) -> Tuple[float, float, int]:
+    def pruning_heuristic(self, rule: AugmentedRule
+                          ) -> Tuple[float, float, int]:
         """Laplace heuristic, as defined by (Clark and Boswell 1991).
 
         JRip documentation states:
@@ -559,7 +570,7 @@ class IrepImplementation(BeamSearch,
     """IREP as defined by (Cohen 1995), originally by (Fürnkranz, Widmer 1994).
     """
 
-    def pruning_evaluation(self, rule: AugmentedRule) -> Tuple[float, ...]:
+    def pruning_heuristic(self, rule: AugmentedRule) -> Tuple[float, ...]:
         p, n = self.count_matches(rule)
         P, N = self.P, self.N
         v = (p + N - n) / (P + N)

@@ -5,8 +5,7 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 import math
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import \
-    NewType, Tuple, Iterable, List, Union, NamedTuple, SupportsFloat
+from typing import NewType, Tuple, Iterable, List, NamedTuple, SupportsFloat
 import numpy as np
 
 
@@ -95,9 +94,8 @@ class AugmentedRule:
         Define an order of rules for `RuleQueue` and finding a `best_rule`,
         using operator `<` (i.e. higher values == better rule == later in the
         queue).
-        Set to the return value of `SeCoBaseImplementation.evaluate_rule`
-        (by `SeCoBaseImplementation.rate_rule`).
-        Accessed implicitly through `__lt__`.
+        Set by `SeCoBaseImplementation.evaluate_rule` and accessed implicitly
+        through `__lt__`.
 
     _p, _n: int
         positive and negative coverage of this rule. Access via
@@ -345,9 +343,12 @@ class SeCoBaseImplementation(ABC):
         self._P = None
         self._N = None
 
-    def rate_rule(self, rule: AugmentedRule) -> None:
-        """Wrapper around `evaluate_rule`."""
-        rule._sort_key = self.evaluate_rule(rule)
+    def evaluate_rule(self, rule: AugmentedRule) -> None:
+        """Rate rule to allow comparison & finding the best refinement."""
+        p, n = self.count_matches(rule)
+        # default tie-breaking:
+        # by positive coverage and rule creation order (older = better)
+        rule._sort_key = (self.growing_heuristic(rule), p, -rule.instance_no)
 
     # TODO: separate callbacks for find_best_rule context into own class
     # abstract interface
@@ -358,11 +359,14 @@ class SeCoBaseImplementation(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def evaluate_rule(self, rule: AugmentedRule) -> Union[float, Tuple[float, ...]]:
-        """Rate rule to allow comparison & finding the best refinement.
+    def growing_heuristic(self, rule: AugmentedRule) -> float:
+        """Rate rule to allow comparison with other rules.
+        Also used as confidence estimate for voting in multi-class cases.
 
-        :return: A rule rating, or a tuple of these (later elements are used for
-          tie breaking). Rules are compared using these tuples and operator `<`.
+        Rules are compared using operator `<` on their `_sort_key`, which is
+        set by `evaluate_rule` to a tuple of values: First (most important) the
+        result of this `growing_heuristic`, later values are used for tie
+        breaking.
         """
         raise NotImplementedError
 

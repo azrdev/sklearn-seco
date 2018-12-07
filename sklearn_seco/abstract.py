@@ -97,7 +97,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # resolve methods once for performance
         init_rule = self.implementation.init_rule
-        rate_rule = self.implementation.rate_rule
+        evaluate_rule = self.implementation.evaluate_rule
         select_candidate_rules = self.implementation.select_candidate_rules
         refine_rule = self.implementation.refine_rule
         inner_stopping_criterion = self.implementation.inner_stopping_criterion
@@ -105,13 +105,13 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # algorithm
         best_rule = init_rule()
-        rate_rule(best_rule)
+        evaluate_rule(best_rule)
         rules: RuleQueue = [best_rule]
         while len(rules):
             for candidate in select_candidate_rules(rules):
                 # TODO: parallelize here:
                 for refinement in refine_rule(candidate):
-                    rate_rule(refinement)
+                    evaluate_rule(refinement)
                     if not inner_stopping_criterion(refinement):
                         rules.append(refinement)
                         if best_rule < refinement:
