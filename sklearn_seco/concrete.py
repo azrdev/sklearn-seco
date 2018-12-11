@@ -257,13 +257,13 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
         return LRS <= self.LRS_threshold
 
 
-class NoPostPruning(SeCoBaseImplementation):
+class SkipPostPruning(SeCoBaseImplementation):
     """Mixin to skip post-pruning"""
     def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
         return rule
 
 
-class NoPostProcess(SeCoBaseImplementation):
+class SkipPostProcess(SeCoBaseImplementation):
     """Mixin to skip post processing."""
     def post_process(self, theory: Theory) -> Theory:
         return theory
@@ -401,8 +401,8 @@ class RipperPostPruning(GrowPruneSplit):
 class SimpleSeCoImplementation(BeamSearch,
                                TopDownSearch,
                                PurityHeuristic,
-                               NoPostPruning,
-                               NoPostProcess):
+                               SkipPostPruning,
+                               SkipPostProcess):
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         # p, n = self.count_matches(rule)
@@ -423,8 +423,8 @@ class CN2Implementation(BeamSearch,
                         TopDownSearch,
                         LaplaceHeuristic,
                         SignificanceStoppingCriterion,
-                        NoPostPruning,
-                        NoPostProcess):
+                        SkipPostPruning,
+                        SkipPostProcess):
     """CN2 as refined by (Clark and Boswell 1991)."""
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:
@@ -520,7 +520,7 @@ class RipperImplementation(BeamSearch,
                            InformationGainHeuristic,
                            RipperMdlStop,
                            RipperPostPruning,  # already pulls GrowPruneSplit
-                           NoPostProcess
+                           SkipPostProcess
                            ):
     """Ripper as defined by (Cohen 1995).
 
@@ -566,7 +566,7 @@ class IrepImplementation(BeamSearch,
                          TopDownSearch,
                          InformationGainHeuristic,
                          RipperPostPruning,  # already pulls GrowPruneSplit
-                         NoPostProcess):
+                         SkipPostProcess):
     """IREP as defined by (Cohen 1995), originally by (Fürnkranz, Widmer 1994).
     """
 
