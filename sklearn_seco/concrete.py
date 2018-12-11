@@ -415,6 +415,18 @@ class RipperPostPruning(GrowPruneSplit):
         return best_rule
 
 
+class CoverageRuleStop(SeCoBaseImplementation):
+    """Rule stopping criterion. Stop if best rule doesn't cover more positive
+    than negative examples.
+
+    NOTE: The IREP-2 criterion `p/(p+n) <= 0.5` as defined in (Fürnkranz 1994)
+      and used in RIPPER (Cohen 1995) is equivalent to `p <= n`.
+    """
+    def rule_stopping_criterion(self, theory: Theory,
+                                rule: AugmentedRule) -> bool:
+        p, n = self.count_matches(rule)
+        return p < n
+
 
 # Example Algorithm configurations
 
@@ -424,12 +436,9 @@ class SimpleSeCoImplementation(BeamSearch,
                                PurityHeuristic,
                                NoNegativesStop,
                                SkipPostPruning,
+                               CoverageRuleStop,
                                SkipPostProcess):
-
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
-                                ) -> bool:
-        p, n = self.count_matches(rule)
-        return n >= p
+    pass
 
 
 class SimpleSeCoEstimator(SeCoEstimator):
@@ -585,6 +594,7 @@ class IrepImplementation(BeamSearch,
                          InformationGainHeuristic,
                          NoNegativesStop,
                          RipperPostPruning,  # already pulls GrowPruneSplit
+                         CoverageRuleStop,
                          SkipPostProcess):
     """IREP as defined by (Cohen 1995), originally by (Fürnkranz, Widmer 1994).
     """
@@ -594,11 +604,6 @@ class IrepImplementation(BeamSearch,
         P, N = self.P, self.N
         v = (p + N - n) / (P + N)
         return (v, p, -rule.instance_no)
-
-    def rule_stopping_criterion(self, theory: Theory,
-                                rule: AugmentedRule) -> bool:
-        p, n = self.count_matches(rule)
-        return p / (p + n) < 0.5  # TODO: eq. p < n
 
 
 class IrepEstimator(SeCoEstimator):
