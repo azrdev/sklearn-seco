@@ -448,51 +448,6 @@ class PositiveThresholdRuleStop(SeCoBaseImplementation):
         return p < self.__threshold
 
 
-# Example Algorithm configurations
-
-
-class SimpleSeCoImplementation(BeamSearch,
-                               TopDownSearch,
-                               PurityHeuristic,
-                               NoNegativesStop,
-                               SkipPostPruning,
-                               CoverageRuleStop,
-                               SkipPostProcess):
-    pass
-
-
-class SimpleSeCoEstimator(SeCoEstimator):
-    def __init__(self, multi_class="one_vs_rest", n_jobs=1):
-        super().__init__(SimpleSeCoImplementation(), multi_class, n_jobs)
-
-
-class CN2Implementation(BeamSearch,
-                        TopDownSearch,
-                        LaplaceHeuristic,
-                        SignificanceStoppingCriterion,
-                        SkipPostPruning,
-                        PositiveThresholdRuleStop,
-                        SkipPostProcess):
-    """CN2 as refined by (Clark and Boswell 1991)."""
-
-    def __init__(self, **kwargs):
-        super().__init__(
-            positive_coverage_stop_threshold=1,  # → PositiveThresholdRuleStop
-            **kwargs)
-
-
-class CN2Estimator(SeCoEstimator):
-    """Estimator using :class:`CN2Implementation`."""
-    def __init__(self,
-                 LRS_threshold: float = 0.0,
-                 multi_class="one_vs_rest",
-                 n_jobs=1):
-        super().__init__(CN2Implementation(LRS_threshold=LRS_threshold),
-                         multi_class, n_jobs)
-        # sklearn assumes all parameters are class fields, so copy this here
-        self.LRS_threshold = LRS_threshold
-
-
 class RipperMdlRuleStop(SeCoBaseImplementation):
     """MDL (minimum description length) stopping criterion used by RIPPER.
 
@@ -557,6 +512,51 @@ class RipperMdlRuleStop(SeCoBaseImplementation):
         if self.check_error_rate and (n / (p + n)) >= 0.5:  # error rate  # XXX: eq. n >= p
             return True
         return False
+
+
+# Example Algorithm configurations
+
+
+class SimpleSeCoImplementation(BeamSearch,
+                               TopDownSearch,
+                               PurityHeuristic,
+                               NoNegativesStop,
+                               SkipPostPruning,
+                               CoverageRuleStop,
+                               SkipPostProcess):
+    pass
+
+
+class SimpleSeCoEstimator(SeCoEstimator):
+    def __init__(self, multi_class="one_vs_rest", n_jobs=1):
+        super().__init__(SimpleSeCoImplementation(), multi_class, n_jobs)
+
+
+class CN2Implementation(BeamSearch,
+                        TopDownSearch,
+                        LaplaceHeuristic,
+                        SignificanceStoppingCriterion,
+                        SkipPostPruning,
+                        PositiveThresholdRuleStop,
+                        SkipPostProcess):
+    """CN2 as refined by (Clark and Boswell 1991)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(
+            positive_coverage_stop_threshold=1,  # → PositiveThresholdRuleStop
+            **kwargs)
+
+
+class CN2Estimator(SeCoEstimator):
+    """Estimator using :class:`CN2Implementation`."""
+    def __init__(self,
+                 LRS_threshold: float = 0.0,
+                 multi_class="one_vs_rest",
+                 n_jobs=1):
+        super().__init__(CN2Implementation(LRS_threshold=LRS_threshold),
+                         multi_class, n_jobs)
+        # sklearn assumes all parameters are class fields, so copy this here
+        self.LRS_threshold = LRS_threshold
 
 
 class RipperImplementation(BeamSearch,
