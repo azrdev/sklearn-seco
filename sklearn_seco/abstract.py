@@ -51,6 +51,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                  categorical_features: Union[None, str, np.ndarray] = None,
                  explicit_target_class=None):
         super().__init__()
+        # FIXME: `implementation` shared across estimator.copy() instances
         self.implementation = implementation
         self.categorical_features = categorical_features
         self.explicit_target_class = explicit_target_class
@@ -156,7 +157,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         X: np.ndarray = check_array(X)
         target_class = self.target_class_
         match_rule = self.implementation.match_rule
-        result = np.repeat(self.classes_[1],  # negative class
+        result = np.repeat(self.classes_[1],  # negative class  # FIXME: not if self.explicit_target_class
                            X.shape[0])
 
         for rule in self.theory_:
@@ -196,7 +197,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         n_classes_ = self.classes_.size
         if n_classes_ == 1:
             raise ValueError("SeCoEstimator requires 2 or more distinct "
-                             "classes. Only class %s present."
+                             "classes. Only 1 class (%s) present."
                              % self.classes_[0])
         elif n_classes_ > 2:
             # TODO: multi_class strategy of ripper: OneVsRest, remove C_i after learning rules for it

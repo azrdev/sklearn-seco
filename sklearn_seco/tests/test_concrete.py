@@ -197,8 +197,7 @@ def assert_multiclass_problem(estimator):
 
 def assert_prediction_performance(estimator, x_train, y_train, x_test, y_test):
     # check accuracy,precision on training data
-    y_predicted_train = estimator.predict(x_train)
-    assert accuracy_score(y_train, y_predicted_train) > 0.9
+    assert estimator.score(x_train, y_train) > 0.9
     if x_test is not None:
         # check accuracy on test data
         y_predicted = estimator.predict(x_test)

@@ -128,6 +128,7 @@ def binary_slight_overlap(
     return Dataset(X, y, X_test, y_test)
 
 
+# TODO: unused
 def sklearn_make_classification(n_samples=100, n_features=2,
                                 random=1,
                                 *, categorize=False, **kwargs):

@@ -218,7 +218,7 @@ class InformationGainHeuristic(SeCoBaseImplementation):
     def growing_heuristic(self, rule: AugmentedRule) -> float:
         p, n = self.count_matches(rule)
         P, N = self.P, self.N  # TODO: maybe count_matches(rule.original) is meant here? book fig6.4 says code is correct
-        if p > 0:
+        if p == 0:
             return 0
         # return p * (log2(p / (p + n)) - log2(P / (P + N)))  # info_gain
         return p * (log2(p) - log2(p + n) - log2(P) + log2(P + N))  # info_gain
@@ -405,7 +405,7 @@ class SimpleSeCoImplementation(BeamSearch,
                                NoPostProcess):
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
-        p, n = self.count_matches(rule)
+        # p, n = self.count_matches(rule)
         return False
 
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule

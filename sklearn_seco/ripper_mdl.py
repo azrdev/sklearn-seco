@@ -34,17 +34,17 @@ def data_description_length(expected_fp_over_err, covered, uncovered, fp, fn
     S = subset_description_length
     total_bits = log2(covered + uncovered + 1)
     if covered > uncovered:
-        assert covered > 0
         expected_error = expected_fp_over_err * (fp + fn)
-        covered_bits = S(covered, fp, expected_error / covered)
+        covered_bits = S(covered, fp, expected_error / covered) \
+            if covered > 0 else 0  # TODO: seems JRip never has covered==0
         uncovered_bits = S(uncovered, fn, fn / uncovered) \
             if uncovered > 0 else 0
     else:
-        assert uncovered > 0
         expected_error = (1 - expected_fp_over_err) * (fp + fn)
         covered_bits = S(covered, fp, fp / covered) \
             if covered > 0 else 0
-        uncovered_bits = S(uncovered, fn, expected_error / uncovered)
+        uncovered_bits = S(uncovered, fn, expected_error / uncovered) \
+            if uncovered > 0 else 0  # TODO: seems JRip never has uncovered==0
     return total_bits + covered_bits + uncovered_bits
 
 
@@ -53,7 +53,7 @@ def rule_description_length(rule: AugmentedRule) -> float:
 
     NOTE: Named `RuleStats.theoryDL` in weka.JRip.
     """
-    n_conditions = np.count_nonzero(rule.conditions)  # no. of conditions
+    n_conditions = np.count_nonzero(np.isfinite(rule.conditions))  # no. of conditions
     max_n_conditions = rule.conditions.size  # possible no. of conditions
     # TODO: JRip counts all thresholds (RuleStats.numAllConditions())
 
@@ -68,17 +68,17 @@ def rule_description_length(rule: AugmentedRule) -> float:
 def minDataDLIfExists(expected_fp_over_err, p, n, P, N, theory_pn) -> float:
     return data_description_length(
         expected_fp_over_err=expected_fp_over_err,
-        covered=sum(th_p + th_n for th_p, th_n in theory_pn),  # of theory
+        covered=sum(th_p + th_n for th_p, th_n in theory_pn[1:]),  # of theory
         uncovered=P + N - p - n,  # of rule
-        fp=sum(th_n for th_p, th_n in theory_pn),  # of theory
-        fn=N - n,  # of rule
+        fp=sum(th_n for th_p, th_n in theory_pn[1:]),  # of theory
+        fn=P - p,  # of rule
     )
 
 
 def minDataDLIfDeleted(expected_fp_over_err, p, n, P, N, theory_pn) -> float:
     # covered stats cumulate over theory
-    coverage = sum(th_p + th_n for th_p, th_n in theory_pn)
-    fp = sum(th_n for th_p, th_n in theory_pn)
+    coverage = sum(th_p + th_n for th_p, th_n in theory_pn[1:])
+    fp = sum(th_n for th_p, th_n in theory_pn[1:])
     # uncovered stats are those of the last rule
     if len(theory_pn) > 1:
         # we're not at the first rule (`> 1` since theory_pn contains an entry
