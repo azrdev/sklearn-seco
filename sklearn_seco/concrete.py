@@ -428,6 +428,26 @@ class CoverageRuleStop(SeCoBaseImplementation):
         return p < n
 
 
+class PositiveThresholdRuleStop(SeCoBaseImplementation):
+    """Rule stopping criterion. Stop if best rule covers less than `threshold`
+    positive examples.
+    """
+
+    def __init__(self, *, positive_coverage_stop_threshold, **kwargs):
+        super().__init__(**kwargs)
+        self.__threshold = positive_coverage_stop_threshold
+
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
+                                ) -> bool:
+        """Abort search if rule covers less than `threshold` positive examples.
+
+        If threshold == 1, this corresponds to the "E is empty" condition in
+        Table 3 of (Clark and Niblett 1989) used by CN2.
+        """
+        p, n = self.count_matches(rule)
+        return p < self.__threshold
+
+
 # Example Algorithm configurations
 
 
@@ -451,17 +471,14 @@ class CN2Implementation(BeamSearch,
                         LaplaceHeuristic,
                         SignificanceStoppingCriterion,
                         SkipPostPruning,
+                        PositiveThresholdRuleStop,
                         SkipPostProcess):
     """CN2 as refined by (Clark and Boswell 1991)."""
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
-                                ) -> bool:
-        """Abort search if rule covers no positive examples.
 
-        This corresponds to the "E is empty" condition in Table 3 of
-        (Clark and Niblett 1989).
-        """
-        p, n = self.count_matches(rule)
-        return p == 0
+    def __init__(self, **kwargs):
+        super().__init__(
+            positive_coverage_stop_threshold=1,  # → PositiveThresholdRuleStop
+            **kwargs)
 
 
 class CN2Estimator(SeCoEstimator):
