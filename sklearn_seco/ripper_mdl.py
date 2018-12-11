@@ -1,7 +1,7 @@
 """
 MDL (minimum description length) calculation for RIPPER.
 
-Mostly adapted from JRip.java, see `sklearn_seco.concrete.RipperMdlStop`.
+Mostly adapted from JRip.java, see `sklearn_seco.concrete.RipperMdlRuleStop`.
 Most parts are described in
 - (Quinlan 1995) MDL and Categorical Theories (Continued)
 - (Quinlan 1994) The Minimum Description Length Principle and Categorical Theories

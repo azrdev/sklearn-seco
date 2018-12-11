@@ -467,7 +467,7 @@ class CN2Estimator(SeCoEstimator):
         self.LRS_threshold = LRS_threshold
 
 
-class RipperMdlStop(SeCoBaseImplementation):
+class RipperMdlRuleStop(SeCoBaseImplementation):
     """MDL (minimum description length) stopping criterion used by RIPPER.
 
     Abort search if the last found rule has a `description_length_` higher than
@@ -536,7 +536,7 @@ class RipperMdlStop(SeCoBaseImplementation):
 class RipperImplementation(BeamSearch,
                            TopDownSearch,
                            InformationGainHeuristic,
-                           RipperMdlStop,
+                           RipperMdlRuleStop,
                            RipperPostPruning,  # already pulls GrowPruneSplit
                            SkipPostProcess
                            ):
@@ -606,4 +606,5 @@ class IrepEstimator(SeCoEstimator):
         super().__init__(IrepImplementation(), multi_class, n_jobs)
 
 
+# TODO: allow defining heuristics/metrics (and stop criteria?) as functions and pulling them in as growing_/pruning_heuristic etc without defining an extra class
 # TODO: don't require definition of 2 classes, add *Estimator factory method in SeCoBaseImplementation
