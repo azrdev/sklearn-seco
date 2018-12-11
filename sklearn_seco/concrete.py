@@ -257,6 +257,26 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
         return LRS <= self.LRS_threshold
 
 
+class NoNegativesStop(SeCoBaseImplementation):
+    """Inner stopping criterion, abort refining when only positive examples are
+    covered.
+
+    NOTE: Since `find_best_rule` checks the filter *before* a refinement is
+      processed any further, the straight forward implementation `return n ==
+      0` would exclude very good rules, therefore we reject rule with `n == 0`
+      whose predecessor already had `n == 0`. This may be wrong when not using
+      `TopDownSearch`.
+    """
+
+    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
+        if not rule.original:
+            return False
+        count_matches = self.count_matches
+        p, n = count_matches(rule)
+        p_prev, n_prev = count_matches(rule.original)
+        return n_prev == 0 and n == 0
+
+
 class SkipPostPruning(SeCoBaseImplementation):
     """Mixin to skip post-pruning"""
     def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
@@ -395,18 +415,16 @@ class RipperPostPruning(GrowPruneSplit):
         return best_rule
 
 
+
 # Example Algorithm configurations
 
 
 class SimpleSeCoImplementation(BeamSearch,
                                TopDownSearch,
                                PurityHeuristic,
+                               NoNegativesStop,
                                SkipPostPruning,
                                SkipPostProcess):
-
-    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
-        # p, n = self.count_matches(rule)
-        return False
 
     def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
                                 ) -> bool:
@@ -565,6 +583,7 @@ class RipperEstimator(SeCoEstimator):
 class IrepImplementation(BeamSearch,
                          TopDownSearch,
                          InformationGainHeuristic,
+                         NoNegativesStop,
                          RipperPostPruning,  # already pulls GrowPruneSplit
                          SkipPostProcess):
     """IREP as defined by (Cohen 1995), originally by (Fürnkranz, Widmer 1994).
@@ -575,11 +594,6 @@ class IrepImplementation(BeamSearch,
         P, N = self.P, self.N
         v = (p + N - n) / (P + N)
         return (v, p, -rule.instance_no)
-
-    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
-        """[refine] until the rule covers no negative examples"""
-        p, n = self.count_matches(rule)
-        return n == 0
 
     def rule_stopping_criterion(self, theory: Theory,
                                 rule: AugmentedRule) -> bool:
@@ -593,4 +607,3 @@ class IrepEstimator(SeCoEstimator):
 
 
 # TODO: don't require definition of 2 classes, add *Estimator factory method in SeCoBaseImplementation
-# TODO: dedup stopping criteria
