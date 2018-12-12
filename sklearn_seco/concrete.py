@@ -319,7 +319,7 @@ class GrowPruneSplit(SeCoBaseImplementation):
       otherwise the pruning set.
     """
     def __init__(self, *,
-                 pruning_split_ratio: float = 0.25,
+                 pruning_split_ratio: float = 1/3,
                  grow_prune_random=None,
                  **kwargs):
         super().__init__(**kwargs)
@@ -465,7 +465,7 @@ class RipperMdlRuleStop(SeCoBaseImplementation):
 
     Fields
     =====
-    - `best_description_length`: The minimal DL found in the current search so
+    - `best_description_length_`: The minimal DL found in the current search so
       far, named `minDL` in JRip.
     - `description_length_`: The DL of the current theory, named `dl` in JRip.
     """
@@ -475,13 +475,10 @@ class RipperMdlRuleStop(SeCoBaseImplementation):
                  description_length_surplus: int = 64,
                  **kwargs):
         super().__init__(**kwargs)
-        self.check_error_rate = check_error_rate
-        self.description_length_surplus = description_length_surplus
+        self.__check_error_rate = check_error_rate
+        self.__description_length_surplus = description_length_surplus
         # init fields
         self.description_length_ = None
-        self.best_description_length = None
-        self.expected_fp_over_err = None
-        self.theory_pn = None
 
     def set_context(self, estimator: _BinarySeCoEstimator, X, y):
         super().set_context(estimator, X, y)
@@ -492,7 +489,7 @@ class RipperMdlRuleStop(SeCoBaseImplementation):
             # set expected fp/(err = fp+fn) rate := proportion of the class
             self.expected_fp_over_err = positives / len(y)
             # set default DL (only data, empty theory)
-            self.description_length_ = self.best_description_length = \
+            self.description_length_ = self.best_description_length_ = \
                 data_description_length(
                     expected_fp_over_err=self.expected_fp_over_err,
                     covered=0, uncovered=len(y), fp=0, fn=positives)
@@ -501,7 +498,7 @@ class RipperMdlRuleStop(SeCoBaseImplementation):
     def unset_context(self):
         super().unset_context()
         self.description_length_ = None
-        self.best_description_length = None
+        self.best_description_length_ = None
         self.expected_fp_over_err = None
         self.theory_pn = None
 
@@ -513,14 +510,14 @@ class RipperMdlRuleStop(SeCoBaseImplementation):
 
         self.description_length_ += relative_description_length(
             rule, self.expected_fp_over_err, p, n, P, N, self.theory_pn)
-        self.best_description_length = min(self.best_description_length,
-                                           self.description_length_)
-        if self.description_length_ > (self.best_description_length +
-                                       self.description_length_surplus):
+        self.best_description_length_ = min(self.best_description_length_,
+                                            self.description_length_)
+        if self.description_length_ > (self.best_description_length_ +
+                                       self.__description_length_surplus):
             return True
         if p <= 0:
             return True
-        if self.check_error_rate and n >= p:  # error rate
+        if self.__check_error_rate and n >= p:  # error rate
             # JRip has `(n / (p + n)) >= 0.5` which is equivalent
             return True
         return False
