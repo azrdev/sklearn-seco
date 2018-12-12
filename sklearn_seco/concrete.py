@@ -192,8 +192,8 @@ class TopDownSearch(SeCoBaseImplementation):
 
 
 class PurityHeuristic(SeCoBaseImplementation):
-    """Mixin providing the purity as rule evaluation metric: the percentage of
-    positive examples among the examples covered by the rule.
+    """The purity as rule evaluation metric: the percentage of positive
+    examples among the examples covered by the rule.
     """
 
     def growing_heuristic(self, rule: AugmentedRule) -> float:
@@ -204,7 +204,7 @@ class PurityHeuristic(SeCoBaseImplementation):
 
 
 class LaplaceHeuristic(SeCoBaseImplementation):
-    """Mixin implementing the Laplace rule evaluation metric.
+    """The Laplace rule evaluation metric.
 
     The Laplace estimate was defined by (Clark and Boswell 1991) for CN2.
     """
@@ -215,9 +215,15 @@ class LaplaceHeuristic(SeCoBaseImplementation):
 
 
 class InformationGainHeuristic(SeCoBaseImplementation):
+    """Information Gain heuristic as used in RIPPER (and FOIL).
+
+    See (Quinlan, Cameron-Jones 1995) for the FOIL definition and
+    (Witten,Frank,Hall 2011) for its use in JRip/RIPPER.
+    """
     def growing_heuristic(self, rule: AugmentedRule) -> float:
         p, n = self.count_matches(rule)
-        P, N = self.P, self.N  # TODO: maybe count_matches(rule.original) is meant here? book fig6.4 says code is correct
+        P, N = self.P, self.N
+        # TODO: JRip (book fig 6.4) has P,N but (Fürnkranz 1999) has count_matches(rule.original)
         if p == 0:
             return 0
         # return p * (log2(p / (p + n)) - log2(P / (P + N)))  # info_gain
@@ -225,9 +231,8 @@ class InformationGainHeuristic(SeCoBaseImplementation):
 
 
 class SignificanceStoppingCriterion(SeCoBaseImplementation):
-    """Mixin using as stopping criterion for rule refinement a significance
-    test like CN2.
-    """
+    """Rule stopping criterion using a significance test like CN2."""
+
     def __init__(self, *,  LRS_threshold: float = 0.0, **kwargs):
         super().__init__(**kwargs)
         self.LRS_threshold = LRS_threshold  # FIXME: estimator.set_param not reflected here
@@ -258,7 +263,7 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
 
 
 class NoNegativesStop(SeCoBaseImplementation):
-    """Inner stopping criterion, abort refining when only positive examples are
+    """Inner stopping criterion: Abort refining when only positive examples are
     covered.
 
     NOTE: Since `find_best_rule` checks the filter *before* a refinement is
@@ -417,7 +422,7 @@ class RipperPostPruning(GrowPruneSplit):
 
 class CoverageRuleStop(SeCoBaseImplementation):
     """Rule stopping criterion. Stop if best rule doesn't cover more positive
-    than negative examples.
+    than negative examples (`p < n`).
 
     NOTE: The IREP-2 criterion `p/(p+n) <= 0.5` as defined in (Fürnkranz 1994)
       and used in RIPPER (Cohen 1995) is equivalent to `p <= n`.
@@ -456,7 +461,13 @@ class RipperMdlRuleStop(SeCoBaseImplementation):
     (if `check_error_rate is True`) `n >= p`.
 
     NOTE: Reconstructed mainly from JRip.java source, no guarantee on all
-      details being corect an identical to other implementation(s).
+      details being correct and identical to other implementation(s).
+
+    Fields
+    =====
+    - `best_description_length`: The minimal DL found in the current search so
+      far, named `minDL` in JRip.
+    - `description_length_`: The DL of the current theory, named `dl` in JRip.
     """
 
     def __init__(self, *,
@@ -509,7 +520,8 @@ class RipperMdlRuleStop(SeCoBaseImplementation):
             return True
         if p <= 0:
             return True
-        if self.check_error_rate and (n / (p + n)) >= 0.5:  # error rate  # XXX: eq. n >= p
+        if self.check_error_rate and n >= p:  # error rate
+            # JRip has `(n / (p + n)) >= 0.5` which is equivalent
             return True
         return False
 
@@ -570,16 +582,9 @@ class RipperImplementation(BeamSearch,
 
     NOTE: The global post-optimization phase is currently not implemented
         (that would be the `post_process` method).
-
-    fields
-    =====
-    - `best_description_length`: The minimal DL found in the current search so
-      far, `minDL` in weka/JRip.
-    - `description_length_`: The DL of the current theory, `dl` in weka/JRip.
     """
 
-    def pruning_heuristic(self, rule: AugmentedRule
-                          ) -> Tuple[float, float, int]:
+    def pruning_heuristic(self, rule: AugmentedRule) -> float:
         """Laplace heuristic, as defined by (Clark and Boswell 1991).
 
         JRip documentation states:
@@ -588,9 +593,7 @@ class RipperImplementation(BeamSearch,
         thus if p+n is 0, it's 0.5)."
         """
         p, n = self.count_matches(rule)
-        laplace = (p + 1) / (p + n + 2)
-        # tie-breaking by positive coverage p and rule discovery order
-        return (laplace, p, -rule.instance_no)
+        return (p + 1) / (p + n + 2)  # laplace
 
     def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
         """Laplace-based criterion. Field `accuRate` in JRip.java."""
@@ -617,10 +620,11 @@ class IrepImplementation(BeamSearch,
     """
 
     def pruning_heuristic(self, rule: AugmentedRule) -> Tuple[float, ...]:
+        """(#true positives + #true negatives) / #examples"""
         p, n = self.count_matches(rule)
         P, N = self.P, self.N
-        v = (p + N - n) / (P + N)
-        return (v, p, -rule.instance_no)
+        tn = N - n
+        return (p + tn) / (P + N)
 
 
 class IrepEstimator(SeCoEstimator):
