@@ -218,7 +218,7 @@ class InformationGainHeuristic(SeCoBaseImplementation):
     """Information Gain heuristic as used in RIPPER (and FOIL).
 
     See (Quinlan, Cameron-Jones 1995) for the FOIL definition and
-    (Witten,Frank,Hall 2011) for its use in JRip/RIPPER.
+    (Witten,Frank,Hall 2011 fig 6.4) for its use in JRip/RIPPER.
     """
     def growing_heuristic(self, rule: AugmentedRule) -> float:
         p, n = self.count_matches(rule)

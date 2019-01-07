@@ -1,4 +1,5 @@
 """Artificial dataset (generator functions) for the sklearn_seco unittests."""
+# TODO: try to replace these with fixtures used with indirect=True
 
 import itertools
 from collections import namedtuple
