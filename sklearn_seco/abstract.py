@@ -57,6 +57,11 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         self.explicit_target_class = explicit_target_class
 
     def fit(self, X, y):
+        """Fit to data, i.e. learn theory
+
+        :param X: Not yet covered examples.
+        :param y: Classification for `X`.
+        """
         X, y = check_X_y(X, y, dtype=np.floating)
 
         # prepare  target / labels / y
@@ -90,11 +95,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         return self
 
     def find_best_rule(self) -> 'AugmentedRule':
-        """Inner loop of abstract SeCo/Covering algorithm.
-
-        :param X: Not yet covered examples.
-        :param y: Classification for `X`.
-        """
+        """Inner loop of abstract SeCo/Covering algorithm."""
 
         # resolve methods once for performance
         init_rule = self.implementation.init_rule
@@ -162,7 +163,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         for rule in self.theory_:
             result = np.where(
-                match_rule(rule, X),
+                match_rule(X, rule, self.categorical_mask_),
                 target_class,
                 result)
         return result

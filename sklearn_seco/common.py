@@ -249,22 +249,24 @@ class SeCoBaseImplementation(ABC):
     - `trace_feature_order`: If True, all our `AugmentedRule` instances use
       their `condition_trace` property to log all values set to each condition.
     """
+
+    match_rule = match_rule
+
     def __init__(self):
         self.rule_prototype_arguments = {}
 
+    # TODO: merge P,N
     def __calculate_PN(self):
         """Calculate values of properties P, N."""
-        # TODO: get these from abstract_seco() ?
-        if hasattr(self, '_P') and hasattr(self, '_N'):
-            if None in (self._P, self._N):
-                assert self._P is None  # always set both
-                assert self._N is None
-            else:
-                return  # already calculated
-        self._P = np.count_nonzero(self.y == self.target_class)
-        self._N = len(self.y) - self._P
-        assert self._N == np.count_nonzero(self.y != self.target_class)
-        assert self._P + self._N == len(self.y)
+        y = self.y
+        target_class = self.target_class
+        assert all(x is None for x in (self._P, self._N)) or \
+            all(x is not None for x in (self._P, self._N))  # always set both
+        # TODO: get P,N from abstract_seco() ?
+        self._P = np.count_nonzero(y == target_class)
+        self._N = len(y) - self._P
+        assert self._N == np.count_nonzero(y != target_class)
+        assert self._P + self._N == len(y)
 
     @property
     def P(self):
@@ -288,13 +290,7 @@ class SeCoBaseImplementation(ABC):
         """The current training data labels/classification"""
         return self._y
 
-    def match_rule(self, rule: Rule, X):
-        """Apply `rule` to `X`, telling for each sample if it matched.
 
-        :param X: The samples to test.
-        :return: An array of dtype bool and shape `(n_samples,)`.
-        """
-        return match_rule(X, rule, self.categorical_mask)
 
     def count_matches(self, rule: AugmentedRule):
         """Return (p, n).

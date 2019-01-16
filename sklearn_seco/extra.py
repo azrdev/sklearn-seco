@@ -2,6 +2,7 @@
 Implementation of SeCo / Covering algorithm:
 Helpers in addition to the algorithms in `concrete.py`.
 """
+
 import json
 import math
 import warnings
