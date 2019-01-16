@@ -15,8 +15,7 @@ from sklearn.exceptions import NotFittedError
 
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.common import \
-    SeCoBaseImplementation, AugmentedRule, Theory, rule_ancestors
-
+    SeCoBaseImplementation, AugmentedRule, Theory, rule_ancestors, RuleContext
 
 _JSON_DUMP_DESCRIPTION = "sklearn_seco.extra.trace_coverage dump"
 
@@ -119,18 +118,20 @@ class _TraceCoverage(SeCoBaseImplementation):
         if self.trace_level == 'refinements':
             self.refinement_log.append([])
 
-    def inner_stopping_criterion(self, refinement: AugmentedRule) -> bool:
-        stop = super().inner_stopping_criterion(refinement)
-        p, n = self.count_matches(refinement)
+    def inner_stopping_criterion(self, refinement: AugmentedRule,
+                                 context: RuleContext) -> bool:
+        stop = super().inner_stopping_criterion(refinement, context)
+        p, n = refinement.count_matches(context)
         self.refinement_log[-1].append(np.array((p, n, stop)))
         return stop
 
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
-                                ) -> bool:
-        self.last_rule_stop = super().rule_stopping_criterion(theory, rule)
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule,
+                                context: RuleContext) -> bool:
+        self.last_rule_stop = super().rule_stopping_criterion(theory, rule,
+                                                              context)
 
         def pn(rule):
-            return self.count_matches(rule)
+            return rule.count_matches(context)
 
         if self.trace_level == 'best_rules':
             self.coverage_log.append(np.array([pn(rule)]))

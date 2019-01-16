@@ -10,8 +10,8 @@ classes will have to use keyword- instead of positional arguments.
 
 import math
 from abc import abstractmethod
-from functools import lru_cache
-from typing import Tuple, Iterable
+from functools import lru_cache, partial
+from typing import Iterable
 
 import numpy as np
 from scipy.special import xlogy
@@ -19,7 +19,8 @@ from sklearn.utils import check_random_state
 
 from sklearn_seco.abstract import Theory, SeCoEstimator, _BinarySeCoEstimator
 from sklearn_seco.common import \
-    RuleQueue, SeCoBaseImplementation, AugmentedRule, LOWER, UPPER, log2
+    RuleQueue, SeCoBaseImplementation, AugmentedRule, LOWER, UPPER, log2, \
+    RuleContext
 from sklearn_seco.ripper_mdl import \
     data_description_length, relative_description_length
 
@@ -108,14 +109,15 @@ class BeamSearch(SeCoBaseImplementation):
         super().__init__(**kwargs)
         self.beam_width_ = beam_width
 
-    def select_candidate_rules(self, rules: RuleQueue
+    def select_candidate_rules(self, rules: RuleQueue, context: RuleContext
                                ) -> Iterable[AugmentedRule]:
         # pop all items from rules, retaining the reference
         # (so caller also sees the empty list)
         candidates, rules[:] = rules[:], []
         return candidates
 
-    def filter_rules(self, rules: RuleQueue) -> RuleQueue:
+    def filter_rules(self, rules: RuleQueue, context: RuleContext
+                     ) -> RuleQueue:
         # negative to get the last items, the best.
         # special case -0 equals 0 and gets the whole queue
         return rules[-self.beam_width_:]
@@ -126,35 +128,35 @@ class TopDownSearch(SeCoBaseImplementation):
     subsequently specializes it.
     """
 
-    def set_context(self, estimator: _BinarySeCoEstimator, X, y):
-        super().set_context(estimator, X, y)
-        # cached results depend on examples (X, y), which change each iteration
-        self.all_feature_values.cache_clear()
+    def make_rule_context(self, *args, **kwargs):
+        rule_context = super().make_rule_context(*args, **kwargs)
+        rule_context.all_feature_values = \
+            lru_cache(maxsize=None)(
+                partial(self.all_feature_values, context=rule_context)
+            )
+        return rule_context
 
-    def unset_context(self):
-        super().unset_context()
-        self.all_feature_values.cache_clear()
-
-    @lru_cache(maxsize=None)
-    def all_feature_values(self, feature_index: int):
+    @staticmethod
+    def all_feature_values(feature_index: int, context: RuleContext):
         """
         :return: All distinct values of feature (in examples) with given index,
              sorted.
         """
         # unique also sorts
-        return np.unique(self.X[:, feature_index])
+        return np.unique(context.X[:, feature_index])
 
-    def init_rule(self) -> AugmentedRule:
-        return AugmentedRule(n_features=self.n_features,
-                             **self.rule_prototype_arguments)
+    def init_rule(self, context: RuleContext) -> AugmentedRule:
+        return AugmentedRule(n_features=context.theory_context.n_features,
+                             **context.theory_context.rule_prototype_arguments)
 
-    def refine_rule(self, rule: AugmentedRule) -> Iterable[AugmentedRule]:
+    def refine_rule(self, rule: AugmentedRule, context: RuleContext
+                    ) -> Iterable[AugmentedRule]:
         """Create refinements of `rule` by adding a test for each of the
         (unused) attributes, one at a time, trying all possible attribute
         values / thresholds.
         """
-        all_feature_values = self.all_feature_values
-        categorical_mask = self.categorical_mask
+        all_feature_values = context.all_feature_values
+        categorical_mask = context.theory_context.categorical_mask
         # TODO: mark constant features for exclusion in future specializations
 
         for index in np.argwhere(categorical_mask
@@ -196,8 +198,9 @@ class PurityHeuristic(SeCoBaseImplementation):
     examples among the examples covered by the rule.
     """
 
-    def growing_heuristic(self, rule: AugmentedRule) -> float:
-        p, n = self.count_matches(rule)
+    def growing_heuristic(self, rule: AugmentedRule,
+                          context: RuleContext) -> float:
+        p, n = rule.count_matches(context)
         if p + n == 0:
             return 0
         return p / (p + n)  # purity
@@ -208,9 +211,10 @@ class LaplaceHeuristic(SeCoBaseImplementation):
 
     The Laplace estimate was defined by (Clark and Boswell 1991) for CN2.
     """
-    def growing_heuristic(self, rule: AugmentedRule) -> float:
+    def growing_heuristic(self, rule: AugmentedRule,
+                          context: RuleContext) -> float:
         """Laplace heuristic, as defined by (Clark and Boswell 1991)."""
-        p, n = self.count_matches(rule)
+        p, n = rule.count_matches(context)
         return (p + 1) / (p + n + 2)  # laplace
 
 
@@ -220,10 +224,11 @@ class InformationGainHeuristic(SeCoBaseImplementation):
     See (Quinlan, Cameron-Jones 1995) for the FOIL definition and
     (Witten,Frank,Hall 2011 fig 6.4) for its use in JRip/RIPPER.
     """
-    def growing_heuristic(self, rule: AugmentedRule) -> float:
-        p, n = self.count_matches(rule)
-        P, N = self.P, self.N
-        # TODO: JRip (book fig 6.4) has P,N but (Fürnkranz 1999) has count_matches(rule.original)
+    def growing_heuristic(self, rule: AugmentedRule,
+                          context: RuleContext) -> float:
+        p, n = rule.count_matches(context)
+        P, N = context.P, context.N
+        # TODO: JRip (book fig 6.4) has P,N but (Fürnkranz 1999) has rule.original.count_matches()
         if p == 0:
             return 0
         # return p * (log2(p / (p + n)) - log2(P / (P + N)))  # info_gain
@@ -237,14 +242,15 @@ class SignificanceStoppingCriterion(SeCoBaseImplementation):
         super().__init__(**kwargs)
         self.LRS_threshold = LRS_threshold  # FIXME: estimator.set_param not reflected here
 
-    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
+    def inner_stopping_criterion(self, rule: AugmentedRule,
+                                 context: RuleContext) -> bool:
         """
         *Significance test* as defined by (Clark and Niblett 1989), but used
         there for rule evaluation, here instead used as stopping criterion
         following (Clark and Boswell 1991).
         """
-        p, n = self.count_matches(rule)
-        P, N = self.P, self.N
+        p, n = rule.count_matches(context)
+        P, N = context.P, context.N
         if 0 in (p, P, N):
             return True
         # purity = p / (p + n)
@@ -273,18 +279,19 @@ class NoNegativesStop(SeCoBaseImplementation):
       `TopDownSearch`.
     """
 
-    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
+    def inner_stopping_criterion(self, rule: AugmentedRule,
+                                 context: RuleContext) -> bool:
         if not rule.original:
             return False
-        count_matches = self.count_matches
-        p, n = count_matches(rule)
-        p_prev, n_prev = count_matches(rule.original)
+        p, n = rule.count_matches(context)
+        p_prev, n_prev = rule.original.count_matches(context)
         return n_prev == 0 and n == 0
 
 
 class SkipPostPruning(SeCoBaseImplementation):
     """Mixin to skip post-pruning"""
-    def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
+    def simplify_rule(self, rule: AugmentedRule, context: RuleContext
+                      ) -> AugmentedRule:
         return rule
 
 
@@ -342,20 +349,21 @@ class GrowPruneSplit(SeCoBaseImplementation):
 
         self.growing = True
 
-    def evaluate_rule(self, rule: AugmentedRule) -> None:
-        """Copy `SeCoBaseImplementation.evaluate_rule` but use
+    def evaluate_rule(self, rule: AugmentedRule, context: RuleContext) -> None:
+        """Mimic `SeCoBaseImplementation.evaluate_rule` but use
         `pruning_heuristic` while pruning.
         """
         if self.growing:
-            super().evaluate_rule(rule)
+            super().evaluate_rule(rule, context)
         else:
-            p, n = self.count_matches(rule)
-            rule._sort_key = (self.pruning_heuristic(rule),
+            p, n = rule.count_matches(context)
+            rule._sort_key = (self.pruning_heuristic(rule, context),
                               p,
                               -rule.instance_no)
 
     @abstractmethod
-    def pruning_heuristic(self, rule: AugmentedRule) -> float:
+    def pruning_heuristic(self, rule: AugmentedRule, context: RuleContext
+                          ) -> float:
         """Rate rule to allow finding the best refinement, while pruning."""
 
     @property
@@ -388,7 +396,8 @@ class RipperPostPruning(GrowPruneSplit):
         super().__init__(**kwargs)
         self.rule_prototype_arguments["enable_condition_trace"] = True
 
-    def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
+    def simplify_rule(self, rule: AugmentedRule, context: RuleContext
+                      ) -> AugmentedRule:
         """Find the best simplification of `rule` by dropping conditions and
         evaluating using `pruning_heuristic`.
 
@@ -401,14 +410,14 @@ class RipperPostPruning(GrowPruneSplit):
         evaluate_rule = self.evaluate_rule
 
         self.growing = False  # tell GrowPruneSplit to use pruning set
-        evaluate_rule(rule)
+        evaluate_rule(rule, context)
         candidates = [rule]
         # drop all final (i.e. last added) sets of conditions
         generalization = rule
         for boundary, index, value, old_value in reversed(rule.condition_trace):
             generalization = generalization.copy()
             generalization.set_condition(boundary, index, old_value)
-            evaluate_rule(generalization)
+            evaluate_rule(generalization, context)
             candidates.append(generalization)
 
         candidates.sort()
@@ -416,7 +425,7 @@ class RipperPostPruning(GrowPruneSplit):
 
         # restore rating by grow-heuristic
         self.growing = True
-        evaluate_rule(best_rule)
+        evaluate_rule(best_rule, context)
         return best_rule
 
 
@@ -427,9 +436,9 @@ class CoverageRuleStop(SeCoBaseImplementation):
     NOTE: The IREP-2 criterion `p/(p+n) <= 0.5` as defined in (Fürnkranz 1994)
       and used in RIPPER (Cohen 1995) is equivalent to `p <= n`.
     """
-    def rule_stopping_criterion(self, theory: Theory,
-                                rule: AugmentedRule) -> bool:
-        p, n = self.count_matches(rule)
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule,
+                                context: RuleContext) -> bool:
+        p, n = rule.count_matches(context)
         return p < n
 
 
@@ -442,14 +451,14 @@ class PositiveThresholdRuleStop(SeCoBaseImplementation):
         super().__init__(**kwargs)
         self.__threshold = positive_coverage_stop_threshold
 
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
-                                ) -> bool:
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule,
+                                context: RuleContext) -> bool:
         """Abort search if rule covers less than `threshold` positive examples.
 
         If threshold == 1, this corresponds to the "E is empty" condition in
         Table 3 of (Clark and Niblett 1989) used by CN2.
         """
-        p, n = self.count_matches(rule)
+        p, n = rule.count_matches(context)
         return p < self.__threshold
 
 
@@ -502,10 +511,10 @@ class RipperMdlRuleStop(SeCoBaseImplementation):
         self.expected_fp_over_err = None
         self.theory_pn = None
 
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
-                                ) -> bool:
-        p, n = self.count_matches(rule)
-        P, N = self.P, self.N
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule,
+                                context: RuleContext) -> bool:
+        p, n = rule.count_matches(context)
+        P, N = context.P, context.N
         self.theory_pn.append((P, N))
 
         self.description_length_ += relative_description_length(
@@ -581,7 +590,8 @@ class RipperImplementation(BeamSearch,
         (that would be the `post_process` method).
     """
 
-    def pruning_heuristic(self, rule: AugmentedRule) -> float:
+    def pruning_heuristic(self, rule: AugmentedRule, context: RuleContext
+                          ) -> float:
         """Laplace heuristic, as defined by (Clark and Boswell 1991).
 
         JRip documentation states:
@@ -589,12 +599,13 @@ class RipperImplementation(BeamSearch,
         in this implementation we simply use p/(p+n) (actually (p+1)/(p+n+2),
         thus if p+n is 0, it's 0.5)."
         """
-        p, n = self.count_matches(rule)
+        p, n = rule.count_matches(context)
         return (p + 1) / (p + n + 2)  # laplace
 
-    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
+    def inner_stopping_criterion(self, rule: AugmentedRule,
+                                 context: RuleContext) -> bool:
         """Laplace-based criterion. Field `accuRate` in JRip.java."""
-        p, n = self.count_matches(rule)
+        p, n = rule.count_matches(context)
         accuracy_rate = (p + 1) / (p + n + 1)
         return accuracy_rate >= 1
 
@@ -616,10 +627,11 @@ class IrepImplementation(BeamSearch,
     """IREP as defined by (Cohen 1995), originally by (Fürnkranz, Widmer 1994).
     """
 
-    def pruning_heuristic(self, rule: AugmentedRule) -> Tuple[float, ...]:
+    def pruning_heuristic(self, rule: AugmentedRule, context: RuleContext
+                          ) -> float:
         """(#true positives + #true negatives) / #examples"""
-        p, n = self.count_matches(rule)
-        P, N = self.P, self.N
+        p, n = rule.count_matches(context)
+        P, N = context.P, context.N
         tn = N - n
         return (p + tn) / (P + N)
 

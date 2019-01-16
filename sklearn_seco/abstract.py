@@ -94,7 +94,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         self.theory_ = np.array(self.abstract_seco(X, y))
         return self
 
-    def find_best_rule(self) -> 'AugmentedRule':
+    def find_best_rule(self, context: 'RuleContext') -> 'AugmentedRule':
         """Inner loop of abstract SeCo/Covering algorithm."""
 
         # resolve methods once for performance
@@ -106,20 +106,20 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         filter_rules = self.implementation.filter_rules
 
         # algorithm
-        best_rule = init_rule()
-        evaluate_rule(best_rule)
+        best_rule = init_rule(context)
+        evaluate_rule(best_rule, context)
         rules: RuleQueue = [best_rule]
         while len(rules):
-            for candidate in select_candidate_rules(rules):
+            for candidate in select_candidate_rules(rules, context):
                 # TODO: parallelize here:
-                for refinement in refine_rule(candidate):
-                    evaluate_rule(refinement)
-                    if not inner_stopping_criterion(refinement):
+                for refinement in refine_rule(candidate, context):
+                    evaluate_rule(refinement, context)
+                    if not inner_stopping_criterion(refinement, context):
                         rules.append(refinement)
                         if best_rule < refinement:
                             best_rule = refinement
             rules.sort()
-            rules = filter_rules(rules)
+            rules = filter_rules(rules, context)
         return best_rule
 
     def abstract_seco(self, X: np.ndarray, y: np.ndarray) -> 'Theory':
@@ -128,29 +128,30 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         :return: Theory
         """
 
+        target_class = self.target_class_
+        theory_context = self.implementation.make_theory_context(
+            self.categorical_mask_, self.n_features_, target_class)
+
         # resolve methods once for performance
-        set_context = self.implementation.set_context
-        rule_stopping_criterion = self.implementation.rule_stopping_criterion
+        make_rule_context = self.implementation.make_rule_context
         find_best_rule = self.find_best_rule
         simplify_rule = self.implementation.simplify_rule
-        match_rule_raw = self.implementation.match_rule
+        rule_stopping_criterion = self.implementation.rule_stopping_criterion
 
         # main loop
-        target_class = self.target_class_
         theory: Theory = list()
         while np.any(y == target_class):
-            set_context(self, X, y)
-            rule = find_best_rule()
+            rule_context = make_rule_context(theory_context, X, y)
+            rule = find_best_rule(rule_context)
             # TODO: ensure grow-rating is not used in pruning. use property & override in GrowPruneSplit ?
-            rule = simplify_rule(rule)
-            if rule_stopping_criterion(theory, rule):  # TODO: use pruning or growing+pruning?
+            rule = simplify_rule(rule, rule_context)
+            if rule_stopping_criterion(theory, rule, rule_context):  # TODO: use pruning or growing+pruning?
                 break
             # ignore the rest of theory, because it already covered
-            uncovered = np.invert(match_rule_raw(rule.conditions, X))
+            uncovered = np.invert(rule.match(rule_context))
             X = X[uncovered]  # TODO: use mask array instead of copy?
             y = y[uncovered]
             theory.append(rule.conditions)  # throw away augmentation
-        self.implementation.unset_context()
         return self.implementation.post_process(theory)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -236,4 +237,4 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
 # imports needed only for type checking, place here to break circularity
 from sklearn_seco.common import \
-    RuleQueue, AugmentedRule, SeCoBaseImplementation, Theory
+    AugmentedRule, RuleContext, RuleQueue, SeCoBaseImplementation, Theory

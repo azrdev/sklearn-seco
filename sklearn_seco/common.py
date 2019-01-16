@@ -5,7 +5,7 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 import math
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import NewType, Tuple, Iterable, List, NamedTuple, SupportsFloat
+from typing import NewType, Iterable, List, NamedTuple, SupportsFloat
 import numpy as np
 
 
@@ -167,6 +167,32 @@ class AugmentedRule:
             return NotImplemented
         return self._sort_key == other._sort_key
 
+    def match(self, context: 'RuleContext'):
+        """TODO: doc"""
+        return match_rule(context.X,
+                          self.conditions,
+                          context.theory_context.categorical_mask)
+
+    def count_matches(self, context: 'RuleContext'):
+        """Return (p, n).
+
+        returns
+        -------
+        p : int
+            The count of positive examples (== target_class) covered by `rule`,
+            also called *true positives*.
+        n : int
+            The count of negative examples (!= target_class) covered by `rule`,
+            also called *false positives*.
+        """
+        covered = self.match(context)
+        positives = context.y == context.theory_context.target_class
+        # NOTE: nonzero() is test for True
+        p = np.count_nonzero(covered & positives)
+        n = np.count_nonzero(covered & ~positives)
+        assert p + n == np.count_nonzero(covered)
+        return (p, n)
+
 
 def match_rule(X: np.ndarray,
                rule: Rule,
@@ -202,64 +228,34 @@ def match_rule(X: np.ndarray,
             ).all(axis=1)
 
 
-def count_matches(rule: Rule, target_class, categorical_mask, X, y
-                  ) -> Tuple[int, int]:
-    """Return (p, n).
+class TheoryContext():
+    """TODO: doc"""
 
-    returns
-    -------
-    p : int
-        The count of positive examples (== target_class) covered by `rule`
-    n : int
-        The count of negative examples (!= target_class) covered by `rule`
-    """
-
-    # the following both are np.arrays of dtype bool
-    covered = match_rule(X, rule, categorical_mask)
-    positives = y == target_class
-    # NOTE: nonzero() is test for True
-    p = np.count_nonzero(covered & positives)
-    n = np.count_nonzero(covered & ~positives)
-    assert p + n == np.count_nonzero(covered)
-    return (p, n)
-
-
-class SeCoBaseImplementation(ABC):
-    """The callbacks needed by _BinarySeCoEstimator, subclasses represent
-    concrete algorithms.
-
-    `set_context` will have been called before any other callback. After the
-    abstract_seco main loop, `unset_context` is called once, where all state
-    ought to be removed that is not needed after fitting (e.g. copies of
-    training data X, y).
-
-    A few members are maintained by the base class, and can be used by
-    implementations:
-
-    - `categorical_mask`: An array of shape `(n_features,)` and type bool,
-      indicating if a feature is categorical (`True`) or numerical (`False`).
-    - `match_rule()`
-    - `count_matches()`
-    - `n_features`: The number of features in the dataset,
-      equivalent to `X.shape[1]`.
-    - `P` and `N`: The count of positive and negative examples (in self.X)
-    - `rule_prototype_arguments`: kwargs that should be passed to the
-      constructor of `AugmentedRule` by any subclass calling it.
-    - `target_class`
-    - `trace_feature_order`: If True, all our `AugmentedRule` instances use
-      their `condition_trace` property to log all values set to each condition.
-    """
-
-    match_rule = match_rule
-
-    def __init__(self):
+    def __init__(self, categorical_mask, n_features, target_class):
         self.rule_prototype_arguments = {}
+        self.categorical_mask = categorical_mask
+        self.n_features = n_features
+        self.target_class = target_class
+
+
+class RuleContext():
+    """TODO: doc"""
+
+    def __init__(self, theory_context: TheoryContext, X, y):
+        self.theory_context = theory_context
+        self._X = X
+        self._y = y
+        self._P = self._N = None
+
+    # def __getattr__(self, item):
+    #     """Proxy every attribute of TheoryContext"""
+    #     return getattr(self.theory_context, item)
 
     # TODO: merge P,N
     def __calculate_PN(self):
         """Calculate values of properties P, N."""
         y = self.y
-        target_class = self.target_class
+        target_class = self.theory_context.target_class
         assert all(x is None for x in (self._P, self._N)) or \
             all(x is not None for x in (self._P, self._N))  # always set both
         # TODO: get P,N from abstract_seco() ?
@@ -291,71 +287,62 @@ class SeCoBaseImplementation(ABC):
         return self._y
 
 
+class SeCoBaseImplementation(ABC):
+    """The callbacks needed by _BinarySeCoEstimator, subclasses represent
+    concrete algorithms.
 
-    def count_matches(self, rule: AugmentedRule):
-        """Return (p, n).
+    `set_context` will have been called before any other callback. After the
+    abstract_seco main loop, `unset_context` is called once, where all state
+    ought to be removed that is not needed after fitting (e.g. copies of
+    training data X, y).
 
-        returns
-        -------
-        p : int
-            The count of positive examples (== target_class) covered by `rule`.
-        n : int
-            The count of negative examples (!= target_class) covered by `rule`.
-        """
-        if None in (rule._p, rule._n):
-            assert rule._p is None  # always set them both together
-            assert rule._n is None
-            rule._p, rule._n = count_matches(rule.conditions, self.target_class,
-                                             self.categorical_mask,
-                                             self.X, self.y)
-        return (rule._p, rule._n)
+    A few members are maintained by the base class, and can be used by
+    implementations:
+    # XXX: WIP remove all state from this class
 
-    def set_context(self, estimator: '_BinarySeCoEstimator', X, y):
-        """New invocation of `_BinarySeCoEstimator.find_best_rule`.
+    * `categorical_mask`: An array of shape `(n_features,)` and type bool,
+      indicating if a feature is categorical (`True`) or numerical (`False`).
+    * `match_rule()`
+    * `count_matches()`
+    * `n_features`: The number of features in the dataset,
+      equivalent to `X.shape[1]`.
+    - `P` and `N`: The count of positive and negative examples (in self.X)
+    * `rule_prototype_arguments`: kwargs that should be passed to the
+      constructor of `AugmentedRule` by any subclass calling it.
+    * `target_class`
+    * `trace_feature_order`: If True, all our `AugmentedRule` instances use
+      their `condition_trace` property to log all values set to each condition.
+    """
 
-        Override this hook if you need to keep state across all invocations of
-        the callbacks from one find_best_rule run, e.g. (candidate) rule
-        evaluations for their future refinement. Be sure to call the base
-        implementation.
-        """
+    match_rule = match_rule
 
-        # actually don't change, but rewriting them is cheap
-        self.categorical_mask = estimator.categorical_mask_
-        self.n_features = estimator.n_features_
-        self.target_class = estimator.target_class_
-        # depend on examples (X, y), which change each iteration
-        self._X = X
-        self._y = y
-        self._P = None
-        self._N = None
+    def make_theory_context(self, *args, **kwargs):
+        return TheoryContext(*args, **kwargs)
 
-    def unset_context(self):
-        """Called after the last invocation of
-        `_BinarySeCoEstimator._find_best_rule`.
-        """
-        # cleanup memory
-        self._X = None
-        self._y = None
-        self._P = None
-        self._N = None
+    def make_rule_context(self, *args, **kwargs):
+        return RuleContext(*args, **kwargs)
 
-    def evaluate_rule(self, rule: AugmentedRule) -> None:
+    def evaluate_rule(self, rule: AugmentedRule, context: RuleContext) -> None:
         """Rate rule to allow comparison & finding the best refinement."""
-        p, n = self.count_matches(rule)
-        # default tie-breaking:
-        # by positive coverage and rule creation order (older = better)
-        rule._sort_key = (self.growing_heuristic(rule), p, -rule.instance_no)
+        p, n = rule.count_matches(context)
+        rule._sort_key = (self.growing_heuristic(rule, context),
+                          # default tie-breaking: by positive coverage
+                          p,
+                          # and rule creation order (older = better)
+                          -rule.instance_no)
 
-    # TODO: separate callbacks for find_best_rule context into own class
+    # xxx WIP: separate callbacks for find_best_rule context into own class
+    # TODO: make them all @classmethods ?
     # abstract interface
 
     @abstractmethod
-    def init_rule(self) -> AugmentedRule:
+    def init_rule(self, context: RuleContext) -> AugmentedRule:
         """Create a new rule to be refined before added to the theory."""
         raise NotImplementedError
 
     @abstractmethod
-    def growing_heuristic(self, rule: AugmentedRule) -> float:
+    def growing_heuristic(self, rule: AugmentedRule,
+                          context: RuleContext) -> float:
         """Rate rule to allow comparison with other rules.
         Also used as confidence estimate for voting in multi-class cases.
 
@@ -367,39 +354,42 @@ class SeCoBaseImplementation(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def select_candidate_rules(self, rules: RuleQueue
+    def select_candidate_rules(self, rules: RuleQueue, context: RuleContext
                                ) -> Iterable[AugmentedRule]:
         """Remove and return those Rules from `rules` which should be refined.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def refine_rule(self, rule: AugmentedRule) -> Iterable[AugmentedRule]:
+    def refine_rule(self, rule: AugmentedRule, context: RuleContext
+                    ) -> Iterable[AugmentedRule]:
         """Create all refinements from `rule`."""
         raise NotImplementedError
 
     @abstractmethod
-    def inner_stopping_criterion(self, rule: AugmentedRule) -> bool:
+    def inner_stopping_criterion(self, rule: AugmentedRule,
+                                 context: RuleContext) -> bool:
         """return `True` to stop refining `rule`, i.e. pre-pruning it."""
         raise NotImplementedError
 
     @abstractmethod
-    def filter_rules(self, rules: RuleQueue) -> RuleQueue:
+    def filter_rules(self, rules: RuleQueue, context: RuleContext
+                     ) -> RuleQueue:
         """After one refinement iteration, filter the candidate `rules` (may be
         empty) for the next one.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def simplify_rule(self, rule: AugmentedRule) -> AugmentedRule:
+    def simplify_rule(self, rule: AugmentedRule, context: RuleContext) -> AugmentedRule:
         """After `find_best_rule` terminates, this hook is called and may
         implement post-pruning.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
-                                ) -> bool:
+    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule,
+                                context: RuleContext) -> bool:
         """return `True` to stop finding more rules, given `rule` was the
         best Rule found.
         """
@@ -413,7 +403,3 @@ class SeCoBaseImplementation(ABC):
         `unset_context`.
         """
         raise NotImplementedError
-
-
-# import only needed for type checking, place here to break circularity
-from sklearn_seco.abstract import _BinarySeCoEstimator
