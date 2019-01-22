@@ -15,7 +15,8 @@ from sklearn.exceptions import NotFittedError
 
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.common import \
-    SeCoBaseImplementation, AugmentedRule, Theory, rule_ancestors, RuleContext
+    AugmentedRule, Theory, rule_ancestors, \
+    AbstractSecoImplementation, RuleContext
 
 _JSON_DUMP_DESCRIPTION = "sklearn_seco.extra.trace_coverage dump"
 
@@ -40,7 +41,7 @@ def trace_coverage(cls):
     Use with decorator syntax:
 
     >>> @trace_coverage
-    >>> class MySeCoImpl(SeCoBaseImplementation):
+    >>> class MySeCoImpl(AbstractSecoImplementation):
     >>>     ...
 
     or call directly:
@@ -52,7 +53,7 @@ def trace_coverage(cls):
     return TracedImplementation
 
 
-class _TraceCoverage(SeCoBaseImplementation):
+class _TraceCoverage(AbstractSecoImplementation):
     """Mixin tracing (p,n) while building the theory, able to plot these.
 
     Note this always has to come first in the mro/inheritance tree, because it

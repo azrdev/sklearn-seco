@@ -16,11 +16,11 @@ from sklearn.utils.validation import check_is_fitted
 
 # noinspection PyAttributeOutsideInit
 class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
-    """Binary SeCo Classification, deferring to :class:`SeCoBaseImplementation`
+    """Binary SeCo Classification, deferring to :class:`AbstractSecoImplementation`
     for concrete algorithm implementation.
 
-    :param implementation: A `SeCoBaseImplementation` subclass whose methods
-      define the algorithm to be run.
+    :param implementation: A `AbstractSecoImplementation` subclass whose
+      methods define the algorithm to be run.
 
     :param categorical_features: None or “all” or array of indices or mask.
 
@@ -47,7 +47,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         sorted).
     """
     def __init__(self,
-                 implementation: 'SeCoBaseImplementation',
+                 implementation: 'AbstractSecoImplementation',
                  categorical_features: Union[None, str, np.ndarray] = None,
                  explicit_target_class=None):
         super().__init__()
@@ -99,7 +99,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # resolve methods once for performance
         init_rule = self.implementation.init_rule
-        evaluate_rule = self.implementation.evaluate_rule
+        evaluate_rule = context.evaluate_rule
         select_candidate_rules = self.implementation.select_candidate_rules
         refine_rule = self.implementation.refine_rule
         inner_stopping_criterion = self.implementation.inner_stopping_criterion
@@ -107,13 +107,13 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # algorithm
         best_rule = init_rule(context)
-        evaluate_rule(best_rule, context)
+        evaluate_rule(best_rule)
         rules: RuleQueue = [best_rule]
         while len(rules):
             for candidate in select_candidate_rules(rules, context):
                 # TODO: parallelize here:
                 for refinement in refine_rule(candidate, context):
-                    evaluate_rule(refinement, context)
+                    context.evaluate_rule(refinement)
                     if not inner_stopping_criterion(refinement, context):
                         rules.append(refinement)
                         if best_rule < refinement:
@@ -129,11 +129,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         """
 
         target_class = self.target_class_
-        theory_context = self.implementation.make_theory_context(
-            self.categorical_mask_, self.n_features_, target_class)
+        theory_context = self.implementation.theory_context_class(
+            self.implementation,
+            self.categorical_mask_, self.n_features_, target_class, X, y)
 
         # resolve methods once for performance
-        make_rule_context = self.implementation.make_rule_context
+        make_rule_context = self.implementation.rule_context_class
         find_best_rule = self.find_best_rule
         simplify_rule = self.implementation.simplify_rule
         rule_stopping_criterion = self.implementation.rule_stopping_criterion
@@ -181,7 +182,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 class SeCoEstimator(BaseEstimator, ClassifierMixin):
     """Wrap the base SeCo to provide class label binarization."""
 
-    def __init__(self, implementation: 'SeCoBaseImplementation',
+    def __init__(self, implementation: 'AbstractSecoImplementation',
                  multi_class="one_vs_rest", n_jobs=1):
         self.implementation = implementation
         self.multi_class = multi_class
@@ -237,4 +238,5 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
 # imports needed only for type checking, place here to break circularity
 from sklearn_seco.common import \
-    AugmentedRule, RuleContext, RuleQueue, SeCoBaseImplementation, Theory
+    AugmentedRule, RuleQueue, Theory, \
+    AbstractSecoImplementation, RuleContext

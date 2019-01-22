@@ -5,7 +5,7 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 import math
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import NewType, Iterable, List, NamedTuple, SupportsFloat
+from typing import NewType, Iterable, List, NamedTuple, SupportsFloat, Type
 import numpy as np
 
 
@@ -228,18 +228,35 @@ def match_rule(X: np.ndarray,
             ).all(axis=1)
 
 
-class TheoryContext():
+class TheoryContext:
     """TODO: doc"""
 
-    def __init__(self, categorical_mask, n_features, target_class):
+    def __init__(self, implementation: 'AbstractSecoImplementation',
+                 categorical_mask, n_features, target_class):
+                 X, y):
         self.rule_prototype_arguments = {}
         self.categorical_mask = categorical_mask
         self.n_features = n_features
         self.target_class = target_class
+        self.implementation = implementation
 
 
-class RuleContext():
-    """TODO: doc"""
+class RuleContext:
+    """TODO: doc
+
+    * `categorical_mask`: An array of shape `(n_features,)` and type bool,
+      indicating if a feature is categorical (`True`) or numerical (`False`).
+    * `match_rule()`
+    * `count_matches()`
+    * `n_features`: The number of features in the dataset,
+      equivalent to `X.shape[1]`.
+    - `P` and `N`: The count of positive and negative examples (in self.X)
+    * `rule_prototype_arguments`: kwargs that should be passed to the
+      constructor of `AugmentedRule` by any subclass calling it.
+    * `target_class`
+    * `trace_feature_order`: If True, all our `AugmentedRule` instances use
+      their `condition_trace` property to log all values set to each condition.
+    """
 
     def __init__(self, theory_context: TheoryContext, X, y):
         self.theory_context = theory_context
@@ -286,54 +303,31 @@ class RuleContext():
         """The current training data labels/classification"""
         return self._y
 
-
-class SeCoBaseImplementation(ABC):
-    """The callbacks needed by _BinarySeCoEstimator, subclasses represent
-    concrete algorithms.
-
-    `set_context` will have been called before any other callback. After the
-    abstract_seco main loop, `unset_context` is called once, where all state
-    ought to be removed that is not needed after fitting (e.g. copies of
-    training data X, y).
-
-    A few members are maintained by the base class, and can be used by
-    implementations:
-    # XXX: WIP remove all state from this class
-
-    * `categorical_mask`: An array of shape `(n_features,)` and type bool,
-      indicating if a feature is categorical (`True`) or numerical (`False`).
-    * `match_rule()`
-    * `count_matches()`
-    * `n_features`: The number of features in the dataset,
-      equivalent to `X.shape[1]`.
-    - `P` and `N`: The count of positive and negative examples (in self.X)
-    * `rule_prototype_arguments`: kwargs that should be passed to the
-      constructor of `AugmentedRule` by any subclass calling it.
-    * `target_class`
-    * `trace_feature_order`: If True, all our `AugmentedRule` instances use
-      their `condition_trace` property to log all values set to each condition.
-    """
-
-    match_rule = match_rule
-
-    def make_theory_context(self, *args, **kwargs):
-        return TheoryContext(*args, **kwargs)
-
-    def make_rule_context(self, *args, **kwargs):
-        return RuleContext(*args, **kwargs)
-
-    def evaluate_rule(self, rule: AugmentedRule, context: RuleContext) -> None:
+    def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Rate rule to allow comparison & finding the best refinement."""
-        p, n = rule.count_matches(context)
-        rule._sort_key = (self.growing_heuristic(rule, context),
+        growing_heuristic = \
+            self.theory_context.implementation.growing_heuristic
+        p, n = rule.count_matches(self)
+        rule._sort_key = (growing_heuristic(rule, self),
                           # default tie-breaking: by positive coverage
                           p,
                           # and rule creation order (older = better)
                           -rule.instance_no)
 
-    # xxx WIP: separate callbacks for find_best_rule context into own class
-    # TODO: make them all @classmethods ?
-    # abstract interface
+
+class AbstractSecoImplementation(ABC):
+    """The callbacks needed by _BinarySeCoEstimator, subclasses represent
+    concrete algorithms.
+
+    Instead of using this interface, you can also pass all the functions to
+    SeCoEstimator separately, without an enclosing class.
+    """
+    match_rule = staticmethod(match_rule)
+    rule_class = AugmentedRule
+    theory_context_class: Type[TheoryContext] = TheoryContext
+    rule_context_class: Type[RuleContext] = RuleContext
+
+    # TODO: make them all @staticmethods ?
 
     @abstractmethod
     def init_rule(self, context: RuleContext) -> AugmentedRule:
