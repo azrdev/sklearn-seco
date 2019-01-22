@@ -38,8 +38,8 @@ def log2(x: SupportsFloat) -> float:
 
 def make_empty_rule(n_features: int) -> Rule:
     """:return: A `Rule` with no conditions, it always matches."""
-    # NOTE: even if user inputs dtype which knows no np.inf (like int),
-    # `Rule` has always dtype float which does
+    # NOTE: even if user inputs a dtype which doesn't know np.inf (e.g. `int`),
+    # `Rule` always has dtype float which does
     return Rule(np.vstack([np.repeat(np.NINF, n_features),  # lower
                            np.repeat(np.PINF, n_features)  # upper
                            ]))
@@ -152,9 +152,10 @@ class AugmentedRule:
         return self.conditions[UPPER]
 
     def set_condition(self, boundary: int, index: int, value):
-        self.condition_trace.append(
-            condition_trace_entry(boundary, index, value,
-                                  self.conditions[boundary, index]))
+        if self.enable_condition_trace:
+            self.condition_trace.append(
+                condition_trace_entry(boundary, index, value,
+                                      self.conditions[boundary, index]))
         self.conditions[boundary, index] = value
 
     def __lt__(self, other):
@@ -262,7 +263,8 @@ class RuleContext:
         self.theory_context = theory_context
         self._X = X
         self._y = y
-        self._P = self._N = None
+        self._P = None
+        self._N = None
 
     # def __getattr__(self, item):
     #     """Proxy every attribute of TheoryContext"""
@@ -273,8 +275,7 @@ class RuleContext:
         """Calculate values of properties P, N."""
         y = self.y
         target_class = self.theory_context.target_class
-        assert all(x is None for x in (self._P, self._N)) or \
-            all(x is not None for x in (self._P, self._N))  # always set both
+        assert (self._P is None) == (self._N is None)  # always set both
         # TODO: get P,N from abstract_seco() ?
         self._P = np.count_nonzero(y == target_class)
         self._N = len(y) - self._P

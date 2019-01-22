@@ -59,6 +59,7 @@ def grow_prune_split(y,
       `(grow, prune)` arrays which each list the indices into `y` for the
       respective set.
     """
+
     classes, y_indices, class_counts = \
         np.unique(y, return_inverse=True, return_counts=True)
 
@@ -86,8 +87,8 @@ def grow_prune_split(y,
         prune.extend(y_indices_shuffled[:n_prune])
         grow.extend(y_indices_shuffled[n_prune:])
 
-    grow = rng.permutation(grow)
-    prune = rng.permutation(prune)
+    grow = rng.permutation(grow).astype(int)
+    prune = rng.permutation(prune).astype(int)
     return grow, prune
 
 
@@ -330,7 +331,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
     `self.growing = False`.
 
     The split is stratified (i.e. class proportions are retained).
-    Note that JRip (and presumably the original RIPPER) state their
+    Note that JRip (and presumably the original RIPPER) state that their
     stratification is bugged.
 
     :var growing: bool
