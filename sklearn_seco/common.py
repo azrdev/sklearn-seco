@@ -367,10 +367,6 @@ class AbstractSecoImplementation(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def post_process(self, theory: Theory) -> Theory:
-        """Modify `theory` after it has been learned.
-
-        *NOTE*: contrary to all other hooks, this is called after
-        `unset_context`.
-        """
+    def post_process(self, theory: Theory, context: TheoryContext) -> Theory:
+        """Modify `theory` after it has been learned."""
         raise NotImplementedError

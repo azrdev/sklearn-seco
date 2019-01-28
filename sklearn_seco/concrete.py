@@ -293,7 +293,7 @@ class SkipPostPruning(AbstractSecoImplementation):
 
 class SkipPostProcess(AbstractSecoImplementation):
     """Mixin to skip post processing."""
-    def post_process(self, theory: Theory) -> Theory:
+    def post_process(self, theory: Theory, context: TheoryContext) -> Theory:
         return theory
 
 

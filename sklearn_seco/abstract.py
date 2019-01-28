@@ -135,6 +135,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         find_best_rule = self.find_best_rule
         simplify_rule = self.implementation.simplify_rule
         rule_stopping_criterion = self.implementation.rule_stopping_criterion
+        post_process = self.implementation.post_process
 
         # main loop
         theory: Theory = list()
@@ -149,7 +150,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             X = X[uncovered]  # TODO: use mask array instead of copy?
             y = y[uncovered]
             theory.append(rule.conditions)  # throw away augmentation
-        return self.implementation.post_process(theory)
+        return post_process(theory, theory_context)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
