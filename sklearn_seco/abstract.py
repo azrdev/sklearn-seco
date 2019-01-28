@@ -22,7 +22,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     :param implementation: A `AbstractSecoImplementation` subclass whose
       methods define the algorithm to be run.
 
-    :param categorical_features: None or “all” or array of indices or mask.
+    :param categorical_features: None or "all" or array of indices or mask.
 
         Specify what features are treated as categorical, i.e. equality
         tests are used for these features, based on the set of values
@@ -145,7 +145,6 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             rule = simplify_rule(rule, rule_context)
             if rule_stopping_criterion(theory, rule, rule_context):  # TODO: use pruning or growing+pruning?
                 break
-            # ignore the rest of theory, because it already covered
             uncovered = np.invert(rule.match(rule_context))
             X = X[uncovered]  # TODO: use mask array instead of copy?
             y = y[uncovered]

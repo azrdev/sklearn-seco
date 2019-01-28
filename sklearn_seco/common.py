@@ -2,10 +2,11 @@
 Implementation of SeCo / Covering algorithm:
 Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 """
+
 import math
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import NewType, Iterable, List, NamedTuple, SupportsFloat, Type
+from typing import NewType, Iterable, List, SupportsFloat, Type, TypeVar
 import numpy as np
 
 
@@ -33,7 +34,7 @@ RuleQueue = List['AugmentedRule']
 
 def log2(x: SupportsFloat) -> float:
     """`log2(x) if x > 0 else 0`"""
-    return math.log2(x) if x > 0 else 0.0
+    return math.log2(x) if x > 0.0 else 0.0
 
 
 def make_empty_rule(n_features: int) -> Rule:
@@ -52,6 +53,7 @@ def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
         rule = rule.original
 
 
+T = TypeVar('T', bound='AugmentedRule')
 
 
 @total_ordering
@@ -89,7 +91,7 @@ class AugmentedRule:
         positive and negative coverage of this rule. Access via
         `SeCoBaseImplementation.count_matches`.
     """
-    __rule_counter = 0
+    __rule_counter = 0  # TODO: shared across runs/instances
 
     def __init__(self, *,
                  conditions: Rule = None, n_features: int = None,
@@ -117,9 +119,10 @@ class AugmentedRule:
         self._n = None
         self._sort_key = None
 
-    def copy(self) -> 'AugmentedRule':
+    def copy(self: T) -> T:
         """:return: A new `AugmentedRule` with a copy of `self.conditions`."""
-        return AugmentedRule(conditions=self.conditions.copy(), original=self)
+        cls = type(self)
+        return cls(conditions=self.conditions.copy(), original=self)
 
     @property
     def lower(self) -> np.ndarray:
@@ -229,7 +232,6 @@ class RuleContext:
     * `n_features`: The number of features in the dataset,
       equivalent to `X.shape[1]`.
     - `P` and `N`: The count of positive and negative examples (in self.X)
-      constructor of `AugmentedRule` by any subclass calling it.
     * `target_class`
     """
 
