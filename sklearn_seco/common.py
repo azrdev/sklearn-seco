@@ -52,9 +52,6 @@ def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
         rule = rule.original
 
 
-condition_trace_entry = NamedTuple('condition_trace_entry',
-                                   [('boundary', int), ('index', int),
-                                    ('value', float), ('old_value', float)])
 
 
 @total_ordering
@@ -81,15 +78,6 @@ class AugmentedRule:
     original: AugmentedRule or None
         Another rule this one has been forked from, using `copy()`.
 
-    condition_trace: list of tuple(int, int, float)
-        (Only used if `enable_condition_trace` is True).
-        Contains a tuple(UPPER/LOWER, feature_index, value) for each value that
-        was set in conditions, like they were applied to the initially
-        constructed rule to get to this rule.
-
-    enable_condition_trace: bool
-        Enable filling of the `condition_trace` field. Default `False`.
-
     _sort_key: tuple of floats
         Define an order of rules for `RuleQueue` and finding a `best_rule`,
         using operator `<` (i.e. higher values == better rule == later in the
@@ -105,8 +93,7 @@ class AugmentedRule:
 
     def __init__(self, *,
                  conditions: Rule = None, n_features: int = None,
-                 original: 'AugmentedRule' = None,
-                 enable_condition_trace: bool = False):
+                 original: 'AugmentedRule' = None):
         """Construct an `AugmentedRule` with either `n_features` or the given
         `conditions`.
 
@@ -126,11 +113,6 @@ class AugmentedRule:
             raise ValueError("Exactly one of (conditions, n_features) "
                              "must be not None.")
         # init fields
-        self.enable_condition_trace = enable_condition_trace
-        self.condition_trace = []
-        if original:
-            # copy trace, but into a new list
-            self.condition_trace[:] = original.condition_trace
         self._p = None
         self._n = None
         self._sort_key = None
@@ -152,10 +134,6 @@ class AugmentedRule:
         return self.conditions[UPPER]
 
     def set_condition(self, boundary: int, index: int, value):
-        if self.enable_condition_trace:
-            self.condition_trace.append(
-                condition_trace_entry(boundary, index, value,
-                                      self.conditions[boundary, index]))
         self.conditions[boundary, index] = value
 
     def __lt__(self, other):
@@ -253,8 +231,6 @@ class RuleContext:
     - `P` and `N`: The count of positive and negative examples (in self.X)
       constructor of `AugmentedRule` by any subclass calling it.
     * `target_class`
-    * `trace_feature_order`: If True, all our `AugmentedRule` instances use
-      their `condition_trace` property to log all values set to each condition.
     """
 
     def __init__(self, theory_context: TheoryContext, X, y):

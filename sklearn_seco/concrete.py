@@ -297,6 +297,42 @@ class SkipPostProcess(AbstractSecoImplementation):
         return theory
 
 
+class ConditionTracingAugmentedRule(AugmentedRule):
+    """TODO: doc
+
+    Attributes
+    -----
+    condition_trace: list of tuple(int, int, float)
+        Contains a tuple(UPPER/LOWER, feature_index, value) for each value that
+        was set in conditions, like they were applied to the initially
+        constructed rule to get to this rule.
+
+    """
+
+    class TraceEntry(NamedTuple):
+        boundary: int
+        index: int
+        value: float
+        old_value: float
+
+    def __init__(self, *, conditions: Rule = None, n_features: int = None,
+                 original: 'ConditionTracingAugmentedRule' = None):
+        super().__init__(conditions=conditions,
+                         n_features=n_features,
+                         original=original)
+        self.condition_trace = []
+        if original:
+            assert isinstance(original, ConditionTracingAugmentedRule)
+            # copy trace, but into a new list
+            self.condition_trace[:] = original.condition_trace
+
+    def set_condition(self, boundary: int, index: int, value):
+        self.condition_trace.append(
+            self.TraceEntry(boundary, index, value,
+                            self.conditions[boundary, index]))
+        super().set_condition(boundary, index, value)
+
+
 class GrowPruneSplitTheoryContext(TheoryContext):
     """TODO: doc
 
@@ -402,12 +438,7 @@ class RipperPostPruning(AbstractSecoImplementation):
     (`find_best_rule`) each rule.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.rule_class = partial(self.rule_class,
-                                  enable_condition_trace=True)
-
-    def simplify_rule(self, rule: AugmentedRule,
+    def simplify_rule(self, rule: ConditionTracingAugmentedRule,
                       context: GrowPruneSplitRuleContext) -> AugmentedRule:
         """Find the best simplification of `rule` by dropping conditions and
         evaluating using `pruning_heuristic`.
@@ -418,13 +449,14 @@ class RipperPostPruning(AbstractSecoImplementation):
 
         :return: An improved version of `rule`.
         """
+        assert isinstance(rule, ConditionTracingAugmentedRule)
         assert isinstance(context, GrowPruneSplitRuleContext)
         evaluate_rule = context.evaluate_rule
 
         context.growing = False  # tell GrowPruneSplit to use pruning set
         evaluate_rule(rule)
         candidates = [rule]
-        # drop all final (i.e. last added) sets of conditions
+        # drop any final (i.e. last added) sequence of conditions
         generalization = rule
         for boundary, index, value, old_value in reversed(rule.condition_trace):
             generalization = generalization.copy()
