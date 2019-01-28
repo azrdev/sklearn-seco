@@ -130,8 +130,8 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
     """
 
     def init_rule(self, context: RuleContext) -> AugmentedRule:
-        return AugmentedRule(n_features=context.theory_context.n_features,
-                             **context.theory_context.rule_prototype_arguments)
+        tctx = context.theory_context
+        return tctx.algorithm_config.RuleClass(n_features=tctx.n_features)
 
     def refine_rule(self, rule: AugmentedRule, context: 'TopDownSearchContext'
                     ) -> Iterable[AugmentedRule]:
@@ -404,7 +404,6 @@ class RipperPostPruning(AbstractSecoImplementation):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # TODO: remove previously used `rule_prototype_arguments`
         self.rule_class = partial(self.rule_class,
                                   enable_condition_trace=True)
 

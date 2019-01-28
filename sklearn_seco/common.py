@@ -235,7 +235,6 @@ class TheoryContext:
     def __init__(self, implementation: 'AbstractSecoImplementation',
                  categorical_mask, n_features, target_class):
                  X, y):
-        self.rule_prototype_arguments = {}
         self.categorical_mask = categorical_mask
         self.n_features = n_features
         self.target_class = target_class
@@ -252,7 +251,6 @@ class RuleContext:
     * `n_features`: The number of features in the dataset,
       equivalent to `X.shape[1]`.
     - `P` and `N`: The count of positive and negative examples (in self.X)
-    * `rule_prototype_arguments`: kwargs that should be passed to the
       constructor of `AugmentedRule` by any subclass calling it.
     * `target_class`
     * `trace_feature_order`: If True, all our `AugmentedRule` instances use
