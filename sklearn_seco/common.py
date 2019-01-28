@@ -149,12 +149,6 @@ class AugmentedRule:
             return NotImplemented
         return self._sort_key == other._sort_key
 
-    def match(self, context: 'RuleContext'):
-        """TODO: doc"""
-        return match_rule(context.X,
-                          self.conditions,
-                          context.theory_context.categorical_mask)
-
     def count_matches(self, context: 'RuleContext'):
         """Return (p, n).
 
@@ -167,7 +161,7 @@ class AugmentedRule:
             The count of negative examples (!= target_class) covered by `rule`,
             also called *false positives*.
         """
-        covered = self.match(context)
+        covered = context.match_rule(self)
         positives = context.y == context.theory_context.target_class
         # NOTE: nonzero() is test for True
         p = np.count_nonzero(covered & positives)
@@ -211,28 +205,35 @@ def match_rule(X: np.ndarray,
 
 
 class TheoryContext:
-    """TODO: doc"""
+    """TODO: doc
 
-    def __init__(self, implementation: 'AbstractSecoImplementation',
-                 categorical_mask, n_features, target_class):
+    * `categorical_mask`: An array of shape `(n_features,)` and type bool,
+      indicating if a feature is categorical (`True`) or numerical (`False`).
+    * `n_features`: The number of features in the dataset,
+      equivalent to `X.shape[1]`.
+    * `target_class`
+    """
+
+    def __init__(self, algorithm_config: Type['SeCoAlgorithmConfiguration'],
+                 categorical_mask, n_features, target_class,
                  X, y):
         self.categorical_mask = categorical_mask
         self.n_features = n_features
         self.target_class = target_class
-        self.implementation = implementation
+        # keep reference
+        self.algorithm_config = algorithm_config
+
+    @property
+    def implementation(self):
+        return self.algorithm_config.Implementation
 
 
 class RuleContext:
     """TODO: doc
 
-    * `categorical_mask`: An array of shape `(n_features,)` and type bool,
-      indicating if a feature is categorical (`True`) or numerical (`False`).
     * `match_rule()`
     * `count_matches()`
-    * `n_features`: The number of features in the dataset,
-      equivalent to `X.shape[1]`.
     - `P` and `N`: The count of positive and negative examples (in self.X)
-    * `target_class`
     """
 
     def __init__(self, theory_context: TheoryContext, X, y):
@@ -280,6 +281,14 @@ class RuleContext:
         """The current training data labels/classification"""
         return self._y
 
+    def match_rule(self, rule: AugmentedRule, force_X_complete: bool = False):
+        """TODO: doc"""
+        tctx = self.theory_context
+        X = self._X if force_X_complete else self.X
+        return tctx.algorithm_config.match_rule(X,
+                                                rule.conditions,
+                                                tctx.categorical_mask)
+
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Rate rule to allow comparison & finding the best refinement."""
         growing_heuristic = \
@@ -299,21 +308,19 @@ class AbstractSecoImplementation(ABC):
     Instead of using this interface, you can also pass all the functions to
     SeCoEstimator separately, without an enclosing class.
     """
-    match_rule = staticmethod(match_rule)
-    rule_class = AugmentedRule
-    theory_context_class: Type[TheoryContext] = TheoryContext
-    rule_context_class: Type[RuleContext] = RuleContext
 
-    # TODO: make them all @staticmethods ?
+    # TODO: @classmethod → @staticmethod ? pro: callbacks as fun-refs, con: configurable via class-fields
 
+    @classmethod
     @abstractmethod
-    def init_rule(self, context: RuleContext) -> AugmentedRule:
+    def init_rule(cls, context: RuleContext) -> AugmentedRule:
         """Create a new rule to be refined before added to the theory."""
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def growing_heuristic(self, rule: AugmentedRule,
-                          context: RuleContext) -> float:
+    def growing_heuristic(cls, rule: AugmentedRule, context: RuleContext
+                          ) -> float:
         """Rate rule to allow comparison with other rules.
         Also used as confidence estimate for voting in multi-class cases.
 
@@ -324,49 +331,69 @@ class AbstractSecoImplementation(ABC):
         """
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def select_candidate_rules(self, rules: RuleQueue, context: RuleContext
+    def select_candidate_rules(cls, rules: RuleQueue, context: RuleContext
                                ) -> Iterable[AugmentedRule]:
         """Remove and return those Rules from `rules` which should be refined.
         """
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def refine_rule(self, rule: AugmentedRule, context: RuleContext
+    def refine_rule(cls, rule: AugmentedRule, context: RuleContext
                     ) -> Iterable[AugmentedRule]:
         """Create all refinements from `rule`."""
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def inner_stopping_criterion(self, rule: AugmentedRule,
+    def inner_stopping_criterion(cls, rule: AugmentedRule,
                                  context: RuleContext) -> bool:
         """return `True` to stop refining `rule`, i.e. pre-pruning it."""
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def filter_rules(self, rules: RuleQueue, context: RuleContext
-                     ) -> RuleQueue:
+    def filter_rules(cls, rules: RuleQueue, context: RuleContext) -> RuleQueue:
         """After one refinement iteration, filter the candidate `rules` (may be
         empty) for the next one.
         """
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def simplify_rule(self, rule: AugmentedRule, context: RuleContext) -> AugmentedRule:
+    def simplify_rule(cls, rule: AugmentedRule, context: RuleContext
+                      ) -> AugmentedRule:
         """After `find_best_rule` terminates, this hook is called and may
         implement post-pruning.
         """
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule,
+    def rule_stopping_criterion(cls, theory: Theory, rule: AugmentedRule,
                                 context: RuleContext) -> bool:
         """return `True` to stop finding more rules, given `rule` was the
         best Rule found.
         """
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def post_process(self, theory: Theory, context: TheoryContext) -> Theory:
+    def post_process(cls, theory: Theory, context: TheoryContext) -> Theory:
         """Modify `theory` after it has been learned."""
         raise NotImplementedError
+
+
+class SeCoAlgorithmConfiguration:
+    """TODO: doc.
+    # TODO: instantiate (== copy) to allow subclasses overriding?
+    # TODO: static / IDE hint when Implementation still abstract
+    """
+    match_rule = staticmethod(match_rule)
+    Implementation: Type[AbstractSecoImplementation] = \
+        AbstractSecoImplementation
+    RuleClass = AugmentedRule
+    TheoryContextClass: Type[TheoryContext] = TheoryContext
+    RuleContextClass: Type[RuleContext] = RuleContext

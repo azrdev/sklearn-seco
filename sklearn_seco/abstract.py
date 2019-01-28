@@ -2,7 +2,7 @@
 Implementation of SeCo / Covering algorithm: Abstract base algorithm.
 """
 
-from typing import Union
+from typing import Union, Type
 
 import numpy as np
 
@@ -13,14 +13,18 @@ from sklearn.utils.multiclass import \
     unique_labels, check_classification_targets
 from sklearn.utils.validation import check_is_fitted
 
+from sklearn_seco.common import \
+    AugmentedRule, RuleQueue, Theory, \
+    RuleContext, SeCoAlgorithmConfiguration
+
 
 # noinspection PyAttributeOutsideInit
 class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
-    """Binary SeCo Classification, deferring to :class:`AbstractSecoImplementation`
+    """Binary SeCo Classification, deferring to :var:`algorithm_config`
     for concrete algorithm implementation.
 
-    :param implementation: A `AbstractSecoImplementation` subclass whose
-      methods define the algorithm to be run.
+    :param algorithm_config: Type[SeCoAlgorithmConfiguration]
+        Defines the SeCo variant to be run.
 
     :param categorical_features: None or "all" or array of indices or mask.
 
@@ -46,13 +50,13 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         `None` (the default), use the first class from `np.unique(y)` (which is
         sorted).
     """
+
     def __init__(self,
-                 implementation: 'AbstractSecoImplementation',
+                 algorithm_config: Type['SeCoAlgorithmConfiguration'],
                  categorical_features: Union[None, str, np.ndarray] = None,
                  explicit_target_class=None):
         super().__init__()
-        # FIXME: `implementation` shared across estimator.copy() instances
-        self.implementation = implementation
+        self.algorithm_config = algorithm_config
         self.categorical_features = categorical_features
         self.explicit_target_class = explicit_target_class
 
@@ -63,6 +67,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         :param y: Classification for `X`.
         """
         X, y = check_X_y(X, y, dtype=np.floating)
+        assert self.algorithm_config
 
         # prepare  target / labels / y
 
@@ -98,12 +103,13 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         """Inner loop of abstract SeCo/Covering algorithm."""
 
         # resolve methods once for performance
-        init_rule = self.implementation.init_rule
+        implementation = self.algorithm_config.Implementation
+        init_rule = implementation.init_rule
         evaluate_rule = context.evaluate_rule
-        select_candidate_rules = self.implementation.select_candidate_rules
-        refine_rule = self.implementation.refine_rule
-        inner_stopping_criterion = self.implementation.inner_stopping_criterion
-        filter_rules = self.implementation.filter_rules
+        select_candidate_rules = implementation.select_candidate_rules
+        refine_rule = implementation.refine_rule
+        inner_stopping_criterion = implementation.inner_stopping_criterion
+        filter_rules = implementation.filter_rules
 
         # algorithm
         best_rule = init_rule(context)
@@ -126,16 +132,18 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         """Main loop of abstract SeCo/Covering algorithm."""
 
         target_class = self.target_class_
-        theory_context = self.implementation.theory_context_class(
-            self.implementation,
+
+        theory_context = self.algorithm_config.TheoryContextClass(
+            self.algorithm_config,
             self.categorical_mask_, self.n_features_, target_class, X, y)
 
         # resolve methods once for performance
-        make_rule_context = self.implementation.rule_context_class
+        implementation = self.algorithm_config.Implementation
+        make_rule_context = self.algorithm_config.RuleContextClass
         find_best_rule = self.find_best_rule
-        simplify_rule = self.implementation.simplify_rule
-        rule_stopping_criterion = self.implementation.rule_stopping_criterion
-        post_process = self.implementation.post_process
+        simplify_rule = implementation.simplify_rule
+        rule_stopping_criterion = implementation.rule_stopping_criterion
+        post_process = implementation.post_process
 
         # main loop
         theory: Theory = list()
@@ -146,8 +154,9 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             rule = simplify_rule(rule, rule_context)
             if rule_stopping_criterion(theory, rule, rule_context):  # TODO: use pruning or growing+pruning?
                 break
-            uncovered = np.invert(rule.match(rule_context))
-            X = X[uncovered]  # TODO: use mask array instead of copy?
+            uncovered = np.invert(
+                rule_context.match_rule(rule, force_X_complete=True))
+            X = X[uncovered]
             y = y[uncovered]
             theory.append(rule.conditions)  # throw away augmentation
         return post_process(theory, theory_context)
@@ -156,7 +165,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
         X: np.ndarray = check_array(X)
         target_class = self.target_class_
-        match_rule = self.implementation.match_rule
+        match_rule = self.algorithm_config.match_rule
         result = np.repeat(self.classes_[1],  # negative class  # FIXME: not if self.explicit_target_class
                            X.shape[0])
 
@@ -179,9 +188,10 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 class SeCoEstimator(BaseEstimator, ClassifierMixin):
     """Wrap the base SeCo to provide class label binarization."""
 
-    def __init__(self, implementation: 'AbstractSecoImplementation',
-                 multi_class="one_vs_rest", n_jobs=1):
-        self.implementation = implementation
+    # TODO: doc
+    algorithm_config: Type[SeCoAlgorithmConfiguration]
+
+    def __init__(self, multi_class="one_vs_rest", n_jobs=1):
         self.multi_class = multi_class
         self.n_jobs = n_jobs
 
@@ -189,7 +199,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         # TODO: document available kwargs or link `_BinarySeCoEstimator.fit`
         X, y = check_X_y(X, y, multi_output=False)
 
-        self.base_estimator_ = _BinarySeCoEstimator(self.implementation,
+        self.base_estimator_ = _BinarySeCoEstimator(self.algorithm_config,
                                                     **kwargs)
 
         # copied from GaussianProcessClassifier
@@ -231,9 +241,3 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, ["classes_"])
         X = check_array(X)
         return self.base_estimator_.predict(X)
-
-
-# imports needed only for type checking, place here to break circularity
-from sklearn_seco.common import \
-    AugmentedRule, RuleQueue, Theory, \
-    AbstractSecoImplementation, RuleContext
