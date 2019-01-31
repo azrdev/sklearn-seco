@@ -17,16 +17,6 @@ from sklearn_seco.common import \
     AbstractSecoImplementation, RuleContext, TheoryContext
 
 
-def _json_encode_ndarray(obj):
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    raise TypeError
-
-
-# TODO: implement tracing of estimator instances (not only classes)
-
-# FIXME: consider that P,N,p,n are subject to GrowPruneSplit
-
 LogTraceCallback = Callable[[Sequence[np.ndarray],  # coverage_log
                              Sequence[np.ndarray],  # refinement_log
                              bool,  # last_rule_stop
@@ -37,22 +27,78 @@ LogTraceCallback = Callable[[Sequence[np.ndarray],  # coverage_log
 def trace_coverage(est_cls: Type[SeCoEstimator],
                    log_coverage_trace_callback: LogTraceCallback,
                    ) -> Type['SeCoEstimator']:
-    """Decorator for SeCoEstimator, that adds tracing of (p,n) while building
-    the theory, and ability to plot these traces.
+    """Decorator for `SeCoEstimator` that adds tracing of (p,n) while building
+    the theory. Traces can be plotted with `plot_coverage_log`.
 
-    TODO: doc, incl parallel+callback problem
+    Accesses the internal details of the implementation to trace all
+    intermediate rule objects as well as the ones which become part of the
+    final theory. Just before that one is constructed (before the
+    `post_process` hook), the collected trace is submitted to the
+    `log_coverage_trace_callback` function.
+    For non-binary problems, a `SeCoEstimator` spawns more than one
+    `_BinarySeCoEstimator`, each of which collects the trace & submits it
+    separately. Parallel execution of these has to be synchronized manually,
+    this has not been tested.
+
+    The trace gets the values P,N,p,n from the `RuleContext` and
+    `AugmentedRule` objects; if `GrowPruneSplit` is used, this usually means
+    that these are only computed on the growing set.
+    TODO: get P,N,p,n for grow+prune, not only growing set.
+
+    The trace consists of the following fields:
+
+    - `coverage_log`: list of np.array with shape (n_ancestors, 2)
+       This is the log of `best_rule` and their `ancestors`.
+
+       For each `best_rule` +1 it keeps an array with (p, n) for that best rule
+       and its ancestors, in reverse order of creation. If `last_rule_stop` is
+       False, the last `best_rule` has been rejected by the
+       `rule_stopping_criterion` and is not part of the theory.
+
+       If `TraceCoverageTheoryContext.trace_level` is 'theory', no ancestors
+       are traced, so only the `best_rule`s are contained.
+
+    - `refinement_log`: list of np.array with shape (n_refinements, 3)
+       This is the log of all `refinements`. For each `best_rule` (i.e.
+       iteration in `abstract_seco`) +1 (which corresponds to the attempts to
+       find another rule, aborted by `rule_stopping_criterion`), it keeps an
+       array with (p, n, stop) for each refinement, where `stop` is the boolean
+       result of `inner_stopping_criterion(refinement)`.
+
+       If `TraceCoverageTheoryContext.trace_level` is not 'refinements', this
+       is empty.
+
+    - `last_rule_stop`: boolean result of `rule_stopping_criterion` on the last
+       found `best_rule`. If False, it is part of the theory (and the rule
+       search ended because all positive examples were covered), if True it is
+       not part of the theory (the search ended because
+       `rule_stopping_criterion` was True).
+
+    - `PN`: np.array of shape (n_best_rules, 2)
+       This is the log of the (P, N) values for each iteration of
+       `abstract_seco`.
+
+    # TODO: implement tracing of estimator instances (not only classes)
 
     Usage
     =====
+    Define the callback function to receive the trace & display it:
+
+    >>> def callback(coverage_log, refinement_log, last_rule_stop, PN):
+    ...     theory_figure, rules_figure = plot_coverage_log(
+    ...         coverage_log, refinement_log, last_rule_stop, PN)
+    ...     theory_figure.show()
+    ...     rules_figure.show()
+
     Use with decorator syntax:
 
     >>> @trace_coverage
-    >>> class MySeCoEstimator(SeCoEstimator):
-    >>>     ...
+    ... class MySeCoEstimator(SeCoEstimator, callback):
+    ...     ...
 
     or call directly:
 
-    >>> MyTracedSeCo = trace_coverage(MySeCoEstimator)
+    >>> MyTracedSeCo = trace_coverage(MySeCoEstimator, callback)
     """
 
     original_post_process = \
@@ -87,10 +133,16 @@ def trace_coverage(est_cls: Type[SeCoEstimator],
 
 
 class TraceCoverageTheoryContext(TheoryContext):
-    """
-    :var refinement_log: list of (list or np.ndarray) of np.array [n,p,stop]
+    """Tracing `TheoryContext`.
 
-    :var PN: list of tuple(int, int)
+    Fields
+    -----
+
+    - `trace_level` specifies detail level to trace:
+        - `theory` only traces each of the `best_rule` part of the theory
+        - `ancestors` traces each `best_rule` and the refinement steps used
+          to find it (starting with the `init_rule` return value).
+        - `refinements` traces every rule generated by `refine_rule`.
     """
 
     trace_level = 'refinements'
@@ -104,6 +156,7 @@ class TraceCoverageTheoryContext(TheoryContext):
 
 
 class TraceCoverageRuleContext(RuleContext):
+    """Tracing `RuleContext`."""
     def __init__(self, theory_context: TraceCoverageTheoryContext, X, y):
         super().__init__(theory_context, X, y)
         assert isinstance(theory_context, TraceCoverageTheoryContext)
@@ -113,46 +166,11 @@ class TraceCoverageRuleContext(RuleContext):
 
 
 class TraceCoverageImplementation(AbstractSecoImplementation):
-    """Mixin tracing (p,n) while building the theory, able to plot these.
+    """Tracing `AbstractSecoImplementation` mixin.
 
-    TODO: rework doc
-
-    Note this always has to come first in the mro/inheritance tree, because it
-    overrides some methods not to be overridden. Use the `trace_coverage`
-    decorator to ensure that.
-
-    Class fields / trace content:
-    =====
-
-    - `trace_level`
-      specifies detail level to trace:
-        - `theory` only traces each of the `best_rule` in the theory
-        - `ancestors` traces each `best_rule` and the refinement steps used
-          to find it (starting with the `init_rule` return value).
-        - `refinements` traces every rule generated by `refine_rule`.
-
-    - `coverage_log`: list of np.array with shape (n_ancestors, 2)
-       This is the log of `best_rule` and (if requested) their `ancestors`.
-       For each `best_rule` +1 it keeps an array with (p, n) for that best rule
-       and its ancestors, in reverse order of creation.
-       The last `best_rule` is not part
-
-    - `refinement_log`: list of np.array with shape (n_refinements, 3)
-       This is the log of all `refinements`. For each `best_rule` (i.e. iteration
-       in `abstract_seco`) +1 (which corresponds to the attempts to find
-       another rule, aborted by `rule_stopping_criterion`), it keeps an array
-       with (p, n, stop) for each refinement, where `stop` is the boolean
-       result of `inner_stopping_criterion(refinement)`.
-
-    - `last_rule_stop`: boolean result of `rule_stopping_criterion` on the last
-       found `best_rule`. If False, it is part of the theory (and the rule
-       search ended because all positive examples were covered), if True it is
-       not part of the theory (the search ended because
-       `rule_stopping_criterion` was True).
-
-    - `PN`: np.array of shape (n_best_rules, 2)
-       This is the log of the (P, N) values for each iteration of
-       `abstract_seco`.
+    Note: This class always has to come first in the mro/inheritance tree,
+    because it overrides some methods not to be overridden. Use the
+    `trace_coverage` decorator to ensure that.
     """
 
     @classmethod
@@ -160,6 +178,7 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
                                  context: RuleContext) -> bool:
         stop = super().inner_stopping_criterion(refinement, context)
         p, n = refinement.count_matches(context)
+        assert isinstance(context.theory_context, TraceCoverageTheoryContext)
         context.theory_context.refinement_log[-1]. \
             append(np.array((p, n, stop)))
         return stop
@@ -188,7 +207,7 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
 
 
 def plot_coverage_log(
-        last_rule_stop, PN, coverage_log, refinement_log,
+        coverage_log, refinement_log, last_rule_stop, PN,
         *,
         title: Optional[str] = None,
         draw_refinements: Union[str, bool] = 'nonzero',
@@ -198,8 +217,8 @@ def plot_coverage_log(
 ) -> Tuple[Figure, Union[Figure, Sequence[Figure]]]:
     """Plot the traced (p, n) of a theory.
 
-    For parameters `last_rule_stop`, `PN`, `coverage_log` and `refinement_log`,
-    see :class:`__TraceCoverage`.
+    For parameters `coverage_log`, `refinement_log`, `last_rule_stop`, and
+    `PN`, see documentation of `trace_coverage`.
 
     :param title: string or None. If not None, set figure titles and use
       this value as prefix.
@@ -272,7 +291,7 @@ def plot_coverage_log(
         # assume rules_figure is a list of figures
         rule_axes = [f.gca() for f in rules_figure]
 
-    previous_rule = np.array((0, 0))  # equals (N, P) for some trace
+    previous_rule = np.array((0, 0))  # contains (P, N) for some trace
     for rule_idx, (rule_trace, refinements) in \
             enumerate(zip_longest(coverage_log, refinement_log)):
         PNi = PN[rule_idx]
@@ -303,7 +322,6 @@ def plot_coverage_log(
                              arrowprops={'arrowstyle': "->"})
         previous_rule = rule
 
-        # TODO: move ancestor plot to separate method. how get rule_color?
         # subplot with ancestors of current rule
         rule_axis = rule_axes[rule_idx]
         if mark_stop:
