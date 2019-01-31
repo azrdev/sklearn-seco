@@ -159,7 +159,18 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             X = X[uncovered]
             y = y[uncovered]
             theory.append(rule.conditions)  # throw away augmentation
-        return post_process(theory, theory_context)
+        theory = post_process(theory, theory_context)
+
+        # store growing_heuristic(training set) for decision_function
+        rule_context = RuleContext(theory_context,
+                                   theory_context.complete_X,
+                                   theory_context.complete_y)
+        self.confidence_estimates_ = [
+            self.algorithm_config.Implementation.growing_heuristic(
+                AugmentedRule(conditions=rule), rule_context)
+            for rule in theory
+        ]
+        return theory
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
@@ -176,12 +187,19 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                 result)
         return result
 
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        prediction = self.predict(X) == self.target_class_
-        return np.where(prediction[:, np.newaxis],
-                        # TODO: use rule metric as probability
-                        np.array([[1, 0]]),
-                        np.array([[0, 1]]))
+    def decision_function(self, X: np.ndarray) -> np.ndarray:
+        # used by `sklearn.utils.multiclass._ovr_decision_function`
+        check_is_fitted(self, ['theory_', 'categorical_mask_'])
+        X: np.ndarray = check_array(X)
+        match_rule = self.algorithm_config.match_rule
+        proba = np.zeros(X.shape[0])
+        for i, rule in enumerate(self.theory_):  # TODO: matrix multiplication?
+            proba = np.where(
+                match_rule(X, rule, self.categorical_mask_),
+                self.confidence_estimates_[i],
+                proba
+            )
+        return proba
 
 
 # noinspection PyAttributeOutsideInit

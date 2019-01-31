@@ -222,6 +222,8 @@ class TheoryContext:
         self.target_class = target_class
         # keep reference
         self.algorithm_config = algorithm_config
+        self.complete_X = X
+        self.complete_y = y
 
     @property
     def implementation(self):
