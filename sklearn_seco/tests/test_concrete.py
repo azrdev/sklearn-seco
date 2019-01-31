@@ -11,7 +11,7 @@ from sklearn.utils.estimator_checks import check_estimator
 
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.common import UPPER
-from sklearn_seco.concrete import SimpleSeCoImplementation, grow_prune_split
+from sklearn_seco.concrete import grow_prune_split, SimpleSeCoEstimator
 from .conftest import count_conditions
 from .datasets import perfectly_correlated_multiclass
 
@@ -49,8 +49,10 @@ def test_base_trivial(record_theory):
     X_train = np.array([[100, 0.0],
                         [111, 1.0]])
     y_train = np.array([1, 2])
-    est = _BinarySeCoEstimator(SimpleSeCoImplementation(), categorical_mask)
-    est.fit(X_train, y_train)
+    est = SimpleSeCoEstimator() \
+        .fit(X_train, y_train, categorical_features=categorical_mask) \
+        .base_estimator_
+    assert isinstance(est, _BinarySeCoEstimator)
     record_theory(est.theory_)
 
     assert est.target_class_ == 1
@@ -81,8 +83,10 @@ def test_base_easyrules(record_theory):
                         [0,  1.0],
                         [1, -1.0]])
     y_train = np.array([1, 1, 2, 2])
-    est = _BinarySeCoEstimator(SimpleSeCoImplementation(), categorical_mask)
-    est.fit(X_train, y_train)
+    est = SimpleSeCoEstimator() \
+        .fit(X_train, y_train, categorical_features=categorical_mask) \
+        .base_estimator_
+    assert isinstance(est, _BinarySeCoEstimator)
     record_theory(est.theory_)
 
     assert est.target_class_ == 1

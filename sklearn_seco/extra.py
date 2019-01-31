@@ -3,22 +3,18 @@ Implementation of SeCo / Covering algorithm:
 Helpers in addition to the algorithms in `concrete.py`.
 """
 
-import json
 import math
 import warnings
 from itertools import zip_longest
-from typing import Optional, Union, Sequence, Tuple, Mapping
+from typing import Optional, Union, Sequence, Tuple, Type, Callable
 
 import numpy as np
 from matplotlib.figure import Figure  # needed only for type hints
-from sklearn.exceptions import NotFittedError
 
-from sklearn_seco.abstract import _BinarySeCoEstimator
+from sklearn_seco.abstract import SeCoEstimator
 from sklearn_seco.common import \
-    SeCoBaseImplementation, AugmentedRule, Theory, rule_ancestors
-
-
-_JSON_DUMP_DESCRIPTION = "sklearn_seco.extra.trace_coverage dump"
+    AugmentedRule, Theory, rule_ancestors, \
+    AbstractSecoImplementation, RuleContext, TheoryContext
 
 
 def _json_encode_ndarray(obj):
@@ -29,32 +25,97 @@ def _json_encode_ndarray(obj):
 
 # TODO: implement tracing of estimator instances (not only classes)
 
+# FIXME: consider that P,N,p,n are subject to GrowPruneSplit
 
-def trace_coverage(cls):
-    """Decorator for SeCoBaseImplementation subclasses, that adds tracing of
-    (p,n) while building the theory, and ability to plot these.
-    Relies on :class:`_TraceCoverage`, for field documentation see there.
+LogTraceCallback = Callable[[Sequence[np.ndarray],  # coverage_log
+                             Sequence[np.ndarray],  # refinement_log
+                             bool,  # last_rule_stop
+                             np.ndarray],  # PN
+                            None]
+
+
+def trace_coverage(est_cls: Type[SeCoEstimator],
+                   log_coverage_trace_callback: LogTraceCallback,
+                   ) -> Type['SeCoEstimator']:
+    """Decorator for SeCoEstimator, that adds tracing of (p,n) while building
+    the theory, and ability to plot these traces.
+
+    TODO: doc, incl parallel+callback problem
 
     Usage
     =====
-
     Use with decorator syntax:
 
     >>> @trace_coverage
-    >>> class MySeCoImpl(SeCoBaseImplementation):
+    >>> class MySeCoEstimator(SeCoEstimator):
     >>>     ...
 
     or call directly:
 
-    >>> MyTracedSeCoImpl = trace_coverage(MySeCoImpl)
+    >>> MyTracedSeCo = trace_coverage(MySeCoEstimator)
     """
-    class TracedImplementation(_TraceCoverage, cls):
-        pass
-    return TracedImplementation
+
+    original_post_process = \
+        est_cls.algorithm_config.Implementation.post_process
+
+    class TracedEstimator(est_cls):
+        class algorithm_config(est_cls.algorithm_config):
+            class Implementation(TraceCoverageImplementation,
+                                 est_cls.algorithm_config.Implementation):
+
+                @classmethod
+                def post_process(cls, theory: Theory,
+                                 context: 'TraceCoverageTheoryContext'):
+                    assert isinstance(context, TraceCoverageTheoryContext)
+                    # transfer collected trace from the `context` object which
+                    # is in local scope
+                    log_coverage_trace_callback(
+                        context.coverage_log, context.refinement_log,
+                        context.last_rule_stop, np.array(context.PN))
+                    return original_post_process(theory, context)
+
+            class TheoryContextClass(
+                    TraceCoverageTheoryContext,
+                    est_cls.algorithm_config.TheoryContextClass):
+                pass
+
+            class RuleContextClass(TraceCoverageRuleContext,
+                                   est_cls.algorithm_config.RuleContextClass):
+                pass
+
+    return TracedEstimator
 
 
-class _TraceCoverage(SeCoBaseImplementation):
+class TraceCoverageTheoryContext(TheoryContext):
+    """
+    :var refinement_log: list of (list or np.ndarray) of np.array [n,p,stop]
+
+    :var PN: list of tuple(int, int)
+    """
+
+    trace_level = 'refinements'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.coverage_log = []
+        self.refinement_log = []
+        self.last_rule_stop = None
+        self.PN = []
+
+
+class TraceCoverageRuleContext(RuleContext):
+    def __init__(self, theory_context: TraceCoverageTheoryContext, X, y):
+        super().__init__(theory_context, X, y)
+        assert isinstance(theory_context, TraceCoverageTheoryContext)
+        theory_context.PN.append((self.P, self.N))
+        if theory_context.trace_level == 'refinements':
+            theory_context.refinement_log.append([])
+
+
+class TraceCoverageImplementation(AbstractSecoImplementation):
     """Mixin tracing (p,n) while building the theory, able to plot these.
+
+    TODO: rework doc
 
     Note this always has to come first in the mro/inheritance tree, because it
     overrides some methods not to be overridden. Use the `trace_coverage`
@@ -94,110 +155,36 @@ class _TraceCoverage(SeCoBaseImplementation):
        `abstract_seco`.
     """
 
-    def __init__(self, trace_level='refinements', **kwargs):
-        super().__init__(**kwargs)
-        self.trace_level = trace_level
-        self.has_complete_trace = False
-        self.coverage_log = []
-        self.refinement_log = []
-        self.PN = []
-        self.last_rule_stop = None
-
-    def set_context(self, estimator: _BinarySeCoEstimator, X, y):
-        # note we're called before each find_best_rule
-        super().set_context(estimator, X, y)
-        # if we're in a new abstract_seco run: delete the old results
-        if self.has_complete_trace:
-            self.has_complete_trace = False
-            self.coverage_log = []
-            self.refinement_log = []  # type while tracing: list of
-            # (list or np.ndarray) of np.array [n,p,stop]
-            self.last_rule_stop = None
-            self.PN = []  # type while tracing: list of tuple(int, int)
-        self.PN.append((self.P, self.N))
-
-        if self.trace_level == 'refinements':
-            self.refinement_log.append([])
-
-    def inner_stopping_criterion(self, refinement: AugmentedRule) -> bool:
-        stop = super().inner_stopping_criterion(refinement)
-        p, n = self.count_matches(refinement)
-        self.refinement_log[-1].append(np.array((p, n, stop)))
+    @classmethod
+    def inner_stopping_criterion(cls, refinement: AugmentedRule,
+                                 context: RuleContext) -> bool:
+        stop = super().inner_stopping_criterion(refinement, context)
+        p, n = refinement.count_matches(context)
+        context.theory_context.refinement_log[-1]. \
+            append(np.array((p, n, stop)))
         return stop
 
-    def rule_stopping_criterion(self, theory: Theory, rule: AugmentedRule
-                                ) -> bool:
-        self.last_rule_stop = super().rule_stopping_criterion(theory, rule)
+    @classmethod
+    def rule_stopping_criterion(cls, theory: Theory, rule: AugmentedRule,
+                                context: RuleContext) -> bool:
+        tctx: TraceCoverageTheoryContext = context.theory_context
+        assert isinstance(tctx, TraceCoverageTheoryContext)
+        tctx.last_rule_stop = super().rule_stopping_criterion(theory, rule,
+                                                              context)
 
         def pn(rule):
-            return self.count_matches(rule)
+            return rule.count_matches(context)
 
-        if self.trace_level == 'best_rules':
-            self.coverage_log.append(np.array([pn(rule)]))
+        if tctx.trace_level == 'best_rules':
+            tctx.coverage_log.append(np.array([pn(rule)]))
         else:  # elif trace_level in ('ancestors', 'refinements'):
-            self.coverage_log.append(
+            tctx.coverage_log.append(
                 np.array([pn(r) for r in rule_ancestors(rule)]))
 
-        if self.trace_level == 'refinements':
-            self.refinement_log[-1] = np.array(self.refinement_log[-1])
+        if tctx.trace_level == 'refinements':
+            tctx.refinement_log[-1] = np.array(tctx.refinement_log[-1])
 
-        return self.last_rule_stop
-
-    def unset_context(self):
-        super().unset_context()
-        # end of rule search, theory is complete
-        self.has_complete_trace = True
-        self.PN = np.array(self.PN)
-
-    @property
-    def n_rules(self):
-        return len(self.coverage_log)
-
-    def to_json(self):
-        """:return: A string containing a JSON representation of the trace."""
-        if not self.has_complete_trace:
-            raise NotFittedError("No trace collected yet.")
-        return json.dumps({
-            "description": _JSON_DUMP_DESCRIPTION,
-            "version": 1,
-            "coverage_log": self.coverage_log,
-            "refinement_log": self.refinement_log,
-            "last_rule_stop": self.last_rule_stop,
-            "PN": self.PN,
-        }, allow_nan=False, default=_json_encode_ndarray)
-
-    @classmethod
-    def from_json(cls, dump) -> Mapping:
-        """
-        :param dump: A file-like object or string containing JSON.
-        :return: A dict representing the trace dumped previously with
-            `to_json`. To plot, pass its items as kwargs to
-            :func:`plot_coverage_log`: `plot_coverage_log(**from_json(dump))`.
-        """
-        loader = json.loads if isinstance(dump, str) else json.load
-        dec = loader(dump)
-
-        if dec["description"] != _JSON_DUMP_DESCRIPTION:
-            raise ValueError("No/invalid coverage trace json: %s" % repr(dec))
-        if dec["version"] != 1:
-            raise ValueError("Unsupported coverage trace version: %s"
-                             % dec["version"])
-        del dec["description"]
-        del dec["version"]
-        # convert back to numpy arrays
-        for i in range(len(dec["coverage_log"])):
-            dec["coverage_log"][i] = np.array(dec["coverage_log"][i])
-        for i in range(len(dec["refinement_log"])):
-            dec["refinement_log"][i] = np.array(dec["refinement_log"][i])
-        return dec
-
-    def plot_coverage_log(self, **kwargs):
-        """Plot the trace, see :func:`plot_coverage_log`."""
-        if not self.has_complete_trace:
-            raise NotFittedError("No trace collected yet.")
-        return plot_coverage_log(self.last_rule_stop, self.PN,
-                                 self.coverage_log, self.refinement_log,
-                                 **kwargs)
+        return tctx.last_rule_stop
 
 
 def plot_coverage_log(
