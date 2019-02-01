@@ -115,8 +115,7 @@ class AugmentedRule:
             raise ValueError("Exactly one of (conditions, n_features) "
                              "must be not None.")
         # init fields
-        self._p = None
-        self._n = None
+        self._pn_cache = None
         self._sort_key = None
 
     def copy(self: T) -> T:
@@ -148,26 +147,6 @@ class AugmentedRule:
         if not hasattr(other, '_sort_key'):
             return NotImplemented
         return self._sort_key == other._sort_key
-
-    def count_matches(self, context: 'RuleContext'):
-        """Return (p, n).
-
-        returns
-        -------
-        p : int
-            The count of positive examples (== target_class) covered by `rule`,
-            also called *true positives*.
-        n : int
-            The count of negative examples (!= target_class) covered by `rule`,
-            also called *false positives*.
-        """
-        covered = context.match_rule(self)
-        positives = context.y == context.theory_context.target_class
-        # NOTE: nonzero() is test for True
-        p = np.count_nonzero(covered & positives)
-        n = np.count_nonzero(covered & ~positives)
-        assert p + n == np.count_nonzero(covered)
-        return (p, n)
 
 
 def match_rule(X: np.ndarray,
@@ -245,33 +224,20 @@ class RuleContext:
         self._P = None
         self._N = None
 
-    # def __getattr__(self, item):
-    #     """Proxy every attribute of TheoryContext"""
-    #     return getattr(self.theory_context, item)
-
-    # TODO: merge P,N
-    def __calculate_PN(self):
-        """Calculate values of properties P, N."""
-        y = self.y
-        target_class = self.theory_context.target_class
+    @property
+    def PN(self):
+        """Return (P, N), the count of (positive, negative) examples"""
         assert (self._P is None) == (self._N is None)  # always set both
-        # TODO: get P,N from abstract_seco() ?
-        self._P = np.count_nonzero(y == target_class)
-        self._N = len(y) - self._P
-        assert self._N == np.count_nonzero(y != target_class)
-        assert self._P + self._N == len(y)
-
-    @property
-    def P(self):
-        """The count of positive examples"""
-        self.__calculate_PN()
-        return self._P
-
-    @property
-    def N(self):
-        """The count of negative examples"""
-        self.__calculate_PN()
-        return self._N
+        if self._P is None:
+            # calculate
+            # TODO: get P,N from abstract_seco() ?
+            y = self.y
+            target_class = self.theory_context.target_class
+            self._P = np.count_nonzero(y == target_class)
+            self._N = len(y) - self._P
+            assert self._N == np.count_nonzero(y != target_class)
+            assert self._P + self._N == len(y)
+        return self._P, self._N
 
     @property
     def X(self):
@@ -291,11 +257,33 @@ class RuleContext:
                                                 rule.conditions,
                                                 tctx.categorical_mask)
 
+    def count_matches(self, rule: AugmentedRule):
+        """Return (p, n).
+
+        returns
+        -------
+        p : int
+            The count of positive examples (== target_class) covered by `rule`,
+            also called *true positives*.
+        n : int
+            The count of negative examples (!= target_class) covered by `rule`,
+            also called *false positives*.
+        """
+        if rule._pn_cache is None:
+            covered = self.match_rule(rule)
+            positives = self.y == self.theory_context.target_class
+            # NOTE: nonzero() is test for True
+            p = np.count_nonzero(covered & positives)
+            n = np.count_nonzero(covered & ~positives)
+            assert p + n == np.count_nonzero(covered)
+            rule._pn_cache = (p, n)
+        return rule._pn_cache
+
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Rate rule to allow comparison & finding the best refinement."""
         growing_heuristic = \
             self.theory_context.implementation.growing_heuristic
-        p, n = rule.count_matches(self)
+        p, n = self.count_matches(rule)
         rule._sort_key = (growing_heuristic(rule, self),
                           # default tie-breaking: by positive coverage
                           p,

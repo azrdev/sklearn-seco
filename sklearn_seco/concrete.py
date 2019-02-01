@@ -201,7 +201,7 @@ class PurityHeuristic(AbstractSecoImplementation):
     @classmethod
     def growing_heuristic(cls, rule: AugmentedRule, context: RuleContext
                           ) -> float:
-        p, n = rule.count_matches(context)
+        p, n = context.count_matches(rule)
         if p + n == 0:
             return 0
         return p / (p + n)  # purity
@@ -217,7 +217,7 @@ class LaplaceHeuristic(AbstractSecoImplementation):
     def growing_heuristic(cls, rule: AugmentedRule, context: RuleContext
                           ) -> float:
         """Laplace heuristic, as defined by (Clark and Boswell 1991)."""
-        p, n = rule.count_matches(context)
+        p, n = context.count_matches(rule)
         return (p + 1) / (p + n + 2)  # laplace
 
 
@@ -231,9 +231,9 @@ class InformationGainHeuristic(AbstractSecoImplementation):
     @classmethod
     def growing_heuristic(cls, rule: AugmentedRule, context: RuleContext
                           ) -> float:
-        p, n = rule.count_matches(context)
-        P, N = context.P, context.N
-        # TODO: JRip (book fig 6.4) has P,N but (Fürnkranz 1999) has rule.original.count_matches()
+        p, n = context.count_matches(rule)
+        P, N = context.PN
+        # TODO: JRip (book fig 6.4) has P,N but (Fürnkranz 1999) has count_matches(rule.original)
         if p == 0:
             return 0
         # return p * (log2(p / (p + n)) - log2(P / (P + N)))  # info_gain
@@ -253,8 +253,8 @@ class SignificanceStoppingCriterion(AbstractSecoImplementation):
         there for rule evaluation, here instead used as stopping criterion
         following (Clark and Boswell 1991).
         """
-        p, n = rule.count_matches(context)
-        P, N = context.P, context.N
+        p, n = context.count_matches(rule)
+        P, N = context.PN
         if 0 in (p, P, N):
             return True
         # purity = p / (p + n)
@@ -288,8 +288,9 @@ class NoNegativesStop(AbstractSecoImplementation):
                                  context: RuleContext) -> bool:
         if not rule.original:
             return False
-        p, n = rule.count_matches(context)
-        p_prev, n_prev = rule.original.count_matches(context)
+        cm = context.count_matches
+        p, n = cm(rule)
+        p_prev, n_prev = cm(rule.original)
         return n_prev == 0 and n == 0
 
 
@@ -410,6 +411,17 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
                           ) -> float:
         """Rate rule to allow finding the best refinement, while pruning."""
 
+    def count_matches(self, rule: AugmentedRule):
+        """Discard cached values for (p,n) when self.growing changed.
+
+        To that end, `rule._pn_cache` is set to
+        `(growing: bool, (p: int, n: int))` instead of `(p: int, n: int)`.
+        """
+        if rule._pn_cache is None or rule._pn_cache[0] != self.growing:
+            rule._pn_cache = None  # invalidate
+            rule._pn_cache = (self.growing, super().count_matches(rule))
+        return rule._pn_cache[1]
+
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Mimic `AbstractSecoImplementation.evaluate_rule` but use
         `pruning_heuristic` while pruning.
@@ -418,7 +430,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         if self.growing:
             super().evaluate_rule(rule)
         else:
-            p, n = rule.count_matches(self)
+            p, n = self.count_matches(rule)
             rule._sort_key = (pruning_heuristic(rule, self),
                               p,
                               -rule.instance_no)
@@ -496,7 +508,7 @@ class CoverageRuleStop(AbstractSecoImplementation):
     @classmethod
     def rule_stopping_criterion(cls, theory: Theory, rule: AugmentedRule,
                                 context: RuleContext) -> bool:
-        p, n = rule.count_matches(context)
+        p, n = context.count_matches(rule)
         return p < n
 
 
@@ -515,7 +527,7 @@ class PositiveThresholdRuleStop(AbstractSecoImplementation):
         If threshold == 1, this corresponds to the "E is empty" condition in
         Table 3 of (Clark and Niblett 1989) used by CN2.
         """
-        p, n = rule.count_matches(context)
+        p, n = context.count_matches(rule)
         return p < cls.positive_coverage_stop_threshold
 
 
@@ -545,8 +557,8 @@ class RipperMdlRuleStopImplementation(AbstractSecoImplementation):
         tctx = context.theory_context
         assert isinstance(tctx, RipperMdlRuleStopTheoryContext)
 
-        p, n = rule.count_matches(context)
-        P, N = context.P, context.N
+        p, n = context.count_matches(rule)
+        P, N = context.PN
         tctx.theory_pn.append((P, N))
 
         tctx.description_length_ += relative_description_length(
@@ -634,7 +646,7 @@ class RipperEstimator(SeCoEstimator):
             def inner_stopping_criterion(cls, rule: AugmentedRule,
                                          context: RuleContext) -> bool:
                 """Laplace-based criterion. Field `accuRate` in JRip.java."""
-                p, n = rule.count_matches(context)
+                p, n = context.count_matches(rule)
                 accuracy_rate = (p + 1) / (p + n + 1)
                 return accuracy_rate >= 1
 
@@ -650,7 +662,7 @@ class RipperEstimator(SeCoEstimator):
                 2p/(p+n) -1, so in this implementation we simply use p/(p+n)
                 (actually (p+1)/(p+n+2), thus if p+n is 0, it's 0.5)."
                 """
-                p, n = rule.count_matches(context)
+                p, n = context.count_matches(rule)
                 return (p + 1) / (p + n + 2)  # laplace
 
         class TheoryContextClass(GrowPruneSplitTheoryContext,
@@ -679,8 +691,8 @@ class IrepEstimator(SeCoEstimator):
             def pruning_heuristic(self, rule: AugmentedRule,
                                   context: RuleContext) -> float:
                 """(#true positives + #true negatives) / #examples"""
-                p, n = rule.count_matches(context)
-                P, N = context.P, context.N
+                p, n = context.count_matches(rule)
+                P, N = context.PN
                 tn = N - n
                 return (p + tn) / (P + N)
 

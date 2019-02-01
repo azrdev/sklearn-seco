@@ -160,7 +160,7 @@ class TraceCoverageRuleContext(RuleContext):
     def __init__(self, theory_context: TraceCoverageTheoryContext, X, y):
         super().__init__(theory_context, X, y)
         assert isinstance(theory_context, TraceCoverageTheoryContext)
-        theory_context.PN.append((self.P, self.N))
+        theory_context.PN.append((self.PN))
         if theory_context.trace_level == 'refinements':
             theory_context.refinement_log.append([])
 
@@ -177,7 +177,7 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
     def inner_stopping_criterion(cls, refinement: AugmentedRule,
                                  context: RuleContext) -> bool:
         stop = super().inner_stopping_criterion(refinement, context)
-        p, n = refinement.count_matches(context)
+        p, n = context.count_matches(refinement)
         assert isinstance(context.theory_context, TraceCoverageTheoryContext)
         context.theory_context.refinement_log[-1]. \
             append(np.array((p, n, stop)))
@@ -192,7 +192,7 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
                                                               context)
 
         def pn(rule):
-            return rule.count_matches(context)
+            return context.count_matches(rule)
 
         if tctx.trace_level == 'best_rules':
             tctx.coverage_log.append(np.array([pn(rule)]))
