@@ -53,6 +53,40 @@ def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
         rule = rule.original
 
 
+def match_rule(X: np.ndarray,
+               rule: Rule,
+               categorical_mask: np.ndarray) -> np.ndarray:
+    """Apply `rule` to all samples in `X`.
+
+    :param X: An array of shape `(n_samples, n_features)`.
+    :param rule: An array of shape `(2, n_features)`,
+        holding thresholds (for numerical features),
+        or categories (for categorical features),
+        or `np.NaN` (to not test this feature).
+    :param categorical_mask: An array of shape `(n_features,)` and type bool,
+        specifying which features are categorical (True) and numerical (False)
+    :return: An array of shape `(n_samples,)` and type bool, telling for each
+        sample whether it matched `rule`.
+
+    pseudocode::
+        conjugate for all features:
+            if feature is categorical:
+                return rule[LOWER] is NaN  or  rule[LOWER] == X
+            else:
+                return  rule[LOWER] is NaN  or  rule[LOWER] <= X
+                     && rule[UPPER] is NaN  or  rule[UPPER] >= X
+    """
+
+    lower = rule[LOWER]
+    upper = rule[UPPER]
+
+    return (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
+            | (~categorical_mask
+               & np.less_equal(lower, X)
+               & np.greater_equal(upper, X))
+            ).all(axis=1)
+
+
 T = TypeVar('T', bound='AugmentedRule')
 
 
@@ -147,40 +181,6 @@ class AugmentedRule:
         if not hasattr(other, '_sort_key'):
             return NotImplemented
         return self._sort_key == other._sort_key
-
-
-def match_rule(X: np.ndarray,
-               rule: Rule,
-               categorical_mask: np.ndarray) -> np.ndarray:
-    """Apply `rule` to all samples in `X`.
-
-    :param X: An array of shape `(n_samples, n_features)`.
-    :param rule: An array of shape `(2, n_features)`,
-        holding thresholds (for numerical features),
-        or categories (for categorical features),
-        or `np.NaN` (to not test this feature).
-    :param categorical_mask: An array of shape `(n_features,)` and type bool,
-        specifying which features are categorical (True) and numerical (False)
-    :return: An array of shape `(n_samples,)` and type bool, telling for each
-        sample whether it matched `rule`.
-
-    pseudocode::
-        conjugate for all features:
-            if feature is categorical:
-                return rule[LOWER] is NaN  or  rule[LOWER] == X
-            else:
-                return  rule[LOWER] is NaN  or  rule[LOWER] <= X
-                     && rule[UPPER] is NaN  or  rule[UPPER] >= X
-    """
-
-    lower = rule[LOWER]
-    upper = rule[UPPER]
-
-    return (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
-            | (~categorical_mask
-               & np.less_equal(lower, X)
-               & np.greater_equal(upper, X))
-            ).all(axis=1)
 
 
 class TheoryContext:

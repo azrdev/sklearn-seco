@@ -97,6 +97,11 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # run SeCo algorithm
         self.theory_ = np.array(self.abstract_seco(X, y))
+        if len(self.theory_) and np.all(~ np.isfinite(self.theory_)):
+            # an empty theory is learned when the default rule is already very
+            # good (i.e. the target class has very high a priori probability)
+            # therefore the case of only empty rules is superfluous
+            raise ValueError("Invalid theory learned")
         return self
 
     def find_best_rule(self, context: 'RuleContext') -> 'AugmentedRule':
