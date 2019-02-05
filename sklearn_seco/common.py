@@ -6,7 +6,7 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 import math
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import NewType, Iterable, List, SupportsFloat, Type, TypeVar
+from typing import NewType, Iterable, List, Type, TypeVar, Tuple
 import numpy as np
 
 
@@ -32,9 +32,9 @@ Theory = List[Rule]
 RuleQueue = List['AugmentedRule']
 
 
-def log2(x: SupportsFloat) -> float:
+def log2(x: float) -> float:
     """`log2(x) if x > 0 else 0`"""
-    return math.log2(x) if x > 0.0 else 0.0
+    return math.log2(x) if x > 0 else 0
 
 
 def make_empty_rule(n_features: int) -> Rule:
@@ -103,10 +103,12 @@ class AugmentedRule:
     Attributes
     -----
     conditions: Rule
-        The actual antecedent / conjunction of conditions.
+        The actual antecedent / conjunction of conditions. Always use
+        `set_condition` for write access.
 
     lower, upper: np.ndarray
-        Return only the lower/upper part of `self.conditions`.
+        Return only the lower/upper part of `self.conditions`. Always use
+        `set_condition` for write access.
 
     instance_no: int
         number of instance, to compare rules by creation order
@@ -115,15 +117,15 @@ class AugmentedRule:
         Another rule this one has been forked from, using `copy()`.
 
     _sort_key: tuple of floats
-        Define an order of rules for `RuleQueue` and finding a `best_rule`,
+        Defines an order of rules for `RuleQueue` and finding a `best_rule`,
         using operator `<` (i.e. higher values == better rule == later in the
         queue).
-        Set by `SeCoBaseImplementation.evaluate_rule` and accessed implicitly
-        through `__lt__`.
+        Set by `AbstractSecoImplementation.evaluate_rule` and accessed
+        implicitly through `__lt__`.
 
-    _p, _n: int
-        positive and negative coverage of this rule. Access via
-        `SeCoBaseImplementation.count_matches`.
+    _pn_cache: tuple(int, int)
+        Cached positive and negative coverage of this rule. Always access via
+        `AbstractSecoImplementation.count_matches`.
     """
     __rule_counter = 0  # TODO: shared across runs/instances
 
@@ -140,10 +142,11 @@ class AugmentedRule:
         AugmentedRule.__rule_counter += 1
         self.original = original
 
-        assert (conditions is None) ^ (n_features is None)  # XOR
         if conditions is None:
+            assert n_features is not None
             self.conditions = make_empty_rule(n_features)
         elif n_features is None:
+            assert conditions is not None
             self.conditions = conditions
         else:
             raise ValueError("Exactly one of (conditions, n_features) "
@@ -183,14 +186,23 @@ class AugmentedRule:
         return self._sort_key == other._sort_key
 
 
+# TODO: maybe move `abstract_seco`/`find_best_rule` into TheoryContext/RuleContext
+
+
 class TheoryContext:
-    """TODO: doc
+    """State variables while `abstract_seco` builds a theory.
+
+    Members
+    -----
 
     * `categorical_mask`: An array of shape `(n_features,)` and type bool,
       indicating if a feature is categorical (`True`) or numerical (`False`).
-    * `n_features`: The number of features in the dataset,
-      equivalent to `X.shape[1]`.
-    * `target_class`
+    * `n_features`: The number of features in the dataset, equivalent to
+      `X.shape[1]`.
+    * `target_class`: The value of the positive class in `y`.
+    * `algorithm_config`: A reference to the used `SeCoAlgorithmConfiguration`.
+    * `complete_X`: All training examples `X` *at start of training*.
+    * `complete_y`: All training classifications `y` *at start of training*.
     """
 
     def __init__(self, algorithm_config: Type['SeCoAlgorithmConfiguration'],
@@ -210,11 +222,19 @@ class TheoryContext:
 
 
 class RuleContext:
-    """TODO: doc
+    """State variables while `find_best_rule` builds a single rule.
 
-    * `match_rule()`
-    * `count_matches()`
-    - `P` and `N`: The count of positive and negative examples (in self.X)
+    Methods provided are:
+
+    - `match_rule`
+    - `count_matches`
+    - `evaluate_rule`
+
+    Members
+    -----
+    * `X` and `y`: The current training data and -labels.
+      (See also `concrete.GrowPruneSplit` which overrides these properties).
+    * `PN`: (P: int, N: int) The count of positive and negative examples in X.
     """
 
     def __init__(self, theory_context: TheoryContext, X, y):
@@ -225,12 +245,12 @@ class RuleContext:
         self._N = None
 
     @property
-    def PN(self):
+    def PN(self) -> Tuple[int, int]:
         """Return (P, N), the count of (positive, negative) examples"""
         assert (self._P is None) == (self._N is None)  # always set both
         if self._P is None:
             # calculate
-            # TODO: get P,N from abstract_seco() ?
+            # TODO: maybe get P,N from abstract_seco() ?
             y = self.y
             target_class = self.theory_context.target_class
             self._P = np.count_nonzero(y == target_class)
@@ -249,15 +269,23 @@ class RuleContext:
         """The current training data labels/classification"""
         return self._y
 
-    def match_rule(self, rule: AugmentedRule, force_X_complete: bool = False):
-        """TODO: doc"""
+    def match_rule(self, rule: AugmentedRule, force_X_complete: bool = False
+                   ) -> np.ndarray:
+        """Wrap `SeCoAlgorithmConfiguration.match_rule`: Apply `rule` to the
+        current context.
+
+        :param force_X_complete: bool. If True, always apply to the full
+          training data, instead of the property `self.X` (which may be
+          overridden, e.g. by GrowPruneSplit).
+        :return: A match array of type bool and length `len(X)`
+        """
         tctx = self.theory_context
         X = self._X if force_X_complete else self.X
         return tctx.algorithm_config.match_rule(X,
                                                 rule.conditions,
                                                 tctx.categorical_mask)
 
-    def count_matches(self, rule: AugmentedRule):
+    def count_matches(self, rule: AugmentedRule) -> Tuple[int, int]:
         """Return (p, n).
 
         returns
@@ -293,13 +321,13 @@ class RuleContext:
 
 class AbstractSecoImplementation(ABC):
     """The callbacks needed by _BinarySeCoEstimator, subclasses represent
-    concrete algorithms.
+    concrete algorithms (together with the corresponding subclasses of
+    `RuleContext` etc).
 
-    Instead of using this interface, you can also pass all the functions to
-    SeCoEstimator separately, without an enclosing class.
+    TODO: maybe @classmethod → @staticmethod ? pro: callbacks as fun-refs w/o class, con: configurability via class-fields
+    TODO: Instead of using this interface, you can also pass all the functions
+    to SeCoEstimator separately, without an enclosing class.
     """
-
-    # TODO: @classmethod → @staticmethod ? pro: callbacks as fun-refs, con: configurable via class-fields
 
     @classmethod
     @abstractmethod
@@ -377,9 +405,26 @@ class AbstractSecoImplementation(ABC):
 
 
 class SeCoAlgorithmConfiguration:
-    """TODO: doc.
-    # TODO: instantiate (== copy) to allow subclasses overriding?
-    # TODO: static / IDE hint when Implementation still abstract
+    """A concrete SeCo algorithm, defined by code and associated state objects.
+
+    # TODO: maybe instantiate (== copy) to allow subclasses overriding
+    # TODO: static / IDE hint when Implementation is still abstract
+
+    Members
+    -----
+    - `match_rule`: Callable[[np.ndarray, Rule, np.ndarray], np.ndarray].
+      A method applying the Rule (2nd parameter) to the examples `X` (1st
+      parameter) given the categorical_mask (3rd parameter) and returning an
+      array of length `len(X)` and type bool.
+    - `Implementation`: A non-abstract subclass of `AbstractSecoImplementation`
+      defining all callback methods needed by `abstract_seco` and
+      `find_best_rule`.
+    - `RuleClass`: A subclass of `AugmentedRule` defining the attributes that
+      supplement the basic `Rule` object (which is the `conditions` field).
+    - `TheoryContextClass`: A subclass of `TheoryContext` managing state of an
+      `abstract_seco` run.
+    - `RuleContextClass`: A subclass of `RuleContext` managing state of a
+      `find_best_rule` run.
     """
     match_rule = staticmethod(match_rule)
     Implementation: Type[AbstractSecoImplementation] = \

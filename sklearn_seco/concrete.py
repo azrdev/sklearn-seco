@@ -94,8 +94,7 @@ def grow_prune_split(y,
     return grow, prune
 
 
-# TODO: mostly not mixins anymore
-# Mixins providing implementation facets
+# Implementation facets
 
 
 class BeamSearch(AbstractSecoImplementation):
@@ -146,7 +145,7 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
         assert isinstance(context, TopDownSearchContext)
         all_feature_values = context.all_feature_values
         categorical_mask = context.theory_context.categorical_mask
-        # TODO: mark constant features for exclusion in future specializations
+        # TODO: maybe mark constant features for exclusion in future specializations
 
         for index in np.argwhere(categorical_mask
                                  & ~np.isfinite(rule.lower)  # unused features
@@ -310,15 +309,18 @@ class SkipPostProcess(AbstractSecoImplementation):
 
 
 class ConditionTracingAugmentedRule(AugmentedRule):
-    """TODO: doc
+    """A subclass of AugmentedRule recording any value set in `self.condition`.
+
+    This is needed e.g. by `RipperPostPruning` to revert back to previous
+    threshold conditions, because `TopDownSearchImplementation` collapses
+    thresholds upon refinement.
 
     Attributes
     -----
-    condition_trace: list of tuple(int, int, float)
-        Contains a tuple(UPPER/LOWER, feature_index, value) for each value that
-        was set in conditions, like they were applied to the initially
-        constructed rule to get to this rule.
-
+    condition_trace: List[TraceEntry].
+        Contains a tuple(UPPER/LOWER, feature_index, value, previous_value)
+        for each value that was set in conditions, in the same order they were
+        applied to the initially constructed rule to get to this rule.
     """
 
     class TraceEntry(NamedTuple):
@@ -346,7 +348,7 @@ class ConditionTracingAugmentedRule(AugmentedRule):
 
 
 class GrowPruneSplitTheoryContext(TheoryContext):
-    """TODO: doc
+    """`TheoryContext` needed for `GrowPruneSplitRuleContext`.
 
     TODO: find a way to render this class obsolete
 
@@ -370,17 +372,16 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
     """Implement a split of the examples into growing and pruning set once per
     iteration (i.e. for each `find_best_rule` call).
 
-    TODO: rework doc
+    The split is stratified (i.e. class proportions are retained).
+    Note that JRip (and presumably the original RIPPER) state that their
+    stratification is bugged.
+
 
     This works by overriding the getters for the properties `X` and `y`.
     By default, and after each reset of the training data (i.e. `set_context`)
     this returns the growing set. As soon as the algorithm wants to switch to
     the pruning set (e.g. at the head of `simplify_rule`) it has to set
     `self.growing = False`.
-
-    The split is stratified (i.e. class proportions are retained).
-    Note that JRip (and presumably the original RIPPER) state that their
-    stratification is bugged.
 
     :var growing: bool
       If True (the default), let `self.X` and `self.y` return the growing set,
@@ -410,6 +411,9 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
     def pruning_heuristic(self, rule: AugmentedRule, context: RuleContext
                           ) -> float:
         """Rate rule to allow finding the best refinement, while pruning."""
+
+        # actually set this in `AbstractSecoImplementation.simplify_rule`
+        self.growing = False
 
     def count_matches(self, rule: AugmentedRule):
         """Discard cached values for (p,n) when self.growing changed.

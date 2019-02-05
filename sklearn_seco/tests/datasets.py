@@ -1,5 +1,5 @@
 """Artificial dataset (generator functions) for the sklearn_seco unittests."""
-# TODO: try to replace these with fixtures used with indirect=True
+# TODO: maybe replace these with fixtures used with indirect=True
 
 import itertools
 from collections import namedtuple
@@ -60,9 +60,9 @@ def xor_2d(n_samples=400, random=None):
         random = check_random_state(11)
     n = n_samples // 4
     centers = itertools.product([0, 4], [0, 4])
-    t = np.vstack(np.hstack((random.normal(loc=(x, y), size=(n, 2)),
-                             [[99 + (x == y)]] * n))
-                  for x, y in centers)
+    t = np.vstack([np.hstack((random.normal(loc=(x, y), size=(n, 2)),
+                              [[99 + (x == y)]] * n))
+                   for x, y in centers])
     random.shuffle(t)
     split = len(t) // 2
     x_train = t[:split, :-1]

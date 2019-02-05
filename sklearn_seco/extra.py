@@ -186,7 +186,7 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
     @classmethod
     def rule_stopping_criterion(cls, theory: Theory, rule: AugmentedRule,
                                 context: RuleContext) -> bool:
-        tctx: TraceCoverageTheoryContext = context.theory_context
+        tctx = context.theory_context
         assert isinstance(tctx, TraceCoverageTheoryContext)
         tctx.last_rule_stop = super().rule_stopping_criterion(theory, rule,
                                                               context)

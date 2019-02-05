@@ -122,7 +122,6 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         rules: RuleQueue = [best_rule]
         while len(rules):
             for candidate in select_candidate_rules(rules, context):
-                # TODO: parallelize here:
                 for refinement in refine_rule(candidate, context):
                     context.evaluate_rule(refinement)
                     if not inner_stopping_criterion(refinement, context):
@@ -155,7 +154,6 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         while np.any(y == target_class):
             rule_context = make_rule_context(theory_context, X, y)
             rule = find_best_rule(rule_context)
-            # TODO: ensure grow-rating is not used in pruning. use property & override in GrowPruneSplit ?
             rule = simplify_rule(rule, rule_context)
             if rule_stopping_criterion(theory, rule, rule_context):  # TODO: use pruning or growing+pruning?
                 break
@@ -209,9 +207,11 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
 # noinspection PyAttributeOutsideInit
 class SeCoEstimator(BaseEstimator, ClassifierMixin):
-    """Wrap the base SeCo to provide class label binarization."""
+    """Wrap the base SeCo to provide class label binarization.
 
-    # TODO: doc
+    The concrete SeCo variant to run is defined by `algorithm_config`.
+    """
+
     algorithm_config: Type[SeCoAlgorithmConfiguration]
 
     def __init__(self, multi_class="one_vs_rest", n_jobs=1):
