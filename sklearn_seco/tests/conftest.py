@@ -1,12 +1,15 @@
 """pytest fixtures for the test cases in this directory."""
+from functools import partial
 from typing import Union, List
 
 import numpy as np
 import pytest
 from sklearn.utils import check_random_state
 
+from sklearn_seco.abstract import SeCoEstimator
 from sklearn_seco.concrete import \
-    SimpleSeCoEstimator, CN2Estimator, IrepEstimator, RipperEstimator
+    SimpleSeCoEstimator, CN2Estimator, IrepEstimator, RipperEstimator, \
+    GrowPruneSplitTheoryContext
 
 from .datasets import Dataset, \
     binary_slight_overlap, binary_categorical, \
@@ -51,7 +54,15 @@ def seco_estimator_class(request):
 
     :return: An estimator class.
     """
-    return request.param
+    est_cls: SeCoEstimator = request.param
+
+    if issubclass(est_cls.algorithm_config.TheoryContextClass,
+                  GrowPruneSplitTheoryContext):
+        # fix rng state
+        est_cls.algorithm_config.TheoryContextClass = \
+            partial(est_cls.algorithm_config.TheoryContextClass,
+                    grow_prune_random=42)
+    return est_cls
 
 
 @pytest.fixture
