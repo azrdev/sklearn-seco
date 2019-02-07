@@ -179,16 +179,18 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
         X: np.ndarray = check_array(X)
         target_class = self.target_class_
+        negative_class = self.classes_[self.classes_ != target_class][0]
         match_rule = self.algorithm_config.match_rule
-        result = np.repeat(self.classes_[1],  # negative class  # FIXME: not if self.explicit_target_class
-                           X.shape[0])
-
-        for rule in self.theory_:
-            result = np.where(
-                match_rule(X, rule, self.categorical_mask_),
-                target_class,
-                result)
-        return result
+        rule_results = \
+            np.array([match_rule(X, rule, self.categorical_mask_)
+                      for rule in self.theory_]
+                     ) \
+            .any(axis=0) \
+            .astype(type(target_class))  # any of the rules matched
+        # translate bool to class value
+        rule_results[rule_results == True] = target_class  # noqa: E712
+        rule_results[rule_results == False] = negative_class  # noqa: E712
+        return rule_results
 
     def decision_function(self, X: np.ndarray) -> np.ndarray:
         # used by `sklearn.utils.multiclass._ovr_decision_function`
@@ -197,7 +199,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         match_rule = self.algorithm_config.match_rule
         proba = np.zeros(X.shape[0])
         for i, rule in enumerate(self.theory_):  # TODO: matrix multiplication?
-            proba = np.where(
+            proba = np.where(  # TODO: later rule matches override previous ones
                 match_rule(X, rule, self.categorical_mask_),
                 self.confidence_estimates_[i],
                 proba
