@@ -11,7 +11,7 @@ classes will have to use keyword- instead of positional arguments.
 import math
 from abc import abstractmethod, ABC
 from functools import lru_cache
-from typing import Iterable, NamedTuple
+from typing import Iterable, NamedTuple, Dict, Tuple
 
 import numpy as np
 from scipy.special import xlogy
@@ -392,6 +392,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         super().__init__(theory_context, X, y)
         assert isinstance(theory_context, GrowPruneSplitTheoryContext)
         self.__growing = True
+        self.__PN_cache_growing = {}
 
         # split examples
         grow_idx, prune_idx = grow_prune_split(
@@ -416,15 +417,25 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         self.growing = False
 
     def count_matches(self, rule: AugmentedRule):
-        """Discard cached values for (p,n) when self.growing changed.
+        """Cache values of (p,n) depending on the value of self.growing.
 
         To that end, `rule._pn_cache` is set to
-        `(growing: bool, (p: int, n: int))` instead of `(p: int, n: int)`.
+        `Dict[growing: bool, (p: int, n: int)]` instead of `(p: int, n: int)`.
         """
-        if rule._pn_cache is None or rule._pn_cache[0] != self.growing:
-            rule._pn_cache = None  # invalidate
-            rule._pn_cache = (self.growing, super().count_matches(rule))
-        return rule._pn_cache[1]
+        if rule._pn_cache is None or self.growing not in rule._pn_cache:
+            pn_cache_old: Dict[bool, Tuple[int, int]] = rule._pn_cache or {}
+            rule._pn_cache = None  # invalidate, so super (re)computes
+            pn_cache_old[self.growing] = super().count_matches(rule)
+            rule._pn_cache = pn_cache_old
+        return rule._pn_cache[self.growing]
+
+    @property
+    def PN(self) -> Tuple[int, int]:
+        """Cache values of (P, N) depending on the value of self.growing"""
+        if self.growing not in self.__PN_cache_growing:
+            self._PN_cache = None  # invalidate, so super (re)computes
+            self.__PN_cache_growing[self.growing] = super().PN
+        return self.__PN_cache_growing[self.growing]
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Mimic `AbstractSecoImplementation.evaluate_rule` but use
@@ -435,6 +446,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
             super().evaluate_rule(rule)
         else:
             p, n = self.count_matches(rule)
+            # TODO: ensure rule._sort_key is not mixed. use incomparable types?
             rule._sort_key = (pruning_heuristic(rule, self),
                               p,
                               -rule.instance_no)
@@ -446,9 +458,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
     @growing.setter
     def growing(self, value):
         if self.__growing != value:
-            self._P = None
-            self._N = None
-            # TODO: ensure rule._sort_key is not mixed. use two incomparable tuple-types?
+            self._PN_cache = None
         self.__growing = value
 
     @property

@@ -241,23 +241,21 @@ class RuleContext:
         self.theory_context = theory_context
         self._X = X
         self._y = y
-        self._P = None
-        self._N = None
+        self._PN_cache = None
 
     @property
     def PN(self) -> Tuple[int, int]:
-        """Return (P, N), the count of (positive, negative) examples"""
-        assert (self._P is None) == (self._N is None)  # always set both
-        if self._P is None:
+        """:return: (P, N), the count of (positive, negative) examples"""
+        if self._PN_cache is None:
             # calculate
-            # TODO: maybe get P,N from abstract_seco() ?
             y = self.y
             target_class = self.theory_context.target_class
-            self._P = np.count_nonzero(y == target_class)
-            self._N = len(y) - self._P
-            assert self._N == np.count_nonzero(y != target_class)
-            assert self._P + self._N == len(y)
-        return self._P, self._N
+            P = np.count_nonzero(y == target_class)
+            N = len(y) - P
+            assert N == np.count_nonzero(y != target_class)
+            assert P + N == len(y)
+            self._PN_cache = (P, N)
+        return self._PN_cache
 
     @property
     def X(self):
