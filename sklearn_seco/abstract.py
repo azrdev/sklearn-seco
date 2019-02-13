@@ -9,8 +9,7 @@ import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.multiclass import OneVsRestClassifier, OneVsOneClassifier
 from sklearn.utils import check_X_y, check_array
-from sklearn.utils.multiclass import \
-    unique_labels, check_classification_targets
+from sklearn.utils.multiclass import check_classification_targets
 from sklearn.utils.validation import check_is_fitted
 
 from sklearn_seco.common import \
@@ -70,13 +69,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         assert self.algorithm_config
 
         # prepare  target / labels / y
-
         check_classification_targets(y)
-        self.classes_ = unique_labels(y)
+        self.classes_, class_counts = np.unique(y, return_counts=True)
         if self.explicit_target_class is not None:
             self.target_class_ = self.explicit_target_class
         else:
-            self.target_class_ = self.classes_[0]
+            self.target_class_ = self.classes_[np.argmax(class_counts)]
 
         # prepare  attributes / features / X
         self.n_features_ = X.shape[1]
