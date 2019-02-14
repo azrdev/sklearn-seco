@@ -133,7 +133,7 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
     @classmethod
     def init_rule(cls, context: RuleContext) -> AugmentedRule:
         tctx = context.theory_context
-        return tctx.algorithm_config.RuleClass(n_features=tctx.n_features)
+        return tctx.algorithm_config.make_rule(n_features=tctx.n_features)
 
     @classmethod
     def refine_rule(cls, rule: AugmentedRule, context: 'TopDownSearchContext'

@@ -1,5 +1,5 @@
 """pytest fixtures for the test cases in this directory."""
-from functools import partial
+from functools import partialmethod
 from typing import Union, List
 
 import numpy as np
@@ -59,9 +59,10 @@ def seco_estimator_class(request):
     if issubclass(est_cls.algorithm_config.TheoryContextClass,
                   GrowPruneSplitTheoryContext):
         # fix rng state
-        est_cls.algorithm_config.TheoryContextClass = \
-            partial(est_cls.algorithm_config.TheoryContextClass,
-                    grow_prune_random=42)
+        # TODO: maybe use a single random_state in SeCoEstimator instead
+        est_cls.algorithm_config.make_theory_context = \
+            partialmethod(est_cls.algorithm_config.make_theory_context,
+                          grow_prune_random=42)
     return est_cls
 
 

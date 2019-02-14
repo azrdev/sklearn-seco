@@ -135,13 +135,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         target_class = self.target_class_
 
-        theory_context = self.algorithm_config.TheoryContextClass(
-            self.algorithm_config,
+        theory_context = self.algorithm_config.make_theory_context(
             self.categorical_mask_, self.n_features_, target_class, X, y)
 
         # resolve methods once for performance
         implementation = self.algorithm_config.Implementation
-        make_rule_context = self.algorithm_config.RuleContextClass
+        make_rule_context = self.algorithm_config.make_rule_context
         find_best_rule = self.find_best_rule
         simplify_rule = implementation.simplify_rule
         rule_stopping_criterion = implementation.rule_stopping_criterion
@@ -163,9 +162,9 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         theory = post_process(theory, theory_context)
 
         # store growing_heuristic(training set) for decision_function
-        rule_context = RuleContext(theory_context,
-                                   theory_context.complete_X,
-                                   theory_context.complete_y)
+        rule_context = make_rule_context(theory_context,
+                                         theory_context.complete_X,
+                                         theory_context.complete_y)
         self.confidence_estimates_ = [
             self.algorithm_config.Implementation.growing_heuristic(
                 AugmentedRule(conditions=rule), rule_context)

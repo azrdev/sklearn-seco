@@ -430,3 +430,15 @@ class SeCoAlgorithmConfiguration:
     RuleClass = AugmentedRule
     TheoryContextClass: Type[TheoryContext] = TheoryContext
     RuleContextClass: Type[RuleContext] = RuleContext
+
+    @classmethod
+    def make_rule(cls, *args, **kwargs):
+        return cls.RuleClass(*args, **kwargs)
+
+    @classmethod
+    def make_theory_context(cls, *args, **kwargs):
+        return cls.TheoryContextClass(cls, *args, **kwargs)
+
+    @classmethod
+    def make_rule_context(cls, *args, **kwargs):
+        return cls.RuleContextClass(*args, **kwargs)
