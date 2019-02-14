@@ -5,8 +5,9 @@ Helpers in addition to the algorithms in `concrete.py`.
 
 import math
 import warnings
-from itertools import zip_longest
-from typing import Optional, Union, Sequence, Tuple, Type, Callable
+from dataclasses import dataclass
+from typing import Optional, Union, Sequence, Tuple, Type, Callable, \
+    NamedTuple, MutableSequence
 
 import numpy as np
 from matplotlib.figure import Figure  # needed only for type hints
@@ -17,10 +18,49 @@ from sklearn_seco.common import \
     AbstractSecoImplementation, RuleContext, TheoryContext
 
 
-LogTraceCallback = Callable[[Sequence[np.ndarray],  # coverage_log
-                             Sequence[np.ndarray],  # refinement_log
-                             bool,  # last_rule_stop
-                             np.ndarray],  # PN
+@dataclass
+class TraceEntry:
+    """Trace of one seco algorithm step, i.e. `find_best_rule` invocation.
+
+    Attributes
+    -----
+    `ancestors`: list of np.array with shape (n_ancestors, 2)
+       This is the log of the learned `best_rule` and its `ancestors`.
+
+       An array with (p, n) for the rule and each ancestor, in reverse order of
+       creation.
+
+       If `TraceCoverageTheoryContext.trace_level` is 'theory', no ancestors
+       are traced, so only the `best_rule` is contained.
+
+    `refinements`: np.array or list of np.array with shape (n_refinements, 3)
+       This is the log of all `refinements`, an array with (p, n, stop) for
+       each refinement, where `stop` is the boolean result of
+       `inner_stopping_criterion(refinement)`.
+
+       Empty if `TraceCoverageTheoryContext.trace_level` is not 'refinements'.
+
+    P: int
+      Count of positive examples
+
+    N: int
+      Count of negative examples
+    """
+    AncestorEntry = Union[NamedTuple('Coverage', [('p', int), ('n', int)]),
+                          np.ndarray]
+    RefinementEntry = Union[NamedTuple('Refinements', [('p', int),
+                                                       ('n', int),
+                                                       ('stop', bool)]),
+                            np.ndarray]
+
+    ancestors: Sequence[AncestorEntry]
+    refinements: MutableSequence[RefinementEntry]
+    P: int
+    N: int
+
+
+LogTraceCallback = Callable[[Sequence[TraceEntry],
+                             bool],  # last_rule_stop
                             None]
 
 
@@ -47,36 +87,16 @@ def trace_coverage(est_cls: Type[SeCoEstimator],
 
     The trace consists of the following fields:
 
-    - `coverage_log`: list of np.array with shape (n_ancestors, 2)
-       This is the log of `best_rule` and their `ancestors`.
+    - `coverage_log`: Sequence[TraceEntry]
+      Each TraceEntry represents one step in `abstract_seco`, and thus one rule
+      in the learned theory. The last step/rule is only part of the theory iff
+      last_rule_stop is False.
 
-       For each `best_rule` +1 it keeps an array with (p, n) for that best rule
-       and its ancestors, in reverse order of creation. If `last_rule_stop` is
-       False, the last `best_rule` has been rejected by the
-       `rule_stopping_criterion` and is not part of the theory.
-
-       If `TraceCoverageTheoryContext.trace_level` is 'theory', no ancestors
-       are traced, so only the `best_rule`s are contained.
-
-    - `refinement_log`: list of np.array with shape (n_refinements, 3)
-       This is the log of all `refinements`. For each `best_rule` (i.e.
-       iteration in `abstract_seco`) +1 (which corresponds to the attempts to
-       find another rule, aborted by `rule_stopping_criterion`), it keeps an
-       array with (p, n, stop) for each refinement, where `stop` is the boolean
-       result of `inner_stopping_criterion(refinement)`.
-
-       If `TraceCoverageTheoryContext.trace_level` is not 'refinements', this
-       is empty.
-
-    - `last_rule_stop`: boolean result of `rule_stopping_criterion` on the last
-       found `best_rule`. If False, it is part of the theory (and the rule
-       search ended because all positive examples were covered), if True it is
-       not part of the theory (the search ended because
-       `rule_stopping_criterion` was True).
-
-    - `PN`: np.array of shape (n_best_rules, 2)
-       This is the log of the (P, N) values for each iteration of
-       `abstract_seco`.
+    - `last_rule_stop`: boolean
+      result of `rule_stopping_criterion` on the last found `best_rule`. If
+      False, it is part of the theory (and the rule search ended because all
+      positive examples were covered), if True it is not part of the theory
+      (the search ended because `rule_stopping_criterion` was True).
 
     # TODO: implement tracing of estimator instances (not only classes)
 
@@ -84,9 +104,9 @@ def trace_coverage(est_cls: Type[SeCoEstimator],
     =====
     Define the callback function to receive the trace & display it:
 
-    >>> def callback(coverage_log, refinement_log, last_rule_stop, PN):
+    >>> def callback(coverage_log, last_rule_stop):
     ...     theory_figure, rules_figure = plot_coverage_log(
-    ...         coverage_log, refinement_log, last_rule_stop, PN)
+    ...         coverage_log, last_rule_stop)
     ...     theory_figure.show()
     ...     rules_figure.show()
 
@@ -115,9 +135,8 @@ def trace_coverage(est_cls: Type[SeCoEstimator],
                     assert isinstance(context, TraceCoverageTheoryContext)
                     # transfer collected trace from the `context` object which
                     # is in local scope
-                    log_coverage_trace_callback(
-                        context.coverage_log, context.refinement_log,
-                        context.last_rule_stop, np.array(context.PN))
+                    log_coverage_trace_callback(context.coverage_log,
+                                                context.last_rule_stop)
                     return original_post_process(theory, context)
 
             class TheoryContextClass(
@@ -149,20 +168,16 @@ class TraceCoverageTheoryContext(TheoryContext):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.coverage_log = []
-        self.refinement_log = []
+        self.coverage_log: MutableSequence[TraceEntry] = []
         self.last_rule_stop = None
-        self.PN = []
 
 
 class TraceCoverageRuleContext(RuleContext):
     """Tracing `RuleContext`."""
-    def __init__(self, theory_context: TraceCoverageTheoryContext, X, y):
+    def __init__(self, theory_context: TheoryContext, X, y):
         super().__init__(theory_context, X, y)
-        assert isinstance(theory_context, TraceCoverageTheoryContext)
-        theory_context.PN.append((self.PN))
-        if theory_context.trace_level == 'refinements':
-            theory_context.refinement_log.append([])
+        P, N = self.PN
+        self.current_trace_entry = TraceEntry([], [], P, N)
 
 
 class TraceCoverageImplementation(AbstractSecoImplementation):
@@ -175,39 +190,39 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
 
     @classmethod
     def inner_stopping_criterion(cls, refinement: AugmentedRule,
-                                 context: RuleContext) -> bool:
+                                 context: TraceCoverageRuleContext) -> bool:
         stop = super().inner_stopping_criterion(refinement, context)
+        assert isinstance(context, TraceCoverageRuleContext)
         p, n = context.count_matches(refinement)
-        assert isinstance(context.theory_context, TraceCoverageTheoryContext)
-        context.theory_context.refinement_log[-1]. \
-            append(np.array((p, n, stop)))
+        context.current_trace_entry.refinements.append(np.array((p, n, stop)))
         return stop
 
     @classmethod
     def rule_stopping_criterion(cls, theory: Theory, rule: AugmentedRule,
-                                context: RuleContext) -> bool:
+                                context: TraceCoverageRuleContext) -> bool:
+        last_rule_stop = super().rule_stopping_criterion(theory, rule, context)
+
         tctx = context.theory_context
         assert isinstance(tctx, TraceCoverageTheoryContext)
-        tctx.last_rule_stop = super().rule_stopping_criterion(theory, rule,
-                                                              context)
-
-        def pn(rule):
-            return context.count_matches(rule)
-
+        assert isinstance(context, TraceCoverageRuleContext)
+        current_entry = context.current_trace_entry
         if tctx.trace_level == 'best_rules':
-            tctx.coverage_log.append(np.array([pn(rule)]))
+            current_entry.ancestors = np.array([context.count_matches(rule)])
         else:  # elif trace_level in ('ancestors', 'refinements'):
-            tctx.coverage_log.append(
-                np.array([pn(r) for r in rule_ancestors(rule)]))
+            current_entry.ancestors = np.array(
+                [context.count_matches(r) for r in rule_ancestors(rule)])
 
         if tctx.trace_level == 'refinements':
-            tctx.refinement_log[-1] = np.array(tctx.refinement_log[-1])
+            current_entry.refinements = np.array(current_entry.refinements)
 
-        return tctx.last_rule_stop
+        tctx.coverage_log.append(current_entry)
+        tctx.last_rule_stop = last_rule_stop
+        return last_rule_stop
 
 
 def plot_coverage_log(
-        coverage_log, refinement_log, last_rule_stop, PN,
+        log: Sequence[TraceEntry],
+        last_rule_stop: bool,
         *,
         title: Optional[str] = None,
         draw_refinements: Union[str, bool] = 'nonzero',
@@ -217,9 +232,8 @@ def plot_coverage_log(
 ) -> Tuple[Figure, Union[Figure, Sequence[Figure]]]:
     """Plot the traced (p, n) of a theory.
 
-    For parameters `coverage_log`, `refinement_log`, `last_rule_stop`, and
-    `PN`, see documentation of `trace_coverage`.
-
+    :param log: collected trace, see `trace_coverage`.
+    :param last_rule_stop: part of collected trace, see `trace_trace_coverage`
     :param title: string or None. If not None, set figure titles and use
       this value as prefix.
     :param theory_figure: If None, use `plt.figure()` to create a figure
@@ -240,16 +254,22 @@ def plot_coverage_log(
 
     P, N = 0, 1  # readable indexes, not values!
 
-    n_rules = len(coverage_log)
+    n_rules = len(log)
     if not n_rules:
         # issue a warning, user can decide handling. See module `warnings`
         warnings.warn("Empty coverage_log collected, useless plot.")
-    if draw_refinements and len(refinement_log) < n_rules:
-        warnings.warn("draw_refinements=True requested, but no refinement_log "
-                      "collected. Using draw_refinements=False.")
-        draw_refinements = False
+    if draw_refinements:
+        for index, le in enumerate(log):
+            if len(le.refinements) < n_rules:
+                warnings.warn(
+                    "draw_refinements=True requested, but refinement log "
+                    "for rule #{} incomplete. Using draw_refinements=False."
+                    .format(index))
+                draw_refinements = False
+                break
 
-    PN0 = PN[0]
+    P0 = log[0].P
+    N0 = log[0].N
     rnd_style = dict(color='grey', alpha=0.5, linestyle='dotted')
     refinements_style = dict(marker='.', markersize=1, linestyle='',
                              zorder=-1,)
@@ -260,10 +280,10 @@ def plot_coverage_log(
     if theory_figure is None:
         theory_figure = plt.figure()
     theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
-                                    xlim=(0, PN0[N]), ylim=(0, PN0[P]))
+                                    xlim=(0, N0), ylim=(0, P0))
     theory_axes.locator_params(integer=True)
     # draw "random theory" reference marker
-    theory_axes.plot([0, PN0[N]], [0, PN0[P]], **rnd_style)
+    theory_axes.plot([0, N0], [0, P0], **rnd_style)
 
     if rules_use_subfigures:
         if rules_figure is None:
@@ -292,14 +312,15 @@ def plot_coverage_log(
         rule_axes = [f.gca() for f in rules_figure]
 
     previous_rule = np.array((0, 0))  # contains (P, N) for some trace
-    for rule_idx, (rule_trace, refinements) in \
-            enumerate(zip_longest(coverage_log, refinement_log)):
-        PNi = PN[rule_idx]
+    for rule_idx, trace_entry in enumerate(log):
+        rule_trace = trace_entry.ancestors
+        refinements = trace_entry.refinements
+        Pi = trace_entry.P
+        Ni = trace_entry.N
         # TODO: visualize whether refinement was rejected due to inner_stop
+        refts_mask = slice(None)  # all
         if draw_refinements == 'nonzero':
-            refts_mask = refinements[:, P] != 0
-        elif draw_refinements:
-            refts_mask = slice(None)  # all
+            refts_mask: slice = refinements[:, P] != 0
         mark_stop = last_rule_stop and (rule_idx == n_rules - 1)
 
         # this rule in theory plot
@@ -333,7 +354,7 @@ def plot_coverage_log(
             rule_title_template = "%s: %s" % (title, rule_title_template)
         rule_axis.set_title(rule_title_template % rule_idx)
         # draw "random theory" reference marker
-        rule_axis.plot([0, PN0[N]], [0, PN0[P]], **rnd_style)
+        rule_axis.plot([0, N0], [0, P0], **rnd_style)
         # draw rule_trace
         rule_axis.plot(rule_trace[:, N], rule_trace[:, P], 'o-',
                        color=rule_color)
@@ -347,7 +368,7 @@ def plot_coverage_log(
         for spine_type, spine in rule_axis.spines.items():
             spine.set_position('zero')
             horizontal = spine_type in {'bottom', 'top'}
-            spine.set_bounds(0, PNi[N] if horizontal else PNi[P])
+            spine.set_bounds(0, Ni if horizontal else Pi)
 
         class PositiveTicks(AutoLocator):
             def tick_values(self, vmin, vmax):
@@ -359,8 +380,8 @@ def plot_coverage_log(
         rule_axis.locator_params(integer=True)
 
         # set reference frame (N,P), but move (0,0) so it looks comparable
-        rule_axis.set_xbound(PNi[N] - PN0[N], PNi[N])
-        rule_axis.set_ybound(PNi[P] - PN0[P], PNi[P])
+        rule_axis.set_xbound(Ni - N0, Ni)
+        rule_axis.set_ybound(Pi - P0, Pi)
 
     if title is not None:
         theory_axes.set_title("%s: Theory" % title)
