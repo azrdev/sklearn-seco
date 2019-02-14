@@ -19,11 +19,12 @@ from sklearn_seco.common import \
 
 # noinspection PyAttributeOutsideInit
 class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
-    """Binary SeCo Classification, deferring to :var:`algorithm_config`
+    """Binary SeCo Classification, deferring to :var:`algorithm_config_`
     for concrete algorithm implementation.
 
-    :param algorithm_config: Type[SeCoAlgorithmConfiguration]
-        Defines the SeCo variant to be run.
+    :param algorithm_config_: SeCoAlgorithmConfiguration
+        Defines the SeCo variant to be run. Instance of `class
+        self.algorithm_config_class`.
 
     :param categorical_features: None or "all" or array of indices or mask.
 
@@ -55,7 +56,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                  categorical_features: Union[None, str, np.ndarray] = None,
                  explicit_target_class=None):
         super().__init__()
-        self.algorithm_config = algorithm_config
+        self.algorithm_config_class = algorithm_config
         self.categorical_features = categorical_features
         self.explicit_target_class = explicit_target_class
 
@@ -66,7 +67,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         :param y: Classification for `X`.
         """
         X, y = check_X_y(X, y, dtype=np.floating)
-        assert self.algorithm_config
+        self.algorithm_config_ = self.algorithm_config_class()
 
         # prepare  target / labels / y
         check_classification_targets(y)
@@ -106,7 +107,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         """Inner loop of abstract SeCo/Covering algorithm."""
 
         # resolve methods once for performance
-        implementation = self.algorithm_config.Implementation
+        implementation = self.algorithm_config_.implementation
         init_rule = implementation.init_rule
         evaluate_rule = context.evaluate_rule
         select_candidate_rules = implementation.select_candidate_rules
@@ -135,12 +136,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         target_class = self.target_class_
 
-        theory_context = self.algorithm_config.make_theory_context(
+        theory_context = self.algorithm_config_.make_theory_context(
             self.categorical_mask_, self.n_features_, target_class, X, y)
 
         # resolve methods once for performance
-        implementation = self.algorithm_config.Implementation
-        make_rule_context = self.algorithm_config.make_rule_context
+        implementation = self.algorithm_config_.implementation
+        make_rule_context = self.algorithm_config_.make_rule_context
         find_best_rule = self.find_best_rule
         simplify_rule = implementation.simplify_rule
         rule_stopping_criterion = implementation.rule_stopping_criterion
@@ -166,7 +167,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                                          theory_context.complete_X,
                                          theory_context.complete_y)
         self.confidence_estimates_ = [
-            self.algorithm_config.Implementation.growing_heuristic(
+            self.algorithm_config_.implementation.growing_heuristic(
                 AugmentedRule(conditions=rule), rule_context)
             for rule in theory
         ]
@@ -177,7 +178,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         X: np.ndarray = check_array(X)
         target_class = self.target_class_
         negative_class = self.classes_[self.classes_ != target_class][0]
-        match_rule = self.algorithm_config.match_rule
+        match_rule = self.algorithm_config_.match_rule
         rule_results = \
             np.array([match_rule(X, rule, self.categorical_mask_)
                       for rule in self.theory_]
@@ -193,7 +194,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         # used by `sklearn.utils.multiclass._ovr_decision_function`
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
         X: np.ndarray = check_array(X)
-        match_rule = self.algorithm_config.match_rule
+        match_rule = self.algorithm_config_.match_rule
         proba = np.zeros(X.shape[0])
         for i, rule in enumerate(self.theory_):  # TODO: matrix multiplication?
             proba = np.where(  # TODO: later rule matches override previous ones

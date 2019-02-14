@@ -205,7 +205,7 @@ class TheoryContext:
     * `complete_y`: All training classifications `y` *at start of training*.
     """
 
-    def __init__(self, algorithm_config: Type['SeCoAlgorithmConfiguration'],
+    def __init__(self, algorithm_config: 'SeCoAlgorithmConfiguration',
                  categorical_mask, n_features, target_class,
                  X, y):
         self.categorical_mask = categorical_mask
@@ -217,8 +217,8 @@ class TheoryContext:
         self.complete_y = y
 
     @property
-    def implementation(self):
-        return self.algorithm_config.Implementation
+    def implementation(self) -> 'AbstractSecoImplementation':
+        return self.algorithm_config.implementation
 
 
 class RuleContext:
@@ -405,8 +405,14 @@ class AbstractSecoImplementation(ABC):
 class SeCoAlgorithmConfiguration:
     """A concrete SeCo algorithm, defined by code and associated state objects.
 
-    # TODO: maybe instantiate (== copy) to allow subclasses overriding
-    # TODO: static / IDE hint when Implementation is still abstract
+    In `SeCoEstimator` an instance of this class is used, to allow wrapping the
+    methods `make_rule`, `make_theory_context`, and `make_rule_context` in e.g.
+    `functools.partialmethod`.
+
+    The members `RuleClass`, `TheoryContextClass`, and `RuleContextClass`
+    should only ever be overridden/subclassed, not wrapped in functions (like
+    `functools.partial`), to enable other users (like `extra.trace_coverage`)
+    to subclass them again.
 
     Members
     -----
@@ -431,14 +437,18 @@ class SeCoAlgorithmConfiguration:
     TheoryContextClass: Type[TheoryContext] = TheoryContext
     RuleContextClass: Type[RuleContext] = RuleContext
 
-    @classmethod
-    def make_rule(cls, *args, **kwargs):
-        return cls.RuleClass(*args, **kwargs)
+    def __init__(self):
+        self.implementation = self.Implementation()
 
     @classmethod
-    def make_theory_context(cls, *args, **kwargs):
-        return cls.TheoryContextClass(cls, *args, **kwargs)
+    def make_rule(self, *args, **kwargs) -> 'RuleClass':
+        """:return: An instance of `RuleClass`."""
+        return self.RuleClass(*args, **kwargs)
 
-    @classmethod
-    def make_rule_context(cls, *args, **kwargs):
-        return cls.RuleContextClass(*args, **kwargs)
+    def make_theory_context(self, *args, **kwargs) -> 'TheoryContextClass':
+        """:return: An instance of `TheoryContextClass`."""
+        return self.TheoryContextClass(self, *args, **kwargs)
+
+    def make_rule_context(self, *args, **kwargs) -> 'RuleContextClass':
+        """:return: An instance of `RuleContextClass`."""
+        return self.RuleContextClass(*args, **kwargs)
