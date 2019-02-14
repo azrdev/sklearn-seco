@@ -391,8 +391,8 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
     def __init__(self, theory_context: GrowPruneSplitTheoryContext, X, y):
         super().__init__(theory_context, X, y)
         assert isinstance(theory_context, GrowPruneSplitTheoryContext)
-        self.__growing = True
-        self.__PN_cache_growing = {}
+        self._PN_cache_growing = {}
+        self.growing = True
 
         # split examples
         grow_idx, prune_idx = grow_prune_split(
@@ -404,9 +404,6 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         self._growing_y = y[grow_idx]
         self._pruning_X = X[prune_idx]
         self._pruning_y = y[prune_idx]
-
-        # initialize state
-        self.growing = True
 
     @abstractmethod
     def pruning_heuristic(self, rule: AugmentedRule, context: RuleContext
@@ -432,10 +429,10 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
     @property
     def PN(self) -> Tuple[int, int]:
         """Cache values of (P, N) depending on the value of self.growing"""
-        if self.growing not in self.__PN_cache_growing:
+        if self.growing not in self._PN_cache_growing:
             self._PN_cache = None  # invalidate, so super (re)computes
-            self.__PN_cache_growing[self.growing] = super().PN
-        return self.__PN_cache_growing[self.growing]
+            self._PN_cache_growing[self.growing] = super().PN
+        return self._PN_cache_growing[self.growing]
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Mimic `AbstractSecoImplementation.evaluate_rule` but use
@@ -450,16 +447,6 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
             rule._sort_key = (pruning_heuristic(rule, self),
                               p,
                               -rule.instance_no)
-
-    @property
-    def growing(self):
-        return self.__growing
-
-    @growing.setter
-    def growing(self, value):
-        if self.__growing != value:
-            self._PN_cache = None
-        self.__growing = value
 
     @property
     def X(self):
