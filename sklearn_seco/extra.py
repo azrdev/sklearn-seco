@@ -16,6 +16,7 @@ from sklearn_seco.abstract import SeCoEstimator
 from sklearn_seco.common import \
     AugmentedRule, Theory, rule_ancestors, \
     AbstractSecoImplementation, RuleContext, TheoryContext
+from sklearn_seco.concrete import GrowPruneSplitRuleContext
 
 
 @dataclass
@@ -176,7 +177,7 @@ class TraceCoverageRuleContext(RuleContext):
     """Tracing `RuleContext`."""
     def __init__(self, theory_context: TheoryContext, X, y):
         super().__init__(theory_context, X, y)
-        P, N = self.PN
+        P, N = self.PN  # always growing  if GrowPruneSplitRuleContext is used
         self.current_trace_entry = TraceEntry([], [], P, N)
 
 
@@ -206,6 +207,8 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
         assert isinstance(tctx, TraceCoverageTheoryContext)
         assert isinstance(context, TraceCoverageRuleContext)
         current_entry = context.current_trace_entry
+        if isinstance(context, GrowPruneSplitRuleContext):
+            context.growing = True
         if tctx.trace_level == 'best_rules':
             current_entry.ancestors = np.array([context.count_matches(rule)])
         else:  # elif trace_level in ('ancestors', 'refinements'):

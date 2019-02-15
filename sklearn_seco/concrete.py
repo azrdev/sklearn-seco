@@ -377,9 +377,11 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
     stratification is bugged.
 
 
-    This works by overriding the getters for the properties `X` and `y`.
-    By default, and after each reset of the training data (i.e. `set_context`)
-    this returns the growing set. As soon as the algorithm wants to switch to
+    This works by overriding the getters for the properties `X`, `y`, `PN`, and
+    the function `count_matches` (for `p, n`).
+    By default this returns the growing set, i.e. at start of each
+    `find_best_rule` invocation. Methods `pruning_heuristic` and
+    As soon as the algorithm wants to switch to
     the pruning set (e.g. at the head of `simplify_rule`) it has to set
     `self.growing = False`.
 
@@ -492,9 +494,6 @@ class RipperPostPruning(AbstractSecoImplementation):
         candidates.sort()
         best_rule = candidates.pop()
 
-        # restore rating by grow-heuristic
-        context.growing = True
-        evaluate_rule(best_rule)
         return best_rule
 
 
@@ -651,6 +650,15 @@ class RipperEstimator(SeCoEstimator):
                 accuracy_rate = (p + 1) / (p + n + 1)
                 return accuracy_rate >= 1
 
+            @classmethod
+            def rule_stopping_criterion(cls, theory: Theory,
+                                        rule: AugmentedRule,
+                                        context: RuleContext) -> bool:
+                assert isinstance(context, GrowPruneSplitRuleContext)
+                # TODO: dedup setting context.growing before callbacks. use a decorator?
+                context.growing = False
+                return super().rule_stopping_criterion(theory, rule, context)
+
         class RuleContextClass(TopDownSearchContext,
                                GrowPruneSplitRuleContext):
             def pruning_heuristic(self, rule: AugmentedRule,
@@ -685,13 +693,21 @@ class IrepEstimator(SeCoEstimator):
                              RipperPostPruning,
                              CoverageRuleStop,
                              SkipPostProcess):
-            pass
+
+            @classmethod
+            def rule_stopping_criterion(cls, theory: Theory,
+                                        rule: AugmentedRule,
+                                        context: RuleContext) -> bool:
+                assert isinstance(context, GrowPruneSplitRuleContext)
+                context.growing = False
+                return super().rule_stopping_criterion(theory, rule, context)
 
         class RuleContextClass(TopDownSearchContext,
                                GrowPruneSplitRuleContext):
             def pruning_heuristic(self, rule: AugmentedRule,
-                                  context: RuleContext) -> float:
-                """(#true positives + #true negatives) / #examples"""
+                                  context: GrowPruneSplitRuleContext) -> float:
+                """:return: (#true positives + #true negatives) / #examples"""
+                context.growing = False
                 p, n = context.count_matches(rule)
                 P, N = context.PN
                 tn = N - n
