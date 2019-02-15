@@ -52,11 +52,11 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     """
 
     def __init__(self,
-                 algorithm_config: Type['SeCoAlgorithmConfiguration'],
+                 algorithm_config_class: Type['SeCoAlgorithmConfiguration'],
                  categorical_features: Union[None, str, np.ndarray] = None,
                  explicit_target_class=None):
         super().__init__()
-        self.algorithm_config_class = algorithm_config
+        self.algorithm_config_class = algorithm_config_class
         self.categorical_features = categorical_features
         self.explicit_target_class = explicit_target_class
 
