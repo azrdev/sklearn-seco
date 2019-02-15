@@ -431,6 +431,7 @@ class SeCoAlgorithmConfiguration:
       `find_best_rule` run.
     """
     match_rule = staticmethod(match_rule)
+    # TODO: maybe use a Sequence of classes here and construct subclass with type(name, bases, []) in __init__
     Implementation: Type[AbstractSecoImplementation] = \
         AbstractSecoImplementation
     RuleClass = AugmentedRule

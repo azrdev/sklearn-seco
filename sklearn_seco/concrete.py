@@ -258,13 +258,10 @@ class SignificanceStoppingCriterion(AbstractSecoImplementation):
             return True
         # purity = p / (p + n)
         # impurity = n / (p + n)
-        # # cross entropy
         # CE = (- purity * math.log(purity / (P / (P + N)))
-        #       - xlogy(impurity, impurity / (N / (P + N))))
-        # # J-Measure
-        # J = p * CE
-        # # likelihood ratio statistics
-        # LRS = 2 * (P + N) * J
+        #       - xlogy(impurity, impurity / (N / (P + N))))  # cross entropy
+        # J = p * CE  # J-Measure
+        # LRS = 2 * (P + N) * J  # likelihood ratio statistics
         e_p = (p + n) * P / (P + N)
         e_n = (p + n) * N / (P + N)
         LRS = 2 * (xlogy(p, p / e_p) + xlogy(n, n / e_n))

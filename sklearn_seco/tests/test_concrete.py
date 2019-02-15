@@ -145,6 +145,7 @@ def test_sklearn_check_estimator(seco_estimator_class):
     # TODO: Unwrap :func:`sklearn.utils.estimator_checks.check_estimator`, so
     our report shows which ones actually failed. Waiting for <https://github.com/scikit-learn/scikit-learn/issues/11622>
     """
+    # TODO: check_classifiers_predictions sometimes fails for Irep/Ripper: due to bad grow-prune-splits & small n_samples we only recognize 1/3 classes
     check_estimator(seco_estimator_class)
 
 
