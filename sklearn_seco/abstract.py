@@ -179,16 +179,13 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         target_class = self.target_class_
         negative_class = self.classes_[self.classes_ != target_class][0]
         match_rule = self.algorithm_config_.match_rule
-        rule_results = \
+        matches = \
             np.array([match_rule(X, rule, self.categorical_mask_)
                       for rule in self.theory_]
                      ) \
-            .any(axis=0) \
-            .astype(type(target_class))  # any of the rules matched
+            .any(axis=0)  # any of the rules matched
         # translate bool to class value
-        rule_results[rule_results == True] = target_class  # noqa: E712
-        rule_results[rule_results == False] = negative_class  # noqa: E712
-        return rule_results
+        return np.where(matches, target_class, negative_class)
 
     def decision_function(self, X: np.ndarray) -> np.ndarray:
         # used by `sklearn.utils.multiclass._ovr_decision_function`
