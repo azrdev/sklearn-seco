@@ -5,7 +5,6 @@ Helpers in addition to the algorithms in `concrete.py`.
 
 import math
 import warnings
-from dataclasses import dataclass
 from typing import Optional, Union, Sequence, Tuple, Type, Callable, \
     NamedTuple, MutableSequence
 
@@ -19,7 +18,6 @@ from sklearn_seco.common import \
 from sklearn_seco.concrete import GrowPruneSplitRuleContext
 
 
-@dataclass
 class TraceEntry:
     """Trace of one seco algorithm step, i.e. `find_best_rule` invocation.
 
@@ -53,6 +51,13 @@ class TraceEntry:
                                                        ('n', int),
                                                        ('stop', bool)]),
                             np.ndarray]
+
+    def __init__(self, ancestors: Sequence[AncestorEntry],
+                 refinements: MutableSequence[RefinementEntry], P, N):
+        self.ancestors = ancestors
+        self.refinements = refinements
+        self.P = P
+        self.N = N
 
     ancestors: Sequence[AncestorEntry]
     refinements: MutableSequence[RefinementEntry]

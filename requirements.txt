@@ -1,4 +1,6 @@
 scipy
-pytest
+pytest >= 3.5
 numpy
 scikit_learn >= 0.19.1
+# only for tests
+matplotlib
