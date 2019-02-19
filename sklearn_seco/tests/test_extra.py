@@ -2,11 +2,14 @@
 
 from typing import Sequence
 
+import pytest
+
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.extra import trace_coverage, plot_coverage_log, TraceEntry
-from sklearn_seco.tests.datasets import binary_categorical
+from sklearn_seco.tests.datasets import xor_2d
 
 
+@pytest.mark.fast
 def test_coverage_tracing(seco_estimator_class):
     """Test the `trace_coverage` mixin, using SimpleSeCo and CN2."""
 
@@ -20,7 +23,7 @@ def test_coverage_tracing(seco_estimator_class):
         last_rule_stop = lrs
 
     estimator = trace_coverage(seco_estimator_class, trace_callback)()
-    X, y, X_test, y_test, cm = binary_categorical()
+    X, y, X_test, y_test, cm = xor_2d()
     estimator.fit(X, y, categorical_features=cm)
     # check recognition of binary problem
     base = estimator.base_estimator_
