@@ -441,7 +441,6 @@ class SeCoAlgorithmConfiguration:
     def __init__(self):
         self.implementation = self.Implementation()
 
-    @classmethod
     def make_rule(self, *args, **kwargs) -> 'RuleClass':
         """:return: An instance of `RuleClass`."""
         return self.RuleClass(*args, **kwargs)
