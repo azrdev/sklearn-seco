@@ -401,6 +401,16 @@ class AbstractSecoImplementation(ABC):
         """Modify `theory` after it has been learned."""
         raise NotImplementedError
 
+    @classmethod
+    def confidence_estimate(cls, rule: AugmentedRule, context: RuleContext
+                            ) -> float:
+        """Evaluate rule on whole training set (`context`) to estimate
+        confidence in its predictions, compared to other rules in the theory.
+
+        Default implementation uses `growing_heuristic`.
+        """
+        return cls.growing_heuristic(rule, context)
+
 
 class SeCoAlgorithmConfiguration:
     """A concrete SeCo algorithm, defined by code and associated state objects.

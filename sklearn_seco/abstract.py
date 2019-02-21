@@ -146,6 +146,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         simplify_rule = implementation.simplify_rule
         rule_stopping_criterion = implementation.rule_stopping_criterion
         post_process = implementation.post_process
+        confidence_estimator = implementation.confidence_estimate
 
         # main loop
         theory: Theory = list()
@@ -167,8 +168,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                                          theory_context.complete_X,
                                          theory_context.complete_y)
         self.confidence_estimates_ = [
-            self.algorithm_config_.implementation.growing_heuristic(
-                AugmentedRule(conditions=rule), rule_context)
+            confidence_estimator(AugmentedRule(conditions=rule), rule_context)
             for rule in theory
         ]
         return theory
