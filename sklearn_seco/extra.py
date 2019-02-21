@@ -423,8 +423,10 @@ def plot_coverage_log(
         if title is not None:
             rules_figure.suptitle("%s: Rules" % title, y=0.02)
         # TODO: axis labels when using subfigures
-        subfigure_grid = [math.ceil(np.sqrt(n_rules))] * 2
-        rule_axes = [rules_figure.add_subplot(*subfigure_grid, rule_idx + 1)
+        subfigure_cols = math.ceil(np.sqrt(n_rules))
+        subfigure_rows = math.ceil(n_rules / subfigure_cols)
+        rule_axes = [rules_figure.add_subplot(subfigure_rows, subfigure_cols,
+                                              rule_idx + 1)
                      for rule_idx in range(n_rules)]  # type: List[axes.Axes]
     else:
         if rules_figure is None:
