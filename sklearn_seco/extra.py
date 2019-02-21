@@ -3,13 +3,18 @@ Implementation of SeCo / Covering algorithm:
 Helpers in addition to the algorithms in `concrete.py`.
 """
 
+import json
 import math
 import warnings
 from typing import Optional, Union, Sequence, Tuple, Type, Callable, \
-    NamedTuple, MutableSequence
+    NamedTuple, MutableSequence, List
 
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import axes
+from matplotlib.ticker import AutoLocator
 from matplotlib.figure import Figure  # needed only for type hints
+from matplotlib.patches import Polygon
 
 from sklearn_seco.abstract import SeCoEstimator
 from sklearn_seco.common import \
@@ -18,56 +23,162 @@ from sklearn_seco.common import \
 from sklearn_seco.concrete import GrowPruneSplitRuleContext
 
 
-class TraceEntry:
-    """Trace of one seco algorithm step, i.e. `find_best_rule` invocation.
+class Trace:
+    """Trace of a seco algorithm run, i.e. `abstract_seco` invocation.
 
     Attributes
     -----
-    `ancestors`: list of np.array with shape (n_ancestors, 2)
-       This is the log of the learned `best_rule` and its `ancestors`.
+    - `steps`: Sequence[TraceEntry]
+      Each TraceEntry represents one step in `abstract_seco`, and thus one rule
+      in the learned theory. The last step/rule is only part of the theory iff
+      last_rule_stop is False.
 
-       An array with (p, n) for the rule and each ancestor, in reverse order of
-       creation.
+    - `last_rule_stop`: boolean
+      result of `rule_stopping_criterion` on the last found `best_rule`. If
+      False, it is part of the theory (and the rule search ended because all
+      positive examples were covered), if True it is not part of the theory
+      (the search ended because `rule_stopping_criterion` was True).
 
-       If `TraceCoverageTheoryContext.trace_level` is 'theory', no ancestors
-       are traced, so only the `best_rule` is contained.
+    - `P_total`: int
+      Count of positive examples in the whole dataset (differs from
+      `steps[0].P` if grow-prune-splitting is used).
 
-    `refinements`: np.array or list of np.array with shape (n_refinements, 3)
-       This is the log of all `refinements`, an array with (p, n, stop) for
-       each refinement, where `stop` is the boolean result of
-       `inner_stopping_criterion(refinement)`.
-
-       Empty if `TraceCoverageTheoryContext.trace_level` is not 'refinements'.
-
-    P: int
-      Count of positive examples
-
-    N: int
-      Count of negative examples
+    - `N_total`: int
+      Count of negative examples in the whole dataset (differs from
+      `steps[0].N` if grow-prune-splitting is used).
     """
-    AncestorEntry = Union[NamedTuple('Coverage', [('p', int), ('n', int)]),
-                          np.ndarray]
-    RefinementEntry = Union[NamedTuple('Refinements', [('p', int),
-                                                       ('n', int),
-                                                       ('stop', bool)]),
-                            np.ndarray]
 
-    def __init__(self, ancestors: Sequence[AncestorEntry],
-                 refinements: MutableSequence[RefinementEntry], P, N):
-        self.ancestors = ancestors
-        self.refinements = refinements
-        self.P = P
-        self.N = N
+    _JSON_DUMP_DESCRIPTION = "sklearn_seco.extra.trace_coverage dump"
+    _JSON_DUMP_VERSION = 2
 
-    ancestors: Sequence[AncestorEntry]
-    refinements: MutableSequence[RefinementEntry]
-    P: int
-    N: int
+    @staticmethod
+    def _json_encoder(obj):
+        """Serialize `obj` when used as `json.JSONEncoder.default` method."""
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, Trace.TraceEntry):
+            return obj.__dict__
+        raise TypeError
+
+    steps: MutableSequence['TraceEntry']
+    last_rule_stop: bool
+    P_total: int
+    N_total: int
+
+    def __init__(self, P, N):
+        self.steps = []
+        self.last_rule_stop = None
+        self.P_total = P
+        self.N_total = N
+
+    class TraceEntry:
+        """Trace of one seco algorithm step, i.e. `find_best_rule` invocation.
+
+        Attributes
+        -----
+        `ancestors`: list of np.array with shape (n_ancestors, 2)
+           This is the log of the learned `best_rule` and its `ancestors`.
+
+           An array with (p, n) for the rule and each ancestor, in reverse order of
+           creation.
+
+           If `TraceCoverageTheoryContext.trace_level` is 'theory', no ancestors
+           are traced, so only the `best_rule` is contained.
+
+        `refinements`: np.array or list of np.array with shape (n_refinements, 3)
+           This is the log of all `refinements`, an array with (p, n, stop) for
+           each refinement, where `stop` is the boolean result of
+           `inner_stopping_criterion(refinement)`.
+
+           Empty if `TraceCoverageTheoryContext.trace_level` is not 'refinements'.
+
+        P: int
+          Count of positive examples
+
+        N: int
+          Count of negative examples
+        """
+        AncestorEntry = Union[NamedTuple('Coverage', [('p', int), ('n', int)]),
+                              np.ndarray]
+        RefinementEntry = Union[NamedTuple('Refinements', [('p', int),
+                                                           ('n', int),
+                                                           ('stop', bool)]),
+                                np.ndarray]
+
+        def __init__(self, ancestors: Sequence[AncestorEntry],
+                     refinements: MutableSequence[RefinementEntry], P, N):
+            self.ancestors = ancestors
+            self.refinements = refinements
+            self.P = P
+            self.N = N
+
+        def __eq__(self, other):
+            return all((hasattr(other, 'ancestors'),
+                        np.all(np.equal(self.ancestors, other.ancestors)),
+                        hasattr(other, 'refinements'),
+                        np.all(np.equal(self.refinements, other.refinements)),
+                        hasattr(other, 'P'),
+                        self.P == other.P,
+                        hasattr(other, 'N'),
+                        self.N == other.N,
+                        ))
+
+        ancestors: Sequence[AncestorEntry]
+        refinements: MutableSequence[RefinementEntry]
+        P: int
+        N: int
+
+    def __eq__(self, other):
+        return all((hasattr(other, 'steps'),
+                    self.steps == other.steps,
+                    hasattr(other, 'last_rule_stop'),
+                    self.last_rule_stop == other.last_rule_stop,
+                    hasattr(other, 'P_total'),
+                    self.P_total == other.P_total,
+                    hasattr(other, 'N_total'),
+                    self.N_total == other.N_total))
+
+    def to_json(self):
+        """:return: A string containing a JSON representation of the trace."""
+        return json.dumps({
+            "description": Trace._JSON_DUMP_DESCRIPTION,
+            "version": Trace._JSON_DUMP_VERSION,
+            "steps": self.steps,
+            "last_rule_stop": self.last_rule_stop,
+            "P_total": self.P_total,
+            "N_total": self.N_total,
+        }, allow_nan=False, default=Trace._json_encoder)
+
+    @staticmethod
+    def from_json(dump) -> 'Trace':
+        """
+        :param dump: A file-like object or string containing JSON.
+        :return : A dict representing the trace dumped previously with
+            `to_json`. To plot, pass it to :func:`plot_coverage_log`.
+        """
+        loader = json.loads if isinstance(dump, str) else json.load
+        dec = loader(dump)
+
+        if dec["description"] != Trace._JSON_DUMP_DESCRIPTION:
+            raise ValueError("No/invalid coverage trace json: %s" % repr(dec))
+        if dec["version"] != Trace._JSON_DUMP_VERSION:
+            raise ValueError("Unsupported coverage trace version: %s"
+                             % dec["version"])
+        # convert back to numpy arrays
+        trace = Trace(dec['P_total'], dec['N_total'])
+        trace.last_rule_stop = dec['last_rule_stop']
+        trace.steps = [Trace.TraceEntry(step['ancestors'],
+                                        step['refinements'],
+                                        step['P'], step['N'])
+                       for step in dec['steps']]
+        return trace
+
+    def plot_coverage_log(self, **kwargs):
+        """Plot the trace, see :func:`plot_coverage_log`."""
+        return plot_coverage_log(self, **kwargs)
 
 
-LogTraceCallback = Callable[[Sequence[TraceEntry],
-                             bool],  # last_rule_stop
-                            None]
+LogTraceCallback = Callable[[Trace], None]
 
 
 def trace_coverage(est_cls: Type[SeCoEstimator],
@@ -90,19 +201,6 @@ def trace_coverage(est_cls: Type[SeCoEstimator],
     `AugmentedRule` objects; if `GrowPruneSplit` is used, this usually means
     that these are only computed on the growing set.
     TODO: get P,N,p,n for grow+prune, not only growing set.
-
-    The trace consists of the following fields:
-
-    - `coverage_log`: Sequence[TraceEntry]
-      Each TraceEntry represents one step in `abstract_seco`, and thus one rule
-      in the learned theory. The last step/rule is only part of the theory iff
-      last_rule_stop is False.
-
-    - `last_rule_stop`: boolean
-      result of `rule_stopping_criterion` on the last found `best_rule`. If
-      False, it is part of the theory (and the rule search ended because all
-      positive examples were covered), if True it is not part of the theory
-      (the search ended because `rule_stopping_criterion` was True).
 
     # TODO: implement tracing of estimator instances (not only classes)
 
@@ -141,8 +239,7 @@ def trace_coverage(est_cls: Type[SeCoEstimator],
                     assert isinstance(context, TraceCoverageTheoryContext)
                     # transfer collected trace from the `context` object which
                     # is in local scope
-                    log_coverage_trace_callback(context.coverage_log,
-                                                context.last_rule_stop)
+                    log_coverage_trace_callback(context.trace)
                     return original_post_process(theory, context)
 
             class TheoryContextClass(
@@ -174,8 +271,10 @@ class TraceCoverageTheoryContext(TheoryContext):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.coverage_log: MutableSequence[TraceEntry] = []
-        self.last_rule_stop = None
+        # TODO: dedup P,N calculation with RuleContext.PN
+        P = np.count_nonzero(self.complete_y == self.target_class)
+        N = len(self.complete_y) - P
+        self.trace: Trace = Trace(P, N)
 
 
 class TraceCoverageRuleContext(RuleContext):
@@ -183,7 +282,7 @@ class TraceCoverageRuleContext(RuleContext):
     def __init__(self, theory_context: TheoryContext, X, y):
         super().__init__(theory_context, X, y)
         P, N = self.PN  # always growing  if GrowPruneSplitRuleContext is used
-        self.current_trace_entry = TraceEntry([], [], P, N)
+        self.current_trace_entry = Trace.TraceEntry([], [], P, N)
 
 
 class TraceCoverageImplementation(AbstractSecoImplementation):
@@ -223,14 +322,13 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
         if tctx.trace_level == 'refinements':
             current_entry.refinements = np.array(current_entry.refinements)
 
-        tctx.coverage_log.append(current_entry)
-        tctx.last_rule_stop = last_rule_stop
+        tctx.trace.steps.append(current_entry)
+        tctx.trace.last_rule_stop = last_rule_stop
         return last_rule_stop
 
 
 def plot_coverage_log(
-        log: Sequence[TraceEntry],
-        last_rule_stop: bool,
+        trace: Trace,
         *,
         title: Optional[str] = None,
         draw_refinements: Union[str, bool] = 'nonzero',
@@ -240,8 +338,7 @@ def plot_coverage_log(
 ) -> Tuple[Figure, Union[Figure, Sequence[Figure]]]:
     """Plot the traced (p, n) of a theory.
 
-    :param log: collected trace, see `trace_coverage`.
-    :param last_rule_stop: part of collected trace, see `trace_trace_coverage`
+    :param trace: collected `Trace`, see also `trace_coverage`.
     :param title: string or None. If not None, set figure titles and use
       this value as prefix.
     :param theory_figure: If None, use `plt.figure()` to create a figure
@@ -262,12 +359,12 @@ def plot_coverage_log(
 
     P, N = 0, 1  # readable indexes, not values!
 
-    n_rules = len(log)
+    n_rules = len(trace.steps)
     if not n_rules:
         # issue a warning, user can decide handling. See module `warnings`
-        warnings.warn("Empty coverage_log collected, useless plot.")
+        warnings.warn("Empty trace collected, useless plot.")
     if draw_refinements:
-        for index, le in enumerate(log):
+        for index, le in enumerate(trace.steps):
             if len(le.refinements) < n_rules:
                 warnings.warn(
                     "draw_refinements=True requested, but refinement log "
@@ -276,19 +373,16 @@ def plot_coverage_log(
                 draw_refinements = False
                 break
 
-    P0 = log[0].P
-    N0 = log[0].N
+    P0 = trace.steps[0].P
+    N0 = trace.steps[0].N
     rnd_style = dict(color='grey', alpha=0.5, linestyle='dotted')
     refinements_style = dict(marker='.', markersize=1, linestyle='',
                              zorder=-1,)
 
-    import matplotlib.pyplot as plt
-    from matplotlib.ticker import AutoLocator
-
     if theory_figure is None:
         theory_figure = plt.figure()
     theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
-                                    xlim=(0, N0), ylim=(0, P0))
+                                    xlim=(0, N0), ylim=(0, P0))  # type: axes.Axes
     theory_axes.locator_params(integer=True)
     # draw "random theory" reference marker
     theory_axes.plot([0, N0], [0, P0], **rnd_style)
@@ -303,7 +397,7 @@ def plot_coverage_log(
         # TODO: axis labels when using subfigures
         subfigure_grid = [math.ceil(np.sqrt(n_rules))] * 2
         rule_axes = [rules_figure.add_subplot(*subfigure_grid, rule_idx + 1)
-                     for rule_idx in range(n_rules)]
+                     for rule_idx in range(n_rules)]  # type: List[axes.Axes]
     else:
         if rules_figure is None:
             rules_figure = [plt.figure() for _ in range(n_rules)]
@@ -320,7 +414,7 @@ def plot_coverage_log(
         rule_axes = [f.gca() for f in rules_figure]
 
     previous_rule = np.array((0, 0))  # contains (P, N) for some trace
-    for rule_idx, trace_entry in enumerate(log):
+    for rule_idx, trace_entry in enumerate(trace.steps):
         rule_trace = trace_entry.ancestors
         refinements = trace_entry.refinements
         Pi = trace_entry.P
@@ -329,7 +423,7 @@ def plot_coverage_log(
         refts_mask = slice(None)  # all
         if draw_refinements == 'nonzero':
             refts_mask: slice = refinements[:, P] != 0
-        mark_stop = last_rule_stop and (rule_idx == n_rules - 1)
+        mark_stop = trace.last_rule_stop and (rule_idx == n_rules - 1)
 
         # this rule in theory plot
         rule = rule_trace[0] + previous_rule
