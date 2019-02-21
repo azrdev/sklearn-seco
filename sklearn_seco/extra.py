@@ -200,7 +200,7 @@ def trace_coverage(est_cls: Type[SeCoEstimator],
     The trace gets the values P,N,p,n from the `RuleContext` and
     `AugmentedRule` objects; if `GrowPruneSplit` is used, this usually means
     that these are only computed on the growing set.
-    TODO: get P,N,p,n for grow+prune, not only growing set.
+    TODO: maybe get P,N,p,n for grow+prune, not only growing set.
 
     # TODO: implement tracing of estimator instances (not only classes)
 
@@ -327,6 +327,26 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
         return last_rule_stop
 
 
+def _draw_outer_border(ax: axes, xmin, xmax, ymin, ymax, **kwargs):
+    """
+    Fill the right upper corner of a diagram, everything beyond (xmin, ymin).
+
+    The following graphic shows the filled regions with dots:
+
+          ↑
+    ymax  +..............
+          |..............
+    ymin  +..............
+          |       .......
+          |       .......
+          +-------+-----+-→
+                xmin   xmax
+    """
+    verts = [(xmin, ymin), (xmin, 0), (xmax, 0),
+             (xmax, ymax), (0, ymax), (0, ymin)]
+    return ax.add_patch(Polygon(np.array(verts), **kwargs))
+
+
 def plot_coverage_log(
         trace: Trace,
         *,
@@ -382,10 +402,18 @@ def plot_coverage_log(
     if theory_figure is None:
         theory_figure = plt.figure()
     theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
-                                    xlim=(0, N0), ylim=(0, P0))  # type: axes.Axes
+                                    xlim=(0, trace.N_total),
+                                    ylim=(0, trace.P_total))  # type: axes.Axes
     theory_axes.locator_params(integer=True)
     # draw "random theory" reference marker
     theory_axes.plot([0, N0], [0, P0], **rnd_style)
+    # mark difference between PN_total and PN (if growing set size > total X)
+    max_PN = np.sum([step.ancestors[0] for step in trace.steps], axis=0)
+    # theory_axes.axhspan(max(P0, max_PN[P]), trace.P_total, color='grey', alpha=0.3)
+    # theory_axes.axvspan(max(N0, max_PN[N]), trace.N_total, color='grey', alpha=0.3)
+    _draw_outer_border(theory_axes, max(N0, max_PN[N]), trace.N_total,
+                       max(P0, max_PN[P]), trace.P_total,
+                       color='grey', alpha=0.3)
 
     if rules_use_subfigures:
         if rules_figure is None:
@@ -456,7 +484,7 @@ def plot_coverage_log(
             rule_title_template = "%s: %s" % (title, rule_title_template)
         rule_axis.set_title(rule_title_template % rule_idx)
         # draw "random theory" reference marker
-        rule_axis.plot([0, N0], [0, P0], **rnd_style)
+        rule_axis.plot([0, trace.N_total], [0, trace.P_total], **rnd_style)
         # draw rule_trace
         rule_axis.plot(rule_trace[:, N], rule_trace[:, P], 'o-',
                        color=rule_color)
