@@ -9,7 +9,6 @@
         - `java -cp /usr/share/java/weka/weka.jar weka.Run JRip -t iris.arff -no-cv -O 0`
     - test data sets: <http://scikit-learn.org/stable/datasets/index.html>
 
-- CI
 - optimization <http://www.scipy-lectures.org/advanced/optimizing/index.html>
 
 - regression?
@@ -17,7 +16,7 @@
     without changing sklearn_seco, i.e. it could be extended to other rule
     language → language bias
 
-- python2, python3 < 3.7 compatibility, esp. type hints
+- python2, python3 < 3.6 compatibility, esp. type hints
 - submission to upstream: sklearn-contrib? future maintainer needed?
 
 - categorical features as bitvectors <https://stackoverflow.com/questions/5602155/numpy-boolean-array-with-1-bit-entries>
