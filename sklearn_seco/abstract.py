@@ -171,35 +171,42 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             confidence_estimator(AugmentedRule(conditions=rule), rule_context)
             for rule in theory
         ]
+        # TODO: ? confidence_estimate for default rule (i.e. not any rule from theory matches). not compatible with current confidence_estimate(rule, RuleContext) interface
         return theory
 
     def predict(self, X: np.ndarray) -> np.ndarray:
+        """Make a prediction for each sample in `X`.
+
+        See <https://scikit-learn.org/dev/glossary.html#term-predict>
+        """
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
         X: np.ndarray = check_array(X)
         target_class = self.target_class_
         negative_class = self.classes_[self.classes_ != target_class][0]
         match_rule = self.algorithm_config_.match_rule
-        matches = \
-            np.array([match_rule(X, rule, self.categorical_mask_)
-                      for rule in self.theory_]
-                     ) \
-            .any(axis=0)  # any of the rules matched
+        matches = np.array([match_rule(X, rule, self.categorical_mask_)
+                            for rule in self.theory_]
+                           # note: samples are columns at this point
+                           ).any(axis=0)  # any of the rules matched
         # translate bool to class value
         return np.where(matches, target_class, negative_class)
 
     def decision_function(self, X: np.ndarray) -> np.ndarray:
-        # used by `sklearn.utils.multiclass._ovr_decision_function`
+        """Predict a “soft” score for each sample, values strictly greater than
+        zero indicate the positive class.
+
+        Used by `sklearn.multiclass.OneVsRestClassifier` through
+        `sklearn.utils.multiclass._ovr_decision_function`.
+
+        See <https://scikit-learn.org/dev/glossary.html#term-decision-function>
+        """
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
         X: np.ndarray = check_array(X)
         match_rule = self.algorithm_config_.match_rule
-        proba = np.zeros(X.shape[0])
-        for i, rule in enumerate(self.theory_):  # TODO: matrix multiplication?
-            proba = np.where(  # TODO: later rule matches override previous ones
-                match_rule(X, rule, self.categorical_mask_),
-                self.confidence_estimates_[i],
-                proba
-            )
-        return proba
+        confidence = self.confidence_estimates_ * \
+            np.transpose([match_rule(X, rule, self.categorical_mask_)
+                          for rule in self.theory_])
+        return confidence.max(axis=1)
 
 
 # noinspection PyAttributeOutsideInit
