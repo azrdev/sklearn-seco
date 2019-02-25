@@ -206,7 +206,10 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         confidence = self.confidence_estimates_ * \
             np.transpose([match_rule(X, rule, self.categorical_mask_)
                           for rule in self.theory_])
-        return confidence.max(axis=1)
+        # for ordered: get leftmost nonzero value i.e. first matched rule
+        # for unordered, would just do confidence.max(axis=1)
+        return confidence[range(len(confidence)),
+                          np.argmax(confidence > 0, axis=1)]
 
 
 # noinspection PyAttributeOutsideInit
