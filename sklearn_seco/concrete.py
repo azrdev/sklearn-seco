@@ -8,6 +8,7 @@ doesn't consume using `super().__init__(**kwargs)`. Users of mixin-composed
 classes will have to use keyword- instead of positional arguments.
 """
 
+import functools
 import math
 from abc import abstractmethod, ABC
 from functools import lru_cache
@@ -225,14 +226,20 @@ class InformationGainHeuristic(AbstractSecoImplementation):
 
     See (Quinlan, Cameron-Jones 1995) for the FOIL definition and
     (Witten,Frank,Hall 2011 fig 6.4) for its use in JRip/RIPPER.
+
+    Note that the papers all have `p * ( log(p/(p+n)) - log(P/(P+N)) )`, while
+    JRip implements `p * ( log((p+1) / (p+n+1)) - log((P+1) / (P+N+1)))`.
     """
 
     @classmethod
     def growing_heuristic(cls, rule: AugmentedRule, context: RuleContext
                           ) -> float:
         p, n = context.count_matches(rule)
-        P, N = context.PN
-        # TODO: JRip (book fig 6.4) has P,N but (Fürnkranz 1999) has count_matches(rule.original)
+        if rule.original:
+            P, N = context.count_matches(rule.original)
+        else:
+            P, N = context.PN
+        # TODO: Frank,Hall,Witten fig 6.4 has P,N but JRip and (Fürnkranz 1999) have count_matches(rule.original)
         if p == 0:
             return 0
         # return p * (log2(p / (p + n)) - log2(P / (P + N)))  # info_gain
@@ -268,26 +275,35 @@ class SignificanceStoppingCriterion(AbstractSecoImplementation):
         return LRS <= cls.LRS_threshold
 
 
+def delayed_inner_stop(inner_stop):
+    """Decorator for `AbstractSecoImplementation.c`,
+    letting it stop only when the condition meets for a rule and its
+    predecessor (`rule.original`).
+
+    Since `find_best_rule` checks the inner_stopping_criterion filter *before*
+    a refinement is processed any further, this would exclude very good rules.
+    This decorator is equivalent to checking the filter *afterwards*.
+    This may be wrong when not using `TopDownSearch`.
+    """
+    @functools.wraps(inner_stop)
+    def delaying_inner_stop(cls, rule: AugmentedRule, context: RuleContext):
+        if not rule.original:
+            return False
+        return inner_stop(cls, rule.original, context) and inner_stop(cls, rule, context)
+    return delaying_inner_stop
+
+
 class NoNegativesStop(AbstractSecoImplementation):
     """Inner stopping criterion: Abort refining when only positive examples are
     covered.
-
-    NOTE: Since `find_best_rule` checks the filter *before* a refinement is
-      processed any further, the straight forward implementation `return n ==
-      0` would exclude very good rules, therefore we reject rule with `n == 0`
-      whose predecessor already had `n == 0`. This may be wrong when not using
-      `TopDownSearch`.
     """
 
     @classmethod
+    @delayed_inner_stop
     def inner_stopping_criterion(cls, rule: AugmentedRule,
                                  context: RuleContext) -> bool:
-        if not rule.original:
-            return False
-        cm = context.count_matches
-        p, n = cm(rule)
-        p_prev, n_prev = cm(rule.original)
-        return n_prev == 0 and n == 0
+        p, n = context.count_matches(rule)
+        return n == 0
 
 
 class SkipPostPruning(AbstractSecoImplementation):
@@ -640,6 +656,7 @@ class RipperEstimator(SeCoEstimator):
                              SkipPostProcess
                              ):
             @classmethod
+            @delayed_inner_stop
             def inner_stopping_criterion(cls, rule: AugmentedRule,
                                          context: RuleContext) -> bool:
                 """Laplace-based criterion. Field `accuRate` in JRip.java."""
