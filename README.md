@@ -6,3 +6,5 @@ It aims to be
 - computationally fast,
 - open to algorithm modification (think e.g. new heuristics),
 - yet still comprising of understandable code.
+
+For current test suite results, check [Continuous Integration](https://travis-ci.com/azrdev/sklearn-seco).

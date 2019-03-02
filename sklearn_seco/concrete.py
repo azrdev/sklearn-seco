@@ -148,6 +148,7 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
         categorical_mask = context.theory_context.categorical_mask
         # TODO: maybe mark constant features for exclusion in future specializations
 
+        # categorical features
         for index in np.argwhere(categorical_mask
                                  & ~np.isfinite(rule.lower)  # unused features
                                  ).ravel():
@@ -157,13 +158,15 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
                 specialization.set_condition(LOWER, index, value)
                 yield specialization
 
+        # numeric features
         for feature_index in np.nonzero(~categorical_mask)[0]:
             old_lower = rule.lower[feature_index]
             no_old_lower = ~np.isfinite(old_lower)
             old_upper = rule.upper[feature_index]
             no_old_upper = ~np.isfinite(old_upper)
             for value1, value2 in pairwise(all_feature_values(feature_index)):
-                new_threshold = (value1 + value2) / 2
+                new_threshold = (value1 + value2) / 2  # TODO: JRip uses left value1
+                # TODO: lower/upper coverage here are complementary: can use single match_rule invocation, like JRip?
                 # override is collation of lower bounds
                 if no_old_lower or new_threshold > old_lower:
                     # don't test contradiction (e.g. f < 4 && f > 6)
