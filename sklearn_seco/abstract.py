@@ -184,10 +184,13 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         target_class = self.target_class_
         negative_class = self.classes_[self.classes_ != target_class][0]
         match_rule = self.algorithm_config_.match_rule
-        matches = np.array([match_rule(X, rule, self.categorical_mask_)
-                            for rule in self.theory_]
-                           # note: samples are columns at this point
-                           ).any(axis=0)  # any of the rules matched
+        matches = (np.array([match_rule(X, rule, self.categorical_mask_)
+                             for rule in self.theory_]
+                            # note: samples are columns at this point
+                            )
+                   .reshape((len(self.theory_), len(X)))  # if theory empty
+                   .any(axis=0)  # any of the rules matched
+                   )
         # translate bool to class value
         return np.where(matches, target_class, negative_class)
 
@@ -203,9 +206,13 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, ['theory_', 'categorical_mask_'])
         X: np.ndarray = check_array(X)
         match_rule = self.algorithm_config_.match_rule
-        confidence = self.confidence_estimates_ * \
+        confidence = np.column_stack((
+            self.confidence_estimates_ *
             np.transpose([match_rule(X, rule, self.categorical_mask_)
-                          for rule in self.theory_])
+                         for rule in self.theory_])
+                .reshape((len(X), len(self.theory_))),
+            np.zeros((len(X), 1))  # if theory empty
+        ))
         # for ordered: get leftmost nonzero value i.e. first matched rule
         # for unordered, would just do confidence.max(axis=1)
         return confidence[range(len(confidence)),
