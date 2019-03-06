@@ -376,7 +376,7 @@ class GrowPruneSplitTheoryContext(TheoryContext):
     """
     def __init__(self, *args,
                  pruning_split_ratio: float = 1/3,
-                 grow_prune_random=None,
+                 grow_prune_random=1,  # JRip fixes its random state, too, if not given
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.pruning_split_ratio = pruning_split_ratio
@@ -401,9 +401,11 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
     the pruning set (e.g. at the head of `simplify_rule`) it has to set
     `self.growing = False`.
 
+    # TODO: dedup setting context.growing before callbacks. use a decorator?
+
     :var growing: bool
       If True (the default), let `self.X` and `self.y` return the growing set,
-      otherwise the pruning set.
+      if False the pruning set, if None the whole training set.
     """
 
     def __init__(self, theory_context: GrowPruneSplitTheoryContext, X, y):
@@ -468,11 +470,21 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
 
     @property
     def X(self):
-        return self._growing_X if self.growing else self._pruning_X
+        if self.growing is None:
+            return self._X
+        elif self.growing:
+            return self._growing_X
+        else:
+            return self._pruning_X
 
     @property
     def y(self):
-        return self._growing_y if self.growing else self._pruning_y
+        if self.growing is None:
+            return self._y
+        elif self.growing:
+            return self._growing_y
+        else:
+            return self._pruning_y
 
 
 class RipperPostPruning(AbstractSecoImplementation):
@@ -569,16 +581,19 @@ class RipperMdlRuleStopImplementation(AbstractSecoImplementation):
 
     @classmethod
     def rule_stopping_criterion(cls, theory: Theory, rule: AugmentedRule,
-                                context: RuleContext) -> bool:
+                                context: GrowPruneSplitRuleContext) -> bool:
         tctx = context.theory_context
         assert isinstance(tctx, RipperMdlRuleStopTheoryContext)
+        assert isinstance(context, GrowPruneSplitRuleContext)
 
+        context.growing = None
         p, n = context.count_matches(rule)
         P, N = context.PN
-        tctx.theory_pn.append((P, N))
+        tctx.theory_pn.append((p, n))
 
         tctx.description_length_ += relative_description_length(
-            rule, tctx.expected_fp_over_err, p, n, P, N, tctx.theory_pn)
+            rule, tctx.expected_fp_over_err, p, n, P, N, tctx.theory_pn,
+            tctx.max_n_conditions)
         tctx.best_description_length_ = min(tctx.best_description_length_,
                                             tctx.description_length_)
         if tctx.description_length_ > (tctx.best_description_length_ +
@@ -606,6 +621,11 @@ class RipperMdlRuleStopTheoryContext(TheoryContext):
             data_description_length(
                 expected_fp_over_err=self.expected_fp_over_err,
                 covered=0, uncovered=len(y), fp=0, fn=positives)
+        self.max_n_conditions = sum(
+            len(np.unique(X[:, feature]))
+            * (1 if categorical_mask[feature] else 2)
+            for feature in range(n_features)
+        )
         self.theory_pn = []
 
 
@@ -666,15 +686,6 @@ class RipperEstimator(SeCoEstimator):
                 p, n = context.count_matches(rule)
                 accuracy_rate = (p + 1) / (p + n + 1)
                 return accuracy_rate >= 1
-
-            @classmethod
-            def rule_stopping_criterion(cls, theory: Theory,
-                                        rule: AugmentedRule,
-                                        context: RuleContext) -> bool:
-                assert isinstance(context, GrowPruneSplitRuleContext)
-                # TODO: dedup setting context.growing before callbacks. use a decorator?
-                context.growing = False
-                return super().rule_stopping_criterion(theory, rule, context)
 
         class RuleContextClass(TopDownSearchContext,
                                GrowPruneSplitRuleContext):

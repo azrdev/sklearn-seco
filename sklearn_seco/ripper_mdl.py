@@ -1,6 +1,10 @@
 """
 MDL (minimum description length) calculation for RIPPER.
 
+This comprises of only the parts needed for the rule_stopping_criterion of
+RIPPER, not the global optimization phase (post_process).
+
+
 Mostly adapted from JRip.java, see `sklearn_seco.concrete.RipperMdlRuleStop`.
 Most parts are described in
 - (Quinlan 1995) MDL and Categorical Theories (Continued)
@@ -20,13 +24,14 @@ def subset_description_length(n, k, p) -> float:
 
     NOTE: Named `RuleStats.subsetDL` in weka.JRip.
     """
+    # TODO: JRip returns NaN if p outside [0,1]
     return -k * log2(p) - (n - k) * log2(1 - p)
 
 
 def data_description_length(expected_fp_over_err, covered, uncovered, fp, fn
                             ) -> float:
-    """:return DL of the data, i.e. the errors of a rule (false positives &
-    negatives).
+    """:return: DL of the data, i.e. the errors of a rule (false positives &
+      negatives).
 
     NOTE: Named `RuleStats.dataDL` in weka.JRip, and defined as equation (3) in
     (Quinlan 1995).
@@ -36,7 +41,7 @@ def data_description_length(expected_fp_over_err, covered, uncovered, fp, fn
     if covered > uncovered:
         expected_error = expected_fp_over_err * (fp + fn)
         covered_bits = S(covered, fp, expected_error / covered) \
-            if covered > 0 else 0  # TODO: seems JRip never has covered==0
+            if covered > 0 else 0
         uncovered_bits = S(uncovered, fn, fn / uncovered) \
             if uncovered > 0 else 0
     else:
@@ -45,17 +50,17 @@ def data_description_length(expected_fp_over_err, covered, uncovered, fp, fn
             if covered > 0 else 0
         uncovered_bits = S(uncovered, fn, expected_error / uncovered) \
             if uncovered > 0 else 0  # TODO: seems JRip never has uncovered==0
+    # TODO: JRip returns NaN in certain valid(?) cases, e.g. (1/3,7,7,5,6)
     return total_bits + covered_bits + uncovered_bits
 
 
-def rule_description_length(rule: AugmentedRule) -> float:
+def rule_description_length(rule: AugmentedRule, max_n_conditions: int
+                            ) -> float:
     """:return: DL of `rule`.
 
     NOTE: Named `RuleStats.theoryDL` in weka.JRip.
     """
-    n_conditions = np.count_nonzero(np.isfinite(rule.conditions))  # no. of conditions
-    max_n_conditions = rule.conditions.size  # possible no. of conditions
-    # TODO: JRip counts all thresholds (RuleStats.numAllConditions())
+    n_conditions = np.count_nonzero(np.isfinite(rule.conditions))
 
     kbits = log2(n_conditions)  # no. of bits to send `n_conditions`
     if n_conditions > 1:
@@ -68,41 +73,34 @@ def rule_description_length(rule: AugmentedRule) -> float:
 def minDataDLIfExists(expected_fp_over_err, p, n, P, N, theory_pn) -> float:
     return data_description_length(
         expected_fp_over_err=expected_fp_over_err,
-        covered=sum(th_p + th_n for th_p, th_n in theory_pn[1:]),  # of theory
+        covered=sum(th_p + th_n for th_p, th_n in theory_pn),  # of theory
         uncovered=P + N - p - n,  # of rule
-        fp=sum(th_n for th_p, th_n in theory_pn[1:]),  # of theory
+        fp=sum(th_n for th_p, th_n in theory_pn),  # of theory
         fn=P - p,  # of rule
     )
 
 
-def minDataDLIfDeleted(expected_fp_over_err, p, n, P, N, theory_pn) -> float:
-    # covered stats cumulate over theory
-    coverage = sum(th_p + th_n for th_p, th_n in theory_pn[1:])
-    fp = sum(th_n for th_p, th_n in theory_pn[1:])
-    # uncovered stats are those of the last rule
-    if len(theory_pn) > 1:
-        # we're not at the first rule (`> 1` since theory_pn contains an entry
-        # for the candidate, too)
-        uncoverage = P + N - p - n
-        fn = N - n
-    else:
-        # we're at the first rule
-        uncoverage = P + N  # == coverage + uncoverage
-        fn = p + N - n  # tp + fn
+def minDataDLIfDeleted(expected_fp_over_err, P, N, theory_pn) -> float:
+    # covered stats (coverage, fp) cumulate over theory
+    # uncovered stats (uncoverage, fn) are those of the last rule
     return data_description_length(
         expected_fp_over_err=expected_fp_over_err,
-        covered=coverage, uncovered=uncoverage, fp=fp, fn=fn)
+        covered=sum(th_p + th_n for th_p, th_n in theory_pn[:-1]),
+        uncovered=P + N,
+        fp=sum(th_n for th_p, th_n in theory_pn[:-1]),
+        fn=P)
 
 
 def relative_description_length(rule: AugmentedRule,
                                 expected_fp_over_err,
-                                p, n, P, N, theory_pn) -> float:
+                                p, n, P, N, theory_pn,
+                                max_n_conditions: int) -> float:
     """:return: DL of the current theory relative to removing `rule`.
 
     NOTE: Named `RuleStats.relativeDL` in weka.JRip. JRip has the `index`
     parameter which is only `!= last_rule` in global optimization.
     """
     dDL_with = minDataDLIfExists(expected_fp_over_err, p, n, P, N, theory_pn)
-    rule_DL = rule_description_length(rule)
-    dDL_wo = minDataDLIfDeleted(expected_fp_over_err, p, n, P, N, theory_pn)
+    rule_DL = rule_description_length(rule, max_n_conditions)
+    dDL_wo = minDataDLIfDeleted(expected_fp_over_err, P, N, theory_pn)
     return dDL_with + rule_DL - dDL_wo
