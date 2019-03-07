@@ -14,7 +14,8 @@ from sklearn_seco.concrete import \
 from .datasets import Dataset, \
     binary_slight_overlap, binary_categorical, \
     binary_mixed, xor_2d, checkerboard_2d, perfectly_correlated_multiclass, \
-    sklearn_make_classification, sklearn_make_moons
+    sklearn_make_classification, sklearn_make_moons, artificial_disjunction, \
+    staged
 
 
 # pytest plugin, to print theory on test failure
@@ -103,6 +104,8 @@ def trivial_decision_border():
                         binary_slight_overlap,
                         sklearn_make_classification,
                         sklearn_make_moons,
+                        artificial_disjunction,
+                        staged,
                         ])
 def blackbox_test(request):
     return request.param()

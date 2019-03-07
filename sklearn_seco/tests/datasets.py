@@ -3,11 +3,13 @@
 
 import itertools
 from collections import namedtuple
+from os.path import dirname
 from typing import Union
 
 import numpy as np
 import pytest
 from sklearn.datasets import make_blobs, make_classification, make_moons
+from sklearn.externals import _arff as arff
 from sklearn.utils import check_random_state
 
 
@@ -163,3 +165,34 @@ def sklearn_make_moons(n_samples=400,
     return Dataset(x[:test_start_idx], y[:test_start_idx],
                    x[test_start_idx:], y[test_start_idx:],
                    categorical_features=None)
+
+
+def artificial_disjunction(n_samples=20_000, n_random_features=10,
+                           test_ratio=.3, random=42):
+    """noise-free binary `ab ∨ ac ∨ ade`, see (Cohen 1995)."""
+    random = check_random_state(random)
+    n_features = 5 + n_random_features
+    x = random.randint(2, size=(n_samples, n_features), dtype=bool)
+    informative = random.permutation(n_features)[:5]
+    a = x.T[informative[0]]
+    b = x.T[informative[1]]
+    c = x.T[informative[2]]
+    d = x.T[informative[3]]
+    e = x.T[informative[4]]
+    y = a * b + a * c + a * d * e
+    test_start_idx = int((1 - test_ratio) * n_samples)
+    return Dataset(x[:test_start_idx], y[:test_start_idx],
+                   x[test_start_idx:], y[test_start_idx:],
+                   categorical_features='all')
+
+
+def staged():
+    """low-noise binary 2d testcase for stopping criteria
+
+    Has a big (~200) negative cluster and two different (100 and 10)
+    positive clusters, each containig a single negative sample.
+    """
+    filename = dirname(__file__) + '/staged.arff'
+    data = np.array(arff.load(open(filename))['data'],
+                    dtype=float)
+    return Dataset(data[:, :-1], data[:, -1])
