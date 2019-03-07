@@ -185,6 +185,14 @@ class AugmentedRule:
             return NotImplemented
         return self._sort_key == other._sort_key
 
+    def __str__(self):
+        return ' and '.join(
+            '(feature{fi} {op} {thresh})'.format(
+                fi=str(ti[1] + 1) + "/" + str(self.conditions.shape[1]),
+                op='>=' if ti[0] == LOWER else '<=',
+                thresh=self.conditions[ti])
+            for ti in zip(*np.isfinite(self.conditions).nonzero()))
+
 
 # TODO: maybe move `abstract_seco`/`find_best_rule` into TheoryContext/RuleContext
 

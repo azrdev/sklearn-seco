@@ -8,11 +8,11 @@ from sklearn_seco.concrete import RipperEstimator
 
 # prepare binary iris dataset (classes setosa, other)
 iris = load_iris()  # type: Bunch
-est = RipperEstimator()
 target_index = 0  # setosa
 iris.target[iris.target != target_index] = target_index + 1
 iris.target_names = [iris.target_names[target_index], 'other']
 
+est = RipperEstimator()
 est.fit(iris.data, iris.target, explicit_target_class=target_index)
 
 # print learning results

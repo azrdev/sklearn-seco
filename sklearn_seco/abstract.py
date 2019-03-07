@@ -171,6 +171,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             confidence_estimator(AugmentedRule(conditions=rule), rule_context)
             for rule in theory
         ]
+        # TODO: ? for confidence_estimate use *uncovered by theory[i]* instead of whole X to match theory[i+1]
         # TODO: ? confidence_estimate for default rule (i.e. not any rule from theory matches). not compatible with current confidence_estimate(rule, RuleContext) interface
         return theory
 
