@@ -433,6 +433,31 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         # actually set this in `AbstractSecoImplementation.simplify_rule`
         self.growing = False
 
+    @staticmethod
+    def _calculate_pn_from_cache(cache: Dict[bool, Tuple[int, int]]):
+        """If the cache of (p,n) contains two of {growing,pruning,both} counts,
+        calculate the third (instead of having to match & count).
+
+        Applies to (p,n) for a rule and (P, N) for a training (sub)set.
+        """
+        missing = {True, False, None} - cache.keys()
+        if len(missing) > 1:
+            return False  # to much missing, cannot calculate
+        if not len(missing):
+            return True  # nothing to do
+        # compute p,n from cached results instead of counting
+        missing = missing.pop()  # get the single missing key
+        if missing is None:
+            # need total = growing + pruning
+            cache[missing] = (cache[True][0] + cache[False][0],
+                              cache[True][1] + cache[False][1])
+        else:
+            # need growing/pruning = total - pruning/growing
+            other = ({True, False} - {missing}).pop()
+            cache[missing] = (cache[None][0] - cache[other][0],
+                              cache[None][1] - cache[other][1])
+        return True
+
     def count_matches(self, rule: AugmentedRule,
                       force_complete_data: bool = False):
         """Cache values of (p,n) depending on the value of self.growing.
@@ -442,6 +467,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         """
         growing = None if force_complete_data else self.growing
         pn_cache: Dict[bool, Tuple[int, int]] = rule._pn_cache or {}
+        self._calculate_pn_from_cache(pn_cache)
         if growing not in pn_cache:
             rule._pn_cache = None  # invalidate, so super (re)computes
             pn_cache[growing] = super().count_matches(rule,
@@ -454,6 +480,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         self.growing.
         """
         growing = None if force_complete_data else self.growing
+        self._calculate_pn_from_cache(self._PN_cache_growing)
         if growing not in self._PN_cache_growing:
             self._PN_cache = None  # invalidate, so super (re)computes
             self._PN_cache_growing[growing] = super().PN(force_complete_data)
