@@ -281,7 +281,7 @@ class TraceCoverageRuleContext(RuleContext):
     """Tracing `RuleContext`."""
     def __init__(self, theory_context: TheoryContext, X, y):
         super().__init__(theory_context, X, y)
-        P, N = self.PN  # always growing  if GrowPruneSplitRuleContext is used
+        P, N = self.PN(force_complete_data=True)
         self.current_trace_entry = Trace.TraceEntry([], [], P, N)
 
 
@@ -312,12 +312,14 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
         assert isinstance(context, TraceCoverageRuleContext)
         current_entry = context.current_trace_entry
         if isinstance(context, GrowPruneSplitRuleContext):
-            context.growing = True
+            context.growing = None  # growing + pruning
         if tctx.trace_level == 'best_rules':
-            current_entry.ancestors = np.array([context.count_matches(rule)])
+            current_entry.ancestors = np.array([
+                context.count_matches(rule, force_complete_data=True)])
         else:  # elif trace_level in ('ancestors', 'refinements'):
             current_entry.ancestors = np.array(
-                [context.count_matches(r) for r in rule_ancestors(rule)])
+                [context.count_matches(r, force_complete_data=True)
+                 for r in rule_ancestors(rule)])
 
         if tctx.trace_level == 'refinements':
             current_entry.refinements = np.array(current_entry.refinements)
@@ -402,18 +404,11 @@ def plot_coverage_log(
     if theory_figure is None:
         theory_figure = plt.figure()
     theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
-                                    xlim=(0, trace.N_total),
-                                    ylim=(0, trace.P_total))  # type: axes.Axes
+                                    xlim=(0, N0),
+                                    ylim=(0, P0))  # type: axes.Axes
     theory_axes.locator_params(integer=True)
     # draw "random theory" reference marker
     theory_axes.plot([0, N0], [0, P0], **rnd_style)
-    # mark difference between PN_total and PN (if growing set size > total X)
-    max_PN = np.sum([step.ancestors[0] for step in trace.steps], axis=0)
-    # theory_axes.axhspan(max(P0, max_PN[P]), trace.P_total, color='grey', alpha=0.3)
-    # theory_axes.axvspan(max(N0, max_PN[N]), trace.N_total, color='grey', alpha=0.3)
-    _draw_outer_border(theory_axes, max(N0, max_PN[N]), trace.N_total,
-                       max(P0, max_PN[P]), trace.P_total,
-                       color='grey', alpha=0.3)
 
     if rules_use_subfigures:
         if rules_figure is None:
@@ -486,7 +481,7 @@ def plot_coverage_log(
             rule_title_template = "%s: %s" % (title, rule_title_template)
         rule_axis.set_title(rule_title_template % rule_idx)
         # draw "random theory" reference marker
-        rule_axis.plot([0, trace.N_total], [0, trace.P_total], **rnd_style)
+        rule_axis.plot([0, Ni], [0, Pi], **rnd_style)
         # draw rule_trace
         rule_axis.plot(rule_trace[:, N], rule_trace[:, P], 'o-',
                        color=rule_color)

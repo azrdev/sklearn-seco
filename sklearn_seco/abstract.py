@@ -157,7 +157,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             if rule_stopping_criterion(theory, rule, rule_context):  # TODO: use pruning or growing+pruning?
                 break
             uncovered = np.invert(
-                rule_context.match_rule(rule, force_X_complete=True))
+                rule_context.match_rule(rule, force_complete_data=True))
             X = X[uncovered]
             y = y[uncovered]
             theory.append(rule.conditions)  # throw away augmentation

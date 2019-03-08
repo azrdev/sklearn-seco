@@ -241,7 +241,7 @@ class InformationGainHeuristic(AbstractSecoImplementation):
         if rule.original:
             P, N = context.count_matches(rule.original)
         else:
-            P, N = context.PN
+            P, N = context.PN()
         # TODO: Frank,Hall,Witten fig 6.4 has P,N but JRip and (Fürnkranz 1999) have count_matches(rule.original)
         if p == 0:
             return 0
@@ -263,7 +263,7 @@ class SignificanceStoppingCriterion(AbstractSecoImplementation):
         following (Clark and Boswell 1991).
         """
         p, n = context.count_matches(rule)
-        P, N = context.PN
+        P, N = context.PN()
         if 0 in (p, P, N):
             return True
         # purity = p / (p + n)
@@ -333,7 +333,7 @@ class ConditionTracingAugmentedRule(AugmentedRule):
 
     Attributes
     -----
-    condition_trace: List[TraceEntry].
+    condition_trace: List[ConditionTracingAugmentedRule.TraceEntry].
         Contains a tuple(UPPER/LOWER, feature_index, value, previous_value)
         for each value that was set in conditions, in the same order they were
         applied to the initially constructed rule to get to this rule.
@@ -433,26 +433,31 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         # actually set this in `AbstractSecoImplementation.simplify_rule`
         self.growing = False
 
-    def count_matches(self, rule: AugmentedRule):
+    def count_matches(self, rule: AugmentedRule,
+                      force_complete_data: bool = False):
         """Cache values of (p,n) depending on the value of self.growing.
 
         To that end, `rule._pn_cache` is set to
         `Dict[growing: bool, (p: int, n: int)]` instead of `(p: int, n: int)`.
         """
-        if rule._pn_cache is None or self.growing not in rule._pn_cache:
-            pn_cache_old: Dict[bool, Tuple[int, int]] = rule._pn_cache or {}
+        growing = None if force_complete_data else self.growing
+        pn_cache: Dict[bool, Tuple[int, int]] = rule._pn_cache or {}
+        if growing not in pn_cache:
             rule._pn_cache = None  # invalidate, so super (re)computes
-            pn_cache_old[self.growing] = super().count_matches(rule)
-            rule._pn_cache = pn_cache_old
-        return rule._pn_cache[self.growing]
+            pn_cache[growing] = super().count_matches(rule,
+                                                      force_complete_data)
+            rule._pn_cache = pn_cache
+        return rule._pn_cache[growing]
 
-    @property
-    def PN(self) -> Tuple[int, int]:
-        """Cache values of (P, N) depending on the value of self.growing"""
-        if self.growing not in self._PN_cache_growing:
+    def PN(self, force_complete_data: bool = False) -> Tuple[int, int]:
+        """Calculate & cache values of (P, N) depending on the value of
+        self.growing.
+        """
+        growing = None if force_complete_data else self.growing
+        if growing not in self._PN_cache_growing:
             self._PN_cache = None  # invalidate, so super (re)computes
-            self._PN_cache_growing[self.growing] = super().PN
-        return self._PN_cache_growing[self.growing]
+            self._PN_cache_growing[growing] = super().PN(force_complete_data)
+        return self._PN_cache_growing[growing]
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Mimic `AbstractSecoImplementation.evaluate_rule` but use
@@ -588,7 +593,7 @@ class RipperMdlRuleStopImplementation(AbstractSecoImplementation):
 
         context.growing = None
         p, n = context.count_matches(rule)
-        P, N = context.PN
+        P, N = context.PN()
         tctx.theory_pn.append((p, n))
 
         tctx.description_length_ += relative_description_length(
@@ -737,7 +742,7 @@ class IrepEstimator(SeCoEstimator):
                 """:return: (#true positives + #true negatives) / #examples"""
                 context.growing = False
                 p, n = context.count_matches(rule)
-                P, N = context.PN
+                P, N = context.PN()
                 tn = N - n
                 return (p + tn) / (P + N)
 

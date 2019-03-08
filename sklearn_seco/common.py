@@ -251,17 +251,15 @@ class RuleContext:
         self._y = y
         self._PN_cache = None
 
-    @property
-    def PN(self) -> Tuple[int, int]:
+    def PN(self, force_complete_data: bool = False) -> Tuple[int, int]:
         """:return: (P, N), the count of (positive, negative) examples"""
         if self._PN_cache is None:
             # calculate
-            y = self.y
+            y = self._y if force_complete_data else self.y
             target_class = self.theory_context.target_class
             P = np.count_nonzero(y == target_class)
             N = len(y) - P
             assert N == np.count_nonzero(y != target_class)
-            assert P + N == len(y)
             self._PN_cache = (P, N)
         return self._PN_cache
 
@@ -275,24 +273,29 @@ class RuleContext:
         """The current training data labels/classification"""
         return self._y
 
-    def match_rule(self, rule: AugmentedRule, force_X_complete: bool = False
+    def match_rule(self, rule: AugmentedRule, force_complete_data: bool = False
                    ) -> np.ndarray:
         """Wrap `SeCoAlgorithmConfiguration.match_rule`: Apply `rule` to the
         current context.
 
-        :param force_X_complete: bool. If True, always apply to the full
+        :param force_complete_data: bool. If True, always apply to the full
           training data, instead of the property `self.X` (which may be
           overridden, e.g. by GrowPruneSplit).
         :return: A match array of type bool and length `len(X)`
         """
         tctx = self.theory_context
-        X = self._X if force_X_complete else self.X
+        X = self._X if force_complete_data else self.X
         return tctx.algorithm_config.match_rule(X,
                                                 rule.conditions,
                                                 tctx.categorical_mask)
 
-    def count_matches(self, rule: AugmentedRule) -> Tuple[int, int]:
+    def count_matches(self, rule: AugmentedRule,
+                      force_complete_data: bool = False) -> Tuple[int, int]:
         """Return (p, n).
+
+        :param force_complete_data:
+          Iff True, always use complete dataset (e.g. if growing/pruning
+           datasets would be used otherwise).
 
         returns
         -------
@@ -304,8 +307,9 @@ class RuleContext:
             also called *false positives*.
         """
         if rule._pn_cache is None:
-            covered = self.match_rule(rule)
-            positives = self.y == self.theory_context.target_class
+            covered = self.match_rule(rule, force_complete_data)
+            y = self._y if force_complete_data else self.y
+            positives = y == self.theory_context.target_class
             # NOTE: nonzero() is test for True
             p = np.count_nonzero(covered & positives)
             n = np.count_nonzero(covered & ~positives)
