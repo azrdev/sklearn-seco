@@ -368,19 +368,13 @@ class GrowPruneSplitTheoryContext(TheoryContext):
 
     TODO: find a way to render this class obsolete
 
-    :param pruning_split_ratio: float between 0.0 and 1.0
-      The relative size of the pruning set.
-
     :param grow_prune_random: None | int | instance of RandomState
       RNG to perform splitting. Passed to `sklearn.utils.check_random_state`.
     """
     def __init__(self, *args,
-                 pruning_split_ratio: float = 1/3,
                  grow_prune_random=1,  # JRip fixes its random state, too, if not given
                  **kwargs):
         super().__init__(*args, **kwargs)
-        self.pruning_split_ratio = pruning_split_ratio
-        assert 0 <= pruning_split_ratio <= 1
         self.grow_prune_random = check_random_state(grow_prune_random)
 
 
@@ -406,7 +400,12 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
     :var growing: bool
       If True (the default), let `self.X` and `self.y` return the growing set,
       if False the pruning set, if None the whole training set.
+
+    :param pruning_split_ratio: float between 0.0 and 1.0
+      The relative size of the pruning set.
     """
+
+    pruning_split_ratio: float = 1 / 3
 
     def __init__(self, theory_context: GrowPruneSplitTheoryContext, X, y):
         super().__init__(theory_context, X, y)
@@ -418,7 +417,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         grow_idx, prune_idx = grow_prune_split(
             y,
             theory_context.target_class,
-            theory_context.pruning_split_ratio,
+            self.pruning_split_ratio,
             theory_context.grow_prune_random,)
         self._growing_X = X[grow_idx]
         self._growing_y = y[grow_idx]
