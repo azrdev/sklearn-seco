@@ -7,7 +7,7 @@ import json
 import math
 import warnings
 from typing import Optional, Union, Sequence, Tuple, Type, Callable, \
-    NamedTuple, MutableSequence, List
+    NamedTuple, MutableSequence, List, Dict, Iterable
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,6 +15,7 @@ from matplotlib import axes
 from matplotlib.ticker import AutoLocator
 from matplotlib.figure import Figure  # needed only for type hints
 from matplotlib.patches import Polygon
+from typing.io import IO
 
 from sklearn_seco.abstract import SeCoEstimator
 from sklearn_seco.common import \
@@ -28,8 +29,8 @@ class Trace:
 
     Attributes
     -----
-    - `steps`: Sequence[TraceEntry]
-      Each TraceEntry represents one step in `abstract_seco`, and thus one rule
+    - `steps`: Sequence[Trace.Step]
+      Each item represents one step in `abstract_seco`, and thus one rule
       in the learned theory. The last step/rule is only part of the theory iff
       last_rule_stop is False.
 
@@ -38,105 +39,166 @@ class Trace:
       False, it is part of the theory (and the rule search ended because all
       positive examples were covered), if True it is not part of the theory
       (the search ended because `rule_stopping_criterion` was True).
-
-    - `P_total`: int
-      Count of positive examples in the whole dataset (differs from
-      `steps[0].P` if grow-prune-splitting is used).
-
-    - `N_total`: int
-      Count of negative examples in the whole dataset (differs from
-      `steps[0].N` if grow-prune-splitting is used).
     """
 
     _JSON_DUMP_DESCRIPTION = "sklearn_seco.extra.trace_coverage dump"
     _JSON_DUMP_VERSION = 2
+
+    steps: MutableSequence['Trace.Step']
+    last_rule_stop: bool
+    use_pruning: bool
+
+    def __init__(self, use_pruning):
+        self.steps = []
+        self.last_rule_stop = None
+        self.use_pruning = use_pruning
+
+    def append_step(self, context: RuleContext, ancestors,
+                    refinements: Sequence['Trace.Step.Part.Refinement']):
+        if self.use_pruning:
+            assert isinstance(context, GrowPruneSplitRuleContext)
+            self.steps.append(Trace.Step.pruning_step(context,
+                                                      ancestors,
+                                                      refinements))
+        else:
+            self.steps.append(Trace.Step.nonpruning_step(context,
+                                                         ancestors,
+                                                         refinements))
+
+    class Step:
+        """Trace of one seco algorithm step, i.e. `find_best_rule` invocation.
+
+        Consists of three `Part`s storing similar information for the whole
+        step, its growing, and pruning phase, respectively. If the algorithm
+        doesn't employ pruning, only the `total` part of the trace is used.
+        """
+
+        total: 'Trace.Step.Part'
+        growing: 'Trace.Step.Part'
+
+        @staticmethod
+        def nonpruning_step(context: RuleContext,
+                            ancestors: Iterable[AugmentedRule],
+                            refinements: Sequence['Trace.Step.Part.Refinement']
+                            ) -> 'Trace.Step':
+            PN = context.PN(force_complete_data=True)
+            ancestors_counts = np.array(
+                [context.count_matches(r, force_complete_data=True)
+                 for r in ancestors])
+            step = Trace.Step()
+            step.total = Trace.Step.Part(ancestors_counts, refinements, *PN)
+            return step
+
+        @staticmethod
+        def pruning_step(context: GrowPruneSplitRuleContext,
+                         ancestors: Iterable[AugmentedRule],
+                         refinements: Sequence['Trace.Step.Part.Refinement']
+                         ) -> 'Trace.Step':
+            ancestors = list(ancestors)
+            step = Trace.Step.nonpruning_step(context, ancestors, [])
+
+            context.growing = True
+            ancestors_counts_growing = np.array([context.count_matches(r)
+                                                 for r in ancestors])
+            PN_growing = context.PN()
+            step.growing = Trace.Step.Part(ancestors_counts_growing,
+                                           refinements, *PN_growing)
+
+            return step
+
+        def __eq__(self, other):
+            if type(other) is type(self):
+                return self.__dict__ == other.__dict__
+            return NotImplemented
+
+        @staticmethod
+        def from_json(dec: Dict):
+            step = Trace.Step()
+            step.total = Trace.Step.Part.from_json(dec['total'])
+            if 'growing' in dec:
+                step.growing = Trace.Step.Part.from_json(dec['growing'])
+            if 'pruning' in dec:
+                step.pruning = Trace.Step.Part.from_json(dec['pruning'])
+            return step
+
+        class Part:
+            """Trace of one part of a seco algorithm `Step`.
+
+            Attributes
+            -----
+            `ancestors`: list of np.array with shape (n_ancestors, 2)
+               This is the log of the learned `best_rule` and its `ancestors`.
+
+               An array with (p, n) for the rule and each ancestor, in reverse
+               order of creation.
+
+               If `TraceCoverageTheoryContext.trace_level` is 'theory', no
+               ancestors are traced, so only the `best_rule` is contained.
+
+            `refinements`: np.array or list of np.array with shape (n_refinements, 3)
+               This is the log of all `refinements`, an array with (p, n, stop)
+               for each refinement, where `stop` is the boolean result of
+               `inner_stopping_criterion(refinement)`.
+
+               Empty if `TraceCoverageTheoryContext.trace_level` is not
+               'refinements'.
+
+            P: int
+              Count of positive examples.
+
+            N: int
+              Count of negative examples.
+            """
+            Ancestor = NamedTuple('Ancestor', [('p', int), ('n', int)])
+            Refinement = NamedTuple('Refinement', [('p', int),
+                                                   ('n', int),
+                                                   ('stop', bool)])
+
+            ancestors: Union[Sequence[Ancestor], np.ndarray]
+            refinements: Union[MutableSequence[Refinement], np.ndarray]
+            P: int
+            N: int
+
+            def __init__(self, ancestors: Sequence[Ancestor],
+                         refinements, P, N):
+                self.ancestors = ancestors
+                self.refinements = np.asanyarray(refinements)
+                self.P = P
+                self.N = N
+
+            def __eq__(self, other):
+                return all((hasattr(other, 'ancestors'),
+                            np.all(np.equal(self.ancestors, other.ancestors)),
+                            hasattr(other, 'refinements'),
+                            np.all(np.equal(self.refinements, other.refinements)),
+                            hasattr(other, 'P'),
+                            self.P == other.P,
+                            hasattr(other, 'N'),
+                            self.N == other.N,
+                            ))
+
+            @staticmethod
+            def from_json(dec: Dict) -> 'Trace.Step.Part':
+                return Trace.Step.Part(dec['ancestors'], dec['refinements'],
+                                       dec['P'], dec['N'])
+
+    def __eq__(self, other):
+        if type(other) is type(self):
+            return self.__dict__ == other.__dict__
+        return NotImplemented
+
+    def plot_coverage_log(self, **kwargs):
+        """Plot the trace, see :func:`plot_coverage_log`."""
+        return plot_coverage_log(self, **kwargs)
 
     @staticmethod
     def _json_encoder(obj):
         """Serialize `obj` when used as `json.JSONEncoder.default` method."""
         if isinstance(obj, np.ndarray):
             return obj.tolist()
-        if isinstance(obj, Trace.TraceEntry):
+        if isinstance(obj, (Trace.Step, Trace.Step.Part)):
             return obj.__dict__
         raise TypeError
-
-    steps: MutableSequence['TraceEntry']
-    last_rule_stop: bool
-    P_total: int
-    N_total: int
-
-    def __init__(self, P, N):
-        self.steps = []
-        self.last_rule_stop = None
-        self.P_total = P
-        self.N_total = N
-
-    class TraceEntry:
-        """Trace of one seco algorithm step, i.e. `find_best_rule` invocation.
-
-        Attributes
-        -----
-        `ancestors`: list of np.array with shape (n_ancestors, 2)
-           This is the log of the learned `best_rule` and its `ancestors`.
-
-           An array with (p, n) for the rule and each ancestor, in reverse order of
-           creation.
-
-           If `TraceCoverageTheoryContext.trace_level` is 'theory', no ancestors
-           are traced, so only the `best_rule` is contained.
-
-        `refinements`: np.array or list of np.array with shape (n_refinements, 3)
-           This is the log of all `refinements`, an array with (p, n, stop) for
-           each refinement, where `stop` is the boolean result of
-           `inner_stopping_criterion(refinement)`.
-
-           Empty if `TraceCoverageTheoryContext.trace_level` is not 'refinements'.
-
-        P: int
-          Count of positive examples
-
-        N: int
-          Count of negative examples
-        """
-        AncestorEntry = Union[NamedTuple('Coverage', [('p', int), ('n', int)]),
-                              np.ndarray]
-        RefinementEntry = Union[NamedTuple('Refinements', [('p', int),
-                                                           ('n', int),
-                                                           ('stop', bool)]),
-                                np.ndarray]
-
-        def __init__(self, ancestors: Sequence[AncestorEntry],
-                     refinements: MutableSequence[RefinementEntry], P, N):
-            self.ancestors = ancestors
-            self.refinements = refinements
-            self.P = P
-            self.N = N
-
-        def __eq__(self, other):
-            return all((hasattr(other, 'ancestors'),
-                        np.all(np.equal(self.ancestors, other.ancestors)),
-                        hasattr(other, 'refinements'),
-                        np.all(np.equal(self.refinements, other.refinements)),
-                        hasattr(other, 'P'),
-                        self.P == other.P,
-                        hasattr(other, 'N'),
-                        self.N == other.N,
-                        ))
-
-        ancestors: Sequence[AncestorEntry]
-        refinements: MutableSequence[RefinementEntry]
-        P: int
-        N: int
-
-    def __eq__(self, other):
-        return all((hasattr(other, 'steps'),
-                    self.steps == other.steps,
-                    hasattr(other, 'last_rule_stop'),
-                    self.last_rule_stop == other.last_rule_stop,
-                    hasattr(other, 'P_total'),
-                    self.P_total == other.P_total,
-                    hasattr(other, 'N_total'),
-                    self.N_total == other.N_total))
 
     def to_json(self):
         """:return: A string containing a JSON representation of the trace."""
@@ -145,12 +207,11 @@ class Trace:
             "version": Trace._JSON_DUMP_VERSION,
             "steps": self.steps,
             "last_rule_stop": self.last_rule_stop,
-            "P_total": self.P_total,
-            "N_total": self.N_total,
+            "use_pruning": self.use_pruning,
         }, allow_nan=False, default=Trace._json_encoder)
 
     @staticmethod
-    def from_json(dump) -> 'Trace':
+    def from_json(dump: Union[str, IO]) -> 'Trace':
         """
         :param dump: A file-like object or string containing JSON.
         :return : A dict representing the trace dumped previously with
@@ -165,17 +226,12 @@ class Trace:
             raise ValueError("Unsupported coverage trace version: %s"
                              % dec["version"])
         # convert back to numpy arrays
-        trace = Trace(dec['P_total'], dec['N_total'])
-        trace.last_rule_stop = dec['last_rule_stop']
-        trace.steps = [Trace.TraceEntry(step['ancestors'],
-                                        step['refinements'],
-                                        step['P'], step['N'])
+        trace = Trace(dec['use_pruning'])
+        trace.steps = [Trace.Step.from_json(step)
                        for step in dec['steps']]
+        trace.last_rule_stop = dec['last_rule_stop']
+        trace.use_pruning = dec['use_pruning']
         return trace
-
-    def plot_coverage_log(self, **kwargs):
-        """Plot the trace, see :func:`plot_coverage_log`."""
-        return plot_coverage_log(self, **kwargs)
 
 
 LogTraceCallback = Callable[[Trace], None]
@@ -200,7 +256,6 @@ def trace_coverage(est_cls: Type[SeCoEstimator],
     The trace gets the values P,N,p,n from the `RuleContext` and
     `AugmentedRule` objects; if `GrowPruneSplit` is used, this usually means
     that these are only computed on the growing set.
-    TODO: maybe get P,N,p,n for grow+prune, not only growing set.
 
     # TODO: implement tracing of estimator instances (not only classes)
 
@@ -271,18 +326,16 @@ class TraceCoverageTheoryContext(TheoryContext):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # TODO: dedup P,N calculation with RuleContext.PN
-        P = np.count_nonzero(self.complete_y == self.target_class)
-        N = len(self.complete_y) - P
-        self.trace: Trace = Trace(P, N)
+        use_pruning = issubclass(self.algorithm_config.RuleContextClass,
+                                 GrowPruneSplitRuleContext)
+        self.trace: Trace = Trace(use_pruning)
 
 
 class TraceCoverageRuleContext(RuleContext):
     """Tracing `RuleContext`."""
     def __init__(self, theory_context: TheoryContext, X, y):
         super().__init__(theory_context, X, y)
-        P, N = self.PN(force_complete_data=True)
-        self.current_trace_entry = Trace.TraceEntry([], [], P, N)
+        self.growing_refinements = []
 
 
 class TraceCoverageImplementation(AbstractSecoImplementation):
@@ -299,7 +352,7 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
         stop = super().inner_stopping_criterion(refinement, context)
         assert isinstance(context, TraceCoverageRuleContext)
         p, n = context.count_matches(refinement)
-        context.current_trace_entry.refinements.append(np.array((p, n, stop)))
+        context.growing_refinements.append(np.array((p, n, stop)))
         return stop
 
     @classmethod
@@ -310,21 +363,13 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
         tctx = context.theory_context
         assert isinstance(tctx, TraceCoverageTheoryContext)
         assert isinstance(context, TraceCoverageRuleContext)
-        current_entry = context.current_trace_entry
-        if isinstance(context, GrowPruneSplitRuleContext):
-            context.growing = None  # growing + pruning
+
         if tctx.trace_level == 'best_rules':
-            current_entry.ancestors = np.array([
-                context.count_matches(rule, force_complete_data=True)])
+            ancestors = [rule]
         else:  # elif trace_level in ('ancestors', 'refinements'):
-            current_entry.ancestors = np.array(
-                [context.count_matches(r, force_complete_data=True)
-                 for r in rule_ancestors(rule)])
+            ancestors = rule_ancestors(rule)
 
-        if tctx.trace_level == 'refinements':
-            current_entry.refinements = np.array(current_entry.refinements)
-
-        tctx.trace.steps.append(current_entry)
+        tctx.trace.append_step(context, ancestors, context.growing_refinements)
         tctx.trace.last_rule_stop = last_rule_stop
         return last_rule_stop
 
@@ -386,29 +431,39 @@ def plot_coverage_log(
         # issue a warning, user can decide handling. See module `warnings`
         warnings.warn("Empty trace collected, useless plot.")
     if draw_refinements:
-        for index, le in enumerate(trace.steps):
-            if len(le.refinements) < n_rules:
-                warnings.warn(
-                    "draw_refinements=True requested, but refinement log "
-                    "for rule #{} incomplete. Using draw_refinements=False."
-                    .format(index))
-                draw_refinements = False
-                break
+        if trace.use_pruning:
+            warnings.warn("draw_refinements requested, but algorithm uses "
+                          "pruning, so ignore for theory plot")
+        parts = ["growing"] if trace.use_pruning else ["total"]
+        for index, step in enumerate(trace.steps):
+            for part_name in parts:
+                part = getattr(step, part_name)
+                if part.refinements.ndim != 2:
+                    warnings.warn(
+                        "draw_refinements=True requested, but refinement log "
+                        "for rule[{}].{} incomplete (shape {}). Using "
+                        "draw_refinements=False."
+                        .format(index, part_name, part.refinements.shape))
+                    draw_refinements = False
+                    break
 
-    P0 = trace.steps[0].P
-    N0 = trace.steps[0].N
+    P0_total = P0_growing = trace.steps[0].total.P
+    N0_total = N0_growing = trace.steps[0].total.N
+    if trace.use_pruning:
+        P0_growing = trace.steps[0].growing.P
+        N0_growing = trace.steps[0].growing.N
     rnd_style = dict(color='grey', alpha=0.5, linestyle='dotted')
     refinements_style = dict(marker='.', markersize=1, linestyle='',
-                             zorder=-1,)
+                             zorder=-2,)
 
     if theory_figure is None:
         theory_figure = plt.figure()
     theory_axes = theory_figure.gca(xlabel='n', ylabel='p',
-                                    xlim=(0, N0),
-                                    ylim=(0, P0))  # type: axes.Axes
+                                    xlim=(0, N0_total),
+                                    ylim=(0, P0_total))  # type: axes.Axes
     theory_axes.locator_params(integer=True)
     # draw "random theory" reference marker
-    theory_axes.plot([0, N0], [0, P0], **rnd_style)
+    theory_axes.plot([0, N0_total], [0, P0_total], **rnd_style)
 
     if rules_use_subfigures:
         if rules_figure is None:
@@ -439,63 +494,63 @@ def plot_coverage_log(
         rule_axes = [f.gca() for f in rules_figure]
 
     previous_rule = np.array((0, 0))  # contains (P, N) for some trace
-    for rule_idx, trace_entry in enumerate(trace.steps):
-        rule_trace = trace_entry.ancestors
-        refinements = trace_entry.refinements
-        Pi = trace_entry.P
-        Ni = trace_entry.N
+    for rule_idx, trace_step in enumerate(trace.steps):
         # TODO: visualize whether refinement was rejected due to inner_stop
-        refts_mask = slice(None)  # all
-        if draw_refinements == 'nonzero':
-            refts_mask: slice = refinements[:, P] != 0
         mark_stop = trace.last_rule_stop and (rule_idx == n_rules - 1)
 
-        # this rule in theory plot
-        rule = rule_trace[0] + previous_rule
+        # *** this rule in theory plot ***
+        rule = trace_step.total.ancestors[0] + previous_rule
         theory_line = theory_axes.plot(
             rule[N], rule[P], 'x' if mark_stop else '.',
             label="{i:{i_width}}: ({p:4}, {n:4})"
                   .format(n=rule[N], p=rule[P], i=rule_idx,
                           i_width=math.ceil(np.log10(n_rules))))
         rule_color = theory_line[0].get_color()
-        if draw_refinements:
+        if draw_refinements and not trace.use_pruning:
             # draw refinements in theory plot
-            theory_axes.plot(refinements[refts_mask, N] + previous_rule[N],
-                             refinements[refts_mask, P] + previous_rule[P],
+            refinements = trace_step.total.refinements
+            mask: slice = refinements[:, P] != 0 \
+                if draw_refinements == 'nonzero' else slice(None)
+            theory_axes.plot(refinements[mask, N] + previous_rule[N],
+                             refinements[mask, P] + previous_rule[P],
                              color=rule_color, alpha=0.3,
                              **refinements_style)
         # draw arrows between best_rules
         # NOTE: invert coordinates because we save (p,n) and plot (x=n,y=p)
         theory_axes.annotate("", xytext=previous_rule[::-1], xy=rule[::-1],
-                             arrowprops={'arrowstyle': "->"})
+                             arrowprops={'arrowstyle': "->"}, zorder=-1)
         previous_rule = rule
 
-        # subplot with ancestors of current rule
+        # *** growing subplot with ancestors of current rule ***
         rule_axis = rule_axes[rule_idx]
+        grow_part: Trace.Step.Part = trace_step.growing \
+            if trace.use_pruning else trace_step.total
         if mark_stop:
-            rule_title_template = '(Rule #%d) Candidate'
+            rule_title_template = 'growing (Rule #%d) Candidate'
         else:
-            rule_title_template = 'Rule #%d'
+            rule_title_template = 'growing Rule #%d'
         if not rules_use_subfigures and title is not None:
             # add title before each of the figures
             rule_title_template = "%s: %s" % (title, rule_title_template)
         rule_axis.set_title(rule_title_template % rule_idx)
         # draw "random theory" reference marker
-        rule_axis.plot([0, Ni], [0, Pi], **rnd_style)
+        rule_axis.plot([0, grow_part.P], [0, grow_part.N], **rnd_style)
         # draw rule_trace
-        rule_axis.plot(rule_trace[:, N], rule_trace[:, P], 'o-',
-                       color=rule_color)
+        rule_axis.plot(grow_part.ancestors[:, N], grow_part.ancestors[:, P],
+                       'o-', color=rule_color)
         if draw_refinements:
             # draw refinements as scattered dots
-            rule_axis.plot(refinements[refts_mask, N],
-                           refinements[refts_mask, P],
+            mask: slice = grow_part.refinements[:, P] != 0 \
+                if draw_refinements == 'nonzero' else slice(None)
+            rule_axis.plot(grow_part.refinements[mask, N],
+                           grow_part.refinements[mask, P],
                            color='black', alpha=0.7, **refinements_style)
 
         # draw x and y axes through (0,0) and hide for negative values
         for spine_type, spine in rule_axis.spines.items():
             spine.set_position('zero')
             horizontal = spine_type in {'bottom', 'top'}
-            spine.set_bounds(0, Ni if horizontal else Pi)
+            spine.set_bounds(0, grow_part.N if horizontal else grow_part.P)
 
         class PositiveTicks(AutoLocator):
             def tick_values(self, vmin, vmax):
@@ -506,9 +561,12 @@ def plot_coverage_log(
         rule_axis.yaxis.set_major_locator(PositiveTicks())
         rule_axis.locator_params(integer=True)
 
+        _draw_outer_border(rule_axis,
+                           grow_part.N, N0_growing, grow_part.P, P0_growing,
+                           color='grey', alpha=0.1)
         # set reference frame (N,P), but move (0,0) so it looks comparable
-        rule_axis.set_xbound(Ni - N0, Ni)
-        rule_axis.set_ybound(Pi - P0, Pi)
+        rule_axis.set_xbound(grow_part.N - N0_growing, grow_part.N)
+        rule_axis.set_ybound(grow_part.P - P0_growing, grow_part.P)
 
     if title is not None:
         theory_axes.set_title("%s: Theory" % title)
