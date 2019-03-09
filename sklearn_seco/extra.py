@@ -402,6 +402,7 @@ def plot_coverage_log(
         theory_figure: Optional[Figure] = None,
         rules_figure: Union[Figure, Sequence[Figure], None] = None,
         rules_use_subfigures: bool = True,
+        rules_move_axes: bool = True,
 ) -> Tuple[Figure, Union[Figure, Sequence[Figure]]]:
     """Plot the traced (p, n) of a theory.
 
@@ -420,6 +421,9 @@ def plot_coverage_log(
       figures.
     :param draw_refinements: If `True`, draw all refinements, if `False`
       don't. If `'nonzero'` (the default) only draw those with `n > 0`.
+    :param rules_move_axes: If `True`, the rules plots have their axis (or
+      the (0,0) point) moved so it reflects the (P, N) left over by the
+      previous rule.
     :return: `(theory_figure, rules_figure)` where rules_figure is a figure
       or a list of figure, depending on `rules_use_subfigure`.
     """
@@ -564,9 +568,13 @@ def plot_coverage_log(
         _draw_outer_border(rule_axis,
                            grow_part.N, N0_growing, grow_part.P, P0_growing,
                            color='grey', alpha=0.1)
-        # set reference frame (N,P), but move (0,0) so it looks comparable
-        rule_axis.set_xbound(grow_part.N - N0_growing, grow_part.N)
-        rule_axis.set_ybound(grow_part.P - P0_growing, grow_part.P)
+        if rules_move_axes:
+            # set reference frame (N,P), but move (0,0) so it looks comparable
+            rule_axis.set_xbound(grow_part.N - N0_growing, grow_part.N)
+            rule_axis.set_ybound(grow_part.P - P0_growing, grow_part.P)
+        else:
+            rule_axis.set_xbound(0, N0_growing)
+            rule_axis.set_ybound(0, P0_growing)
 
     if title is not None:
         theory_axes.set_title("%s: Theory" % title)
