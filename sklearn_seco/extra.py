@@ -472,11 +472,13 @@ def plot_coverage_log(
                     draw_refinements = False
                     break
 
-    P0_total = P0_growing = trace.steps[0].total.P
-    N0_total = N0_growing = trace.steps[0].total.N
+    P0_total = P0_growing = P0_pruning = trace.steps[0].total.P
+    N0_total = N0_growing = N0_pruning = trace.steps[0].total.N
     if trace.use_pruning:
         P0_growing = trace.steps[0].growing.P
         N0_growing = trace.steps[0].growing.N
+        P0_pruning = trace.steps[0].pruning.P
+        N0_pruning = trace.steps[0].pruning.N
     rnd_style = dict(color='grey', alpha=0.5, linestyle='dotted')
     refinements_style = dict(marker='.', markersize=1, linestyle='',
                              zorder=-2,)
@@ -496,13 +498,19 @@ def plot_coverage_log(
                                       tight_layout=True)
         # else assume rules_figure is already a figure
         if title is not None:
-            rules_figure.suptitle("%s: Rules" % title, y=0.02)
+            rules_figure.suptitle("%s: Rules" % title, y=0.02)  # XXX
+        pruning_figure = plt.figure(figsize=(10.24, 10.24),
+                                    tight_layout=True)
         # TODO: axis labels when using subfigures
         subfigure_cols = math.ceil(np.sqrt(n_rules))
         subfigure_rows = math.ceil(n_rules / subfigure_cols)
         rule_axes = [rules_figure.add_subplot(subfigure_rows, subfigure_cols,
                                               rule_idx + 1)
                      for rule_idx in range(n_rules)]  # type: List[axes.Axes]
+        pruning_axes: List[axes.Axes] = [
+            pruning_figure.add_subplot(subfigure_rows, subfigure_cols,
+                                       rule_idx + 1)
+            for rule_idx in range(n_rules)]
     else:
         if rules_figure is None:
             rules_figure = [plt.figure() for _ in range(n_rules)]
@@ -548,57 +556,109 @@ def plot_coverage_log(
 
         # *** growing subplot with ancestors of current rule ***
         rule_axis = rule_axes[rule_idx]
-        grow_part: Trace.Step.Part = trace_step.growing \
-            if trace.use_pruning else trace_step.total
-        if mark_stop:
-            rule_title_template = 'growing (Rule #%d) Candidate'
-        else:
-            rule_title_template = 'growing Rule #%d'
-        if not rules_use_subfigures and title is not None:
-            # add title before each of the figures
-            rule_title_template = "%s: %s" % (title, rule_title_template)
-        rule_axis.set_title(rule_title_template % rule_idx)
-        # draw "random theory" reference marker
-        rule_axis.plot([0, grow_part.P], [0, grow_part.N], **rnd_style)
-        # draw rule_trace
-        rule_axis.plot(grow_part.ancestors[:, N], grow_part.ancestors[:, P],
-                       'o-', color=rule_color)
-        if draw_refinements:
-            # draw refinements as scattered dots
-            mask: slice = grow_part.refinements[:, P] != 0 \
-                if draw_refinements == 'nonzero' else slice(None)
-            rule_axis.plot(grow_part.refinements[mask, N],
-                           grow_part.refinements[mask, P],
-                           color='black', alpha=0.7, **refinements_style)
+        _set_plot_title(rule_axis,
+                        True if trace.use_pruning else None, mark_stop,
+                        prepend_title=title
+                        if not rules_use_subfigures else None,
+                        rule_idx=rule_idx)
+        _draw_rule_plot(rule_axis,
+                        trace_step.growing  # part=
+                        if trace.use_pruning else trace_step.total,
+                        rule_color, rnd_style, refinements_style,
+                        draw_refinements, rules_move_axes,
+                        PN0=(P0_growing, N0_growing)
+                        )
 
-        # draw x and y axes through (0,0) and hide for negative values
-        for spine_type, spine in rule_axis.spines.items():
-            spine.set_position('zero')
-            horizontal = spine_type in {'bottom', 'top'}
-            spine.set_bounds(0, grow_part.N if horizontal else grow_part.P)
-
-        class PositiveTicks(AutoLocator):
-            def tick_values(self, vmin, vmax):
-                orig = super().tick_values(vmin, vmax)
-                return orig[orig >= 0]
-
-        rule_axis.xaxis.set_major_locator(PositiveTicks())
-        rule_axis.yaxis.set_major_locator(PositiveTicks())
-        rule_axis.locator_params(integer=True)
-
-        _draw_outer_border(rule_axis,
-                           grow_part.N, N0_growing, grow_part.P, P0_growing,
-                           color='grey', alpha=0.1)
-        if rules_move_axes:
-            # set reference frame (N,P), but move (0,0) so it looks comparable
-            rule_axis.set_xbound(grow_part.N - N0_growing, grow_part.N)
-            rule_axis.set_ybound(grow_part.P - P0_growing, grow_part.P)
-        else:
-            rule_axis.set_xbound(0, N0_growing)
-            rule_axis.set_ybound(0, P0_growing)
+        if trace.use_pruning:
+            # *** pruning subplot with pruning candidates of current rule ***
+            pruning_axis = pruning_axes[rule_idx]
+            _set_plot_title(pruning_axis,
+                            False, mark_stop,
+                            prepend_title=title
+                            if not rules_use_subfigures else None,
+                            rule_idx=rule_idx)
+            _draw_rule_plot(pruning_axis,
+                            trace_step.pruning  # part=
+                            if trace.use_pruning else trace_step.total,
+                            rule_color, rnd_style, refinements_style,
+                            draw_refinements, rules_move_axes,
+                            PN0=(P0_pruning, N0_pruning)
+                            )
 
     if title is not None:
         theory_axes.set_title("%s: Theory" % title)
     theory_figure.legend(title="rule: (p,n)", loc='center right')
 
-    return theory_figure, rules_figure
+    if trace.use_pruning:
+        return theory_figure, rules_figure, pruning_figure
+    else:
+        return theory_figure, rules_figure
+
+
+def _set_plot_title(axis: axes.Axes,
+                    growing: Optional[bool],
+                    rule_stopped: bool,
+                    prepend_title: Optional[str],
+                    rule_idx: int,
+                    ):
+    title = 'Rule #%d'
+    if rule_stopped:
+        title = '(' + title + ') Candidate'
+    if growing is not None:
+        title = ('growing' if growing else 'pruning') + ' ' + title
+    if prepend_title is not None:
+        # add title before each of the figures
+        title = prepend_title + ': ' + title
+    axis.set_title(title % rule_idx)
+
+
+def _draw_rule_plot(rule_axis: axes.Axes,
+                    part: Trace.Step.Part,
+                    rule_color,
+                    rnd_style: Dict,
+                    refinements_style: Dict,
+                    draw_refinements: bool or str,
+                    rules_move_axes: bool,
+                    PN0: Tuple[int, int],
+                    ):
+    P, N = 0, 1  # readable indexes, not values!
+
+    # draw "random theory" reference marker
+    rule_axis.plot([0, part.P], [0, part.N], **rnd_style)
+    # draw rule_trace
+    rule_axis.plot(part.ancestors[:, N], part.ancestors[:, P],
+                   'o-', color=rule_color)
+    if draw_refinements:
+        # draw refinements as scattered dots
+        mask: slice = part.refinements[:, P] != 0 \
+            if draw_refinements == 'nonzero' else slice(None)
+        rule_axis.plot(part.refinements[mask, N],
+                       part.refinements[mask, P],
+                       color='black', alpha=0.7, **refinements_style)
+
+    # draw x and y axes through (0,0) and hide for negative values
+    for spine_type, spine in rule_axis.spines.items():
+        spine.set_position('zero')
+        horizontal = spine_type in {'bottom', 'top'}
+        spine.set_bounds(0, part.N if horizontal else part.P)
+
+    class PositiveTicks(AutoLocator):
+        def tick_values(self, vmin, vmax):
+            orig = super().tick_values(vmin, vmax)
+            return orig[orig >= 0]
+
+    rule_axis.xaxis.set_major_locator(PositiveTicks())
+    rule_axis.yaxis.set_major_locator(PositiveTicks())
+    rule_axis.locator_params(integer=True)
+
+    # indicate (P,N) reference frame by filling the plot or moving the axes
+    _draw_outer_border(rule_axis,
+                       part.N, PN0[N], part.P, PN0[P],
+                       color='grey', alpha=0.1)
+    if rules_move_axes:
+        # set reference frame (N,P), but move (0,0) so it looks comparable
+        rule_axis.set_xbound(part.N - PN0[N], part.N)
+        rule_axis.set_ybound(part.P - PN0[P], part.P)
+    else:
+        rule_axis.set_xbound(0, PN0[N])
+        rule_axis.set_ybound(0, PN0[P])

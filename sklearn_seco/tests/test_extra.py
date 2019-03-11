@@ -44,6 +44,6 @@ def test_coverage_tracing(trace_estimator):
     assert trace == trace_recovered
 
     # test plotting
-    tf, rfs = plot_coverage_log(trace, title="XOR 2d on " + estimator_name)
-    tf.show()
-    rfs.show()
+    figures = plot_coverage_log(trace, title="XOR 2d on " + estimator_name)
+    for figure in figures:
+        figure.show()
