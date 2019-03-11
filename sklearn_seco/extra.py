@@ -54,16 +54,18 @@ class Trace:
         self.use_pruning = use_pruning
 
     def append_step(self, context: RuleContext, ancestors,
-                    refinements: Sequence['Trace.Step.Part.Refinement']):
+                    growing_refinements: Sequence['Trace.Step.Part.Refinement'],
+                    pruning_refinements: Sequence[Tuple[int, int]]):
         if self.use_pruning:
             assert isinstance(context, GrowPruneSplitRuleContext)
             self.steps.append(Trace.Step.pruning_step(context,
                                                       ancestors,
-                                                      refinements))
+                                                      growing_refinements,
+                                                      pruning_refinements))
         else:
             self.steps.append(Trace.Step.nonpruning_step(context,
                                                          ancestors,
-                                                         refinements))
+                                                         growing_refinements))
 
     class Step:
         """Trace of one seco algorithm step, i.e. `find_best_rule` invocation.
@@ -75,6 +77,7 @@ class Trace:
 
         total: 'Trace.Step.Part'
         growing: 'Trace.Step.Part'
+        pruning: 'Trace.Step.Part'
 
         @staticmethod
         def nonpruning_step(context: RuleContext,
@@ -92,7 +95,8 @@ class Trace:
         @staticmethod
         def pruning_step(context: GrowPruneSplitRuleContext,
                          ancestors: Iterable[AugmentedRule],
-                         refinements: Sequence['Trace.Step.Part.Refinement']
+                         refinements: Sequence['Trace.Step.Part.Refinement'],
+                         pruning_refinements: Sequence[Tuple[int, int]],
                          ) -> 'Trace.Step':
             ancestors = list(ancestors)
             step = Trace.Step.nonpruning_step(context, ancestors, [])
@@ -104,6 +108,13 @@ class Trace:
             step.growing = Trace.Step.Part(ancestors_counts_growing,
                                            refinements, *PN_growing)
 
+            context.growing = False
+            ancestors_count_pruning = np.array([context.count_matches(r)
+                                                for r in ancestors])
+            PN_pruning = context.PN()
+            step.pruning = Trace.Step.Part(ancestors_count_pruning,
+                                           pruning_refinements,
+                                           *PN_pruning)
             return step
 
         def __eq__(self, other):
@@ -333,9 +344,18 @@ class TraceCoverageTheoryContext(TheoryContext):
 
 class TraceCoverageRuleContext(RuleContext):
     """Tracing `RuleContext`."""
+
+    def pruning_heuristic(self, rule: AugmentedRule,
+                          context: RuleContext) -> float:
+        p, n = context.count_matches(rule)
+        self.pruning_refinements.append((p, n))
+        # we're only called if we are a subclass of GrowPruneSplitRuleContext
+        return super().pruning_heuristic(rule, context)
+
     def __init__(self, theory_context: TheoryContext, X, y):
         super().__init__(theory_context, X, y)
         self.growing_refinements = []
+        self.pruning_refinements = []
 
 
 class TraceCoverageImplementation(AbstractSecoImplementation):
@@ -369,7 +389,8 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
         else:  # elif trace_level in ('ancestors', 'refinements'):
             ancestors = rule_ancestors(rule)
 
-        tctx.trace.append_step(context, ancestors, context.growing_refinements)
+        tctx.trace.append_step(context, ancestors, context.growing_refinements,
+                               context.pruning_refinements)
         tctx.trace.last_rule_stop = last_rule_stop
         return last_rule_stop
 
