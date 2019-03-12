@@ -17,6 +17,7 @@ Limitations / Assumptions (partly TODO)
 - only float data supported (due to usage of np.inf in Rules)
 - no NaN, inf, or -inf values in data
 - no weighting
+- classification only, no regression
 """
 
 from sklearn_seco import abstract, common, concrete, extra, tests

@@ -44,7 +44,6 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         You may instead transform your categorical features beforehand,
         using e.g. :class:`sklearn.preprocessing.OneHotEncoder` or
         :class:`sklearn.preprocessing.Binarizer`.
-        TODO: compare performance
 
     :param explicit_target_class: Use as positive/target class for learning. If
         `None` (the default), use the first class from `np.unique(y)` (which is
