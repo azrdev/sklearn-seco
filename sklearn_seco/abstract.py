@@ -2,7 +2,7 @@
 Implementation of SeCo / Covering algorithm: Abstract base algorithm.
 """
 
-from typing import Union, Type
+from typing import Union, Type, List
 
 import numpy as np
 
@@ -14,7 +14,8 @@ from sklearn.utils.validation import check_is_fitted
 
 from sklearn_seco.common import \
     AugmentedRule, RuleQueue, Theory, \
-    RuleContext, SeCoAlgorithmConfiguration
+    RuleContext, SeCoAlgorithmConfiguration, \
+    rule_to_string
 
 
 # noinspection PyAttributeOutsideInit
@@ -217,6 +218,42 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         # for unordered, would just do confidence.max(axis=1)
         return confidence[range(len(confidence)),
                           np.argmax(confidence > 0, axis=1)]
+
+    def export_text(self, feature_names: List[str] = None,
+                    target_class: str = None) -> str:
+        """Build a text report showing the rules in the learned theory.
+
+        See Also `sklearn.tree.export_tree`
+
+        Parameters
+        -----
+        feature_names : list, optional (default=None)
+            A list of length n_features containing the feature names.
+            If None generic names will be used ("feature_0", "feature_1", ...).
+
+        target_class: str, optional
+            A string representation of the target class. If None, the value of
+            self.target_class_ is used.
+        """
+
+        if feature_names:
+            if len(feature_names) != self.n_features_:
+                raise ValueError(
+                    "feature_names must contain %d elements, got %d"
+                    % (self.n_features_, len(feature_names)))
+        else:
+            feature_names = ["feature_{}".format(i)
+                             for i in range(self.n_features_)]
+
+        if not target_class:
+            target_class = self.target_class_
+
+        negative_class = self.classes_[self.classes_ != target_class][0]
+        default_rule = '(true) => ' + str(negative_class)
+        return '\n'.join([
+            rule_to_string(rule, self.categorical_mask_,
+                           feature_names, target_class)
+            for rule in self.theory_] + [default_rule])
 
 
 # noinspection PyAttributeOutsideInit

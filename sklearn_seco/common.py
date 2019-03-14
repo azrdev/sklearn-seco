@@ -53,6 +53,31 @@ def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
         rule = rule.original
 
 
+def rule_to_string(conditions: Rule,
+                   categorical_mask: np.ndarray,
+                   feature_names: List[str] = None,
+                   target_class=None) -> str:
+    """:return: a string representation of `conditions`."""
+    n_features = conditions.shape[1]
+    if feature_names:
+        assert n_features == len(feature_names)
+    else:
+        feature_names = ['feature_{}'.format(i + 1) for i in range(n_features)]
+    conds = ' and '.join(
+        '({ft} {op} {thresh:.3})'.format(
+            ft=feature_names[ti[1]],
+            op='==' if categorical_mask[ti[1]] else
+            '>=' if ti[0] == LOWER else '<=',
+            thresh=conditions[ti])
+        # ti has type: Tuple[int, int]
+        # where ti[0] is LOWER or UPPER and ti[1] is the feature index
+        for ti in zip(*np.isfinite(conditions).nonzero()))
+    if target_class is None:
+        return conds
+    else:
+        return conds + ' => ' + str(target_class)
+
+
 def match_rule(X: np.ndarray,
                rule: Rule,
                categorical_mask: np.ndarray) -> np.ndarray:
@@ -184,14 +209,6 @@ class AugmentedRule:
         if not hasattr(other, '_sort_key'):
             return NotImplemented
         return self._sort_key == other._sort_key
-
-    def __str__(self):
-        return ' and '.join(
-            '(feature{fi} {op} {thresh})'.format(
-                fi=str(ti[1] + 1) + "/" + str(self.conditions.shape[1]),
-                op='>=' if ti[0] == LOWER else '<=',
-                thresh=self.conditions[ti])
-            for ti in zip(*np.isfinite(self.conditions).nonzero()))
 
 
 # TODO: maybe move `abstract_seco`/`find_best_rule` into TheoryContext/RuleContext

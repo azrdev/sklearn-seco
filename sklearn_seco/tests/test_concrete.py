@@ -1,6 +1,8 @@
 """Tests for `sklearn_seco.concrete`."""
 
 from numbers import Real as RealNumber
+from typing import List
+
 import numpy as np
 import pytest
 from numpy import NINF, PINF
@@ -158,13 +160,14 @@ def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
     if is_binary:
         base = assert_binary_problem(seco_estimator)
         record_theory(base.theory_)
-        print("{} rules:\n{}".format(len(base.theory_), base.theory_))
+        print("{} rules:\n{}".format(len(base.theory_), base.export_text()))
     else:
         bases = assert_multiclass_problem(seco_estimator)
         record_theory([b.theory_ for b in bases])
         print("{} theories:\n".format(len(bases)))
         for base_ in bases:
-            print("{} rules:\n{}\n".format(len(base_.theory_), base_.theory_))
+            print("{} rules:\n{}\n".format(len(base_.theory_),
+                                           base_.export_text()))
 
     assert_prediction_performance(seco_estimator,
                                   x_train, y_train, x_test, y_test)
@@ -172,7 +175,7 @@ def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
 
 # test helpers
 
-def assert_binary_problem(estimator):
+def assert_binary_problem(estimator) -> _BinarySeCoEstimator:
     """Check recognition of binary problem by `estimator`.
 
     :return: the "base_estimator_" `_BinarySeCoEstimator` instance
@@ -185,7 +188,7 @@ def assert_binary_problem(estimator):
     return base
 
 
-def assert_multiclass_problem(estimator):
+def assert_multiclass_problem(estimator) -> List[_BinarySeCoEstimator]:
     """Check recognition of multi-class problem.
 
     :return: the list of "base_estimator_" `_BinarySeCoEstimator` instances
