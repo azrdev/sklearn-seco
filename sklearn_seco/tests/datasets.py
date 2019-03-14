@@ -167,19 +167,29 @@ def sklearn_make_moons(n_samples=400,
                    categorical_features=None)
 
 
-def artificial_disjunction(n_samples=20_000, n_random_features=10,
-                           test_ratio=.3, random=42):
-    """noise-free binary `ab ∨ ac ∨ ade`, see (Cohen 1995)."""
+def artificial_disjunction(n_samples=2_000, n_random_features=10,
+                           test_ratio=.3, noise_ratio=.1,
+                           random=42):
+    """noise-free binary `ab ∨ ac ∨ ade`.
+
+    See also (Cohen 1995).
+
+    :param noise_ratio: float between 0 and 1
+        Add this percentage of class noise, i.e. inverted label. Stratified,
+        i.e. positive and negative class both have this percentage of noise.
+    """
     random = check_random_state(random)
     n_features = 5 + n_random_features
     x = random.randint(2, size=(n_samples, n_features), dtype=bool)
     informative = random.permutation(n_features)[:5]
-    a = x.T[informative[0]]
-    b = x.T[informative[1]]
-    c = x.T[informative[2]]
-    d = x.T[informative[3]]
-    e = x.T[informative[4]]
+    a, b, c, d, e = x.T[informative]
     y = a * b + a * c + a * d * e
+    y_classes, y_indices, y_counts = np.unique(y, return_inverse=True,
+                                               return_counts=True)
+    for c, count in zip(y_classes, y_counts):
+        n_noise = int(noise_ratio * count)
+        noise_idx = random.permutation(np.nonzero(y_indices == c)[0])[:n_noise]
+        y[noise_idx] = np.invert(y[noise_idx])
     test_start_idx = int((1 - test_ratio) * n_samples)
     return Dataset(x[:test_start_idx], y[:test_start_idx],
                    x[test_start_idx:], y[test_start_idx:],
