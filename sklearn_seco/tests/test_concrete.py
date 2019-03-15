@@ -77,7 +77,15 @@ def test_base_trivial(record_theory):
 def test_base_easyrules(record_theory):
     """Test SimpleSeCo with a linearly separable, 4 instance binary test set.
 
-    Compare `docs/test_base_easyrules_featurespace.png`.
+    B, numerical ordinal
+      ^
+      |
+     1+ n
+     0+
+    -1+ p     n
+    -2+ p
+      +-+-----+-> A, categorical
+        0     1
     """
     categorical_mask = np.array([True, False])
     X_train = np.array([[0, -1.0],
@@ -153,24 +161,31 @@ def test_sklearn_check_estimator(seco_estimator_class):
 
 def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
     """Expect high accuracy from each of our blackbox test cases"""
-    x_train, y_train, x_test, y_test, cm = blackbox_test
-    seco_estimator.fit(x_train, y_train, categorical_features=cm)
+    feature_names = blackbox_test.get_opt("feature_names")
 
-    is_binary = len(np.unique(y_train)) == 2
+    seco_estimator.fit(
+        blackbox_test.x_train, blackbox_test.y_train,
+        categorical_features=blackbox_test.categorical_features,
+        explicit_target_class=blackbox_test.get_opt("target_class"))
+
+    is_binary = len(np.unique(blackbox_test.y_train)) == 2
     if is_binary:
         base = assert_binary_problem(seco_estimator)
         record_theory(base.theory_)
-        print("{} rules:\n{}".format(len(base.theory_), base.export_text()))
+        print("{} rules:\n{}".format(len(base.theory_),
+                                     base.export_text(feature_names)))
     else:
         bases = assert_multiclass_problem(seco_estimator)
         record_theory([b.theory_ for b in bases])
         print("{} theories:\n".format(len(bases)))
         for base_ in bases:
             print("{} rules:\n{}\n".format(len(base_.theory_),
-                                           base_.export_text()))
+                                           base_.export_text(feature_names)))
 
     assert_prediction_performance(seco_estimator,
-                                  x_train, y_train, x_test, y_test)
+                                  blackbox_test.x_train, blackbox_test.y_train,
+                                  blackbox_test.get_opt("x_test"),
+                                  blackbox_test.get_opt("y_test"))
 
 
 # test helpers

@@ -8,7 +8,7 @@
 % x_p0 = np.random.normal(p0_center, size=(100,2))
 % x_p1 = np.random.normal(p1_center, size=(10,2))
 % x = np.vstack((x_n, [p0_center,p1_center], x_p0, x_p1 ))
-% y = np.array([0]*200 + [1]*110)
+% y = np.array([0]*200 + [1]*110)  # positive class is 1, negative 0
 % # save to CSV, convert to arff using weka or manually
 % np.savetxt('test.csv', np.column_stack((x, y)), fmt=['%.6f']*2 + ['%d'], delimiter=',')
 % # load arff into python

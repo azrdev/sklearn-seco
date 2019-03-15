@@ -2,7 +2,6 @@
 # TODO: maybe replace these with fixtures used with indirect=True
 
 import itertools
-from collections import namedtuple
 from os.path import dirname
 from typing import Union
 
@@ -10,17 +9,28 @@ import numpy as np
 import pytest
 from sklearn.datasets import make_blobs, make_classification, make_moons
 from sklearn.externals import _arff as arff
-from sklearn.utils import check_random_state
+from sklearn.utils import check_random_state, Bunch
 
 
-def Dataset(x_train: np.ndarray,
-            y_train: np.ndarray,
-            x_test: np.ndarray = None,
-            y_test: np.ndarray = None,
-            categorical_features: Union[None, str, np.ndarray] = None):
-    _Dataset = namedtuple('Dataset', ['x_train', 'y_train', 'x_test', 'y_test',
-                                      'categorical_features'])
-    return _Dataset(x_train, y_train, x_test, y_test, categorical_features)
+class Dataset(Bunch):
+    def __init__(self,
+                 x_train: np.ndarray,
+                 y_train: np.ndarray,
+                 x_test: np.ndarray = None,
+                 y_test: np.ndarray = None,
+                 categorical_features: Union[None, str, np.ndarray] = None,
+                 **kwargs):
+        if x_test is not None:
+            kwargs["x_test"] = x_test
+        if y_test is not None:
+            kwargs["y_test"] = y_test
+        super().__init__(x_train=x_train, y_train=y_train,
+                         categorical_features=categorical_features,
+                         **kwargs)
+
+    def get_opt(self, key):
+        """:return: `self.get(key, default=None)`"""
+        return self.get(key, None)
 
 
 # datasets
@@ -48,16 +58,20 @@ def binary_categorical(n_features=8, n_samples=100, random=7):
 
 def binary_mixed(n_samples=128, n_features=5, random=2):
     """
-    Generate medium-size binary problem with categorical and numeric features.
+    Generate binary problem with categorical and numeric features.
+    Imbalanced class distribution.
     """
     categorical = np.array([True, False] * n_features)[:n_features]  # T,F,T,…
     xnum, ymc = make_blobs(n_samples=2 * n_samples, n_features=n_features,
                            centers=n_features, random_state=random)
     x = np.where(categorical, np.rint(xnum), xnum)
     y = ymc % 2 + 20
-    return Dataset(x[:n_samples], y[:n_samples],
-                   x[n_samples:], y[n_samples:],
-                   categorical)
+    return Dataset(
+        x[:n_samples], y[:n_samples], x[n_samples:], y[n_samples:],
+        categorical,
+        feature_names=['ft_{i}_{cat}'
+                       .format(i=i, cat='cat' if categorical[i] else 'num')
+                       for i in range(n_features)])
 
 
 def xor_2d(n_samples=400, random=None):
@@ -80,14 +94,16 @@ def xor_2d(n_samples=400, random=None):
 
 # TODO: IREP invalid theory
 # TODO: Ripper bad accuracy (0.49 < 0.8)
-def checkerboard_2d(n_samples=10**5, binary=True, categorical=True,
+def checkerboard_2d(n_samples=100_000, binary=True, categorical=True,
                     random=None):
     """
     Generate huge 2D multi-class problem with interleaved class clusters (similar to XOR)
 
-    :param binary: If True, data has 2 classes, otherwise 9.
-    :param categorical: If True, features are few distinct integers, otherwise
-        a float distribution.
+    :param binary: bool.
+        If True, data has 2 classes of unequal size, otherwise 9 of equal size.
+    :param categorical: bool.
+        If True, features are few distinct integers, otherwise a float
+        distribution.
     """
     if random is None:
         random = check_random_state(1)
@@ -117,7 +133,10 @@ def binary_slight_overlap(
         n_samples=160,  # 80 samples for each class and each of (train, test)
         n_features=8,
         random=None):
-    """Generate two normal distributed, slightly overlapping classes."""
+    """
+    Generate two equally sized, normal distributed, slightly overlapping
+    classes.
+    """
     if random is None:
         random = check_random_state(42)
     mean = np.zeros(n_features)
@@ -167,10 +186,12 @@ def sklearn_make_moons(n_samples=400,
                    categorical_features=None)
 
 
+# TODO: SimpleSeCo,CN2 learn very bad rules
 def artificial_disjunction(n_samples=2_000, n_random_features=10,
-                           test_ratio=.3, noise_ratio=.1,
+                           test_ratio=.3, noise_ratio=.05,
                            random=42):
-    """noise-free binary `ab ∨ ac ∨ ade`.
+    """
+    Binary `ab | ac | ade` on binary features. Imbalanced class distribution.
 
     See also (Cohen 1995).
 
@@ -191,18 +212,24 @@ def artificial_disjunction(n_samples=2_000, n_random_features=10,
         noise_idx = random.permutation(np.nonzero(y_indices == c)[0])[:n_noise]
         y[noise_idx] = np.invert(y[noise_idx])
     test_start_idx = int((1 - test_ratio) * n_samples)
+    feature_names = ['ft_%d' % i for i in range(n_features)]
+    for ft, fi in zip('abcde', informative):
+        feature_names[fi] = ft
     return Dataset(x[:test_start_idx], y[:test_start_idx],
                    x[test_start_idx:], y[test_start_idx:],
-                   categorical_features='all')
+                   categorical_features='all', feature_names=feature_names,
+                   target_class=True)
 
 
 def staged():
     """low-noise binary 2d testcase for stopping criteria
 
     Has a big (~200) negative cluster and two different (100 and 10)
-    positive clusters, each containig a single negative sample.
+    positive clusters, each containing a single negative sample.
     """
     filename = dirname(__file__) + '/staged.arff'
-    data = np.array(arff.load(open(filename))['data'],
-                    dtype=float)
-    return Dataset(data[:, :-1], data[:, -1])
+    dec = arff.load(open(filename))
+    data = np.array(dec['data'], dtype=float)
+    return Dataset(data[:, :-1], data[:, -1],
+                   feature_names=[ft[0] for ft in dec['attributes'][:-1]],
+                   target_class=1)
