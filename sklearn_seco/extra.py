@@ -83,8 +83,8 @@ class Trace:
                             ) -> 'Trace.Step':
             PN = context.PN(force_complete_data=True)
             ancestors_counts = np.array(
-                [context.count_matches(r, force_complete_data=True)
-                 for r in ancestors])
+                [rule.pn(context, force_complete_data=True)
+                 for rule in ancestors])
             step = Trace.Step()
             step.total = Trace.Step.Part(ancestors_counts, refinements, *PN)
             return step
@@ -351,7 +351,7 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
                                  context: TraceCoverageRuleContext) -> bool:
         stop = super().inner_stopping_criterion(refinement, context)
         assert isinstance(context, TraceCoverageRuleContext)
-        p, n = context.count_matches(refinement)
+        p, n = refinement.pn(context)
         context.growing_refinements.append(np.array((p, n, stop)))
         return stop
 

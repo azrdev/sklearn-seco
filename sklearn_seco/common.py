@@ -117,7 +117,7 @@ T = TypeVar('T', bound='AugmentedRule')
 
 @total_ordering
 class AugmentedRule:
-    """A `Rule` and associated data, like coverage (p, n) of current examples,
+    """A `Rule` and associated data, like coverage `pn` of current examples,
     a `_sort_key` defining a total order between instances, and for rules
     forked from others (with `copy()`) a reference to the original rule.
 
@@ -148,9 +148,8 @@ class AugmentedRule:
         Set by `AbstractSecoImplementation.evaluate_rule` and accessed
         implicitly through `__lt__`.
 
-    _pn_cache: tuple(int, int)
-        Cached positive and negative coverage of this rule. Always access via
-        `AbstractSecoImplementation.count_matches`.
+    pn: Tuple[int, int]
+        Positive and negative coverage of this rule, cached.
     """
     __rule_counter = 0  # TODO: shared across runs/instances
 
@@ -177,7 +176,7 @@ class AugmentedRule:
             raise ValueError("Exactly one of (conditions, n_features) "
                              "must be not None.")
         # init fields
-        self._pn_cache = None
+        self._pn_cache: Dict[bool, Tuple[int, int]] = {}
         self._sort_key = None
 
     def copy(self: T) -> T:
@@ -209,6 +208,10 @@ class AugmentedRule:
         if not hasattr(other, '_sort_key'):
             return NotImplemented
         return self._sort_key == other._sort_key
+
+    def pn(self, context: 'RuleContext', force_complete_data: bool = False):
+        """:return: `context.pn(self, force_complete_data)`"""
+        return context.pn(self, force_complete_data)
 
 
 # TODO: maybe move `abstract_seco`/`find_best_rule` into TheoryContext/RuleContext
@@ -252,33 +255,43 @@ class RuleContext:
     Methods provided are:
 
     - `match_rule`
-    - `count_matches`
+    - `pn`
     - `evaluate_rule`
 
     Members
     -----
     * `X` and `y`: The current training data and -labels.
       (See also `concrete.GrowPruneSplit` which overrides these properties).
-    * `PN`: (P: int, N: int) The count of positive and negative examples in X.
+    * `PN`: Tuple[P: int, N: int]
+        The count of positive and negative examples in X. Cached.
     """
 
     def __init__(self, theory_context: TheoryContext, X, y):
         self.theory_context = theory_context
         self._X = X
         self._y = y
-        self._PN_cache = None
+        # _PN_cache maps force_complete_data:bool to the P,N counts per target
+        self._PN_cache: Dict[bool, Dict[TGT, Tuple[int, int]]] = {}
 
     def PN(self, force_complete_data: bool = False) -> Tuple[int, int]:
-        """:return: (P, N), the count of (positive, negative) examples"""
-        if self._PN_cache is None:
-            # calculate
+        """
+        :return: (P, N), the count of (positive, negative) examples. Cached.
+        :param force_complete_data:
+            Iff True, always use complete dataset (e.g. if growing/pruning
+            datasets would be used otherwise).
+        """
+        if force_complete_data not in self._PN_cache:
             y = self._y if force_complete_data else self.y
-            target_class = self.theory_context.target_class
-            P = np.count_nonzero(y == target_class)
-            N = len(y) - P
-            assert N == np.count_nonzero(y != target_class)
-            self._PN_cache = (P, N)
-        return self._PN_cache
+            self._PN_cache[force_complete_data] = self.count_PN(y)
+        return self._PN_cache[force_complete_data]
+
+    def count_PN(self, y) -> Tuple[int, int]:
+        """:return: (P, N). Not Cached."""
+        target_class = self.theory_context.target_class
+        P = np.count_nonzero(y == target_class)
+        N = len(y) - P
+        assert N == np.count_nonzero(y != target_class)
+        return (P, N)
 
     @property
     def X(self):
@@ -289,6 +302,30 @@ class RuleContext:
     def y(self):
         """The current training data labels/classification"""
         return self._y
+
+    def pn(self, rule: AugmentedRule, force_complete_data: bool = False
+           ) -> Tuple[int, int]:
+        """Return (p, n) for `rule`. Cached.
+
+        :param force_complete_data:
+          Iff True, always use complete dataset (e.g. if growing/pruning
+           datasets would be used otherwise).
+
+        returns
+        -------
+        p : int
+            The count of positive examples (== target_class) covered by `rule`,
+            also called *true positives*.
+        n : int
+            The count of negative examples (!= target_class) covered by `rule`,
+            also called *false positives*.
+        """
+        # TODO: move to AugmentedRule.pn(), just here to avoid needing GrowPruneSplitRuleClass
+        # rule._pn_cache maps force_complete_data:bool to tuple(p,n)
+        if force_complete_data not in rule._pn_cache:
+            rule._pn_cache[force_complete_data] = \
+                self.count_matches(rule, force_complete_data)
+        return rule._pn_cache[force_complete_data]
 
     def match_rule(self, rule: AugmentedRule, force_complete_data: bool = False
                    ) -> np.ndarray:
@@ -308,37 +345,21 @@ class RuleContext:
 
     def count_matches(self, rule: AugmentedRule,
                       force_complete_data: bool = False) -> Tuple[int, int]:
-        """Return (p, n).
-
-        :param force_complete_data:
-          Iff True, always use complete dataset (e.g. if growing/pruning
-           datasets would be used otherwise).
-
-        returns
-        -------
-        p : int
-            The count of positive examples (== target_class) covered by `rule`,
-            also called *true positives*.
-        n : int
-            The count of negative examples (!= target_class) covered by `rule`,
-            also called *false positives*.
-        """
-        if rule._pn_cache is None:
-            covered = self.match_rule(rule, force_complete_data)
-            y = self._y if force_complete_data else self.y
-            positives = y == self.theory_context.target_class
-            # NOTE: nonzero() is test for True
-            p = np.count_nonzero(covered & positives)
-            n = np.count_nonzero(covered & ~positives)
-            assert p + n == np.count_nonzero(covered)
-            rule._pn_cache = (p, n)
-        return rule._pn_cache
+        """:return: Counts (p, n) for `rule`. Uncached."""
+        covered = self.match_rule(rule, force_complete_data)
+        y = self._y if force_complete_data else self.y
+        positives = y == rule.conditions.head
+        # NOTE: nonzero() is test for True
+        p = np.count_nonzero(covered & positives)
+        n = np.count_nonzero(covered & ~positives)
+        assert p + n == np.count_nonzero(covered)
+        return (p, n)
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Rate rule to allow comparison & finding the best refinement."""
         growing_heuristic = \
             self.theory_context.implementation.growing_heuristic
-        p, n = self.count_matches(rule)
+        p, n = rule.pn(self)
         rule._sort_key = (growing_heuristic(rule, self),
                           # default tie-breaking: by positive coverage
                           p,

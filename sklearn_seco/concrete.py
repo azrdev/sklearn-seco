@@ -204,7 +204,7 @@ class PurityHeuristic(AbstractSecoImplementation):
     @classmethod
     def growing_heuristic(cls, rule: AugmentedRule, context: RuleContext
                           ) -> float:
-        p, n = context.count_matches(rule)
+        p, n = rule.pn(context)
         if p + n == 0:
             return 0
         return p / (p + n)  # purity
@@ -220,7 +220,7 @@ class LaplaceHeuristic(AbstractSecoImplementation):
     def growing_heuristic(cls, rule: AugmentedRule, context: RuleContext
                           ) -> float:
         """Laplace heuristic, as defined by (Clark and Boswell 1991)."""
-        p, n = context.count_matches(rule)
+        p, n = rule.pn(context)
         return (p + 1) / (p + n + 2)  # laplace
 
 
@@ -237,12 +237,12 @@ class InformationGainHeuristic(AbstractSecoImplementation):
     @classmethod
     def growing_heuristic(cls, rule: AugmentedRule, context: RuleContext
                           ) -> float:
-        p, n = context.count_matches(rule)
+        p, n = rule.pn(context)
         if rule.original:
-            P, N = context.count_matches(rule.original)
+            P, N = rule.original.pn(context)
         else:
-            P, N = context.PN()
-        # TODO: Frank,Hall,Witten fig 6.4 has P,N but JRip and (Fürnkranz 1999) have count_matches(rule.original)
+            P, N = context.PN(rule)
+        # TODO: Frank,Hall,Witten fig 6.4 has P,N but JRip and (Fürnkranz 1999) have rule.original.pn
         if p == 0:
             return 0
         # return p * (log2(p / (p + n)) - log2(P / (P + N)))  # info_gain
@@ -262,8 +262,8 @@ class SignificanceStoppingCriterion(AbstractSecoImplementation):
         there for rule evaluation, here instead used as stopping criterion
         following (Clark and Boswell 1991).
         """
-        p, n = context.count_matches(rule)
-        P, N = context.PN()
+        p, n = rule.pn(context)
+        P, N = context.PN(rule)
         if 0 in (p, P, N):
             return True
         # purity = p / (p + n)
@@ -305,7 +305,7 @@ class NoNegativesStop(AbstractSecoImplementation):
     @delayed_inner_stop
     def inner_stopping_criterion(cls, rule: AugmentedRule,
                                  context: RuleContext) -> bool:
-        p, n = context.count_matches(rule)
+        p, n = rule.pn(context)
         return n == 0
 
 
@@ -410,7 +410,6 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
     def __init__(self, theory_context: GrowPruneSplitTheoryContext, X, y):
         super().__init__(theory_context, X, y)
         assert isinstance(theory_context, GrowPruneSplitTheoryContext)
-        self._PN_cache_growing = {}
         self.growing = True
 
         # split examples
@@ -432,58 +431,29 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         # actually set this in `AbstractSecoImplementation.simplify_rule`
         self.growing = False
 
-    @staticmethod
-    def _calculate_pn_from_cache(cache: Dict[bool, Tuple[int, int]]):
-        """If the cache of (p,n) contains two of {growing,pruning,both} counts,
-        calculate the third (instead of having to match & count).
-
-        Applies to (p,n) for a rule and (P, N) for a training (sub)set.
-        """
-        missing = {True, False, None} - cache.keys()
-        if len(missing) > 1:
-            return False  # to much missing, cannot calculate
-        if not len(missing):
-            return True  # nothing to do
-        # compute p,n from cached results instead of counting
-        missing = missing.pop()  # get the single missing key
-        if missing is None:
-            # need total = growing + pruning
-            cache[missing] = (cache[True][0] + cache[False][0],
-                              cache[True][1] + cache[False][1])
-        else:
-            # need growing/pruning = total - pruning/growing
-            other = ({True, False} - {missing}).pop()
-            cache[missing] = (cache[None][0] - cache[other][0],
-                              cache[None][1] - cache[other][1])
-        return True
-
-    def count_matches(self, rule: AugmentedRule,
-                      force_complete_data: bool = False):
-        """Cache values of (p,n) depending on the value of self.growing.
-
-        To that end, `rule._pn_cache` is set to
-        `Dict[growing: bool, (p: int, n: int)]` instead of `(p: int, n: int)`.
-        """
+    def pn(self, rule: AugmentedRule, force_complete_data: bool = False):
+        """Return (p, n) for `rule`, depending on `self.growing`. Cached."""
         growing = None if force_complete_data else self.growing
-        pn_cache: Dict[bool, Tuple[int, int]] = rule._pn_cache or {}
-        self._calculate_pn_from_cache(pn_cache)
-        if growing not in pn_cache:
-            rule._pn_cache = None  # invalidate, so super (re)computes
-            pn_cache[growing] = super().count_matches(rule,
-                                                      force_complete_data)
-            rule._pn_cache = pn_cache
+        # TODO: maybe calculate from cache
+        if growing not in rule._pn_cache:
+            rule._pn_cache = self.count_matches(rule, force_complete_data)
         return rule._pn_cache[growing]
 
     def PN(self, force_complete_data: bool = False) -> Tuple[int, int]:
-        """Calculate & cache values of (P, N) depending on the value of
-        self.growing.
+        """:return: (P, N) depending on the value of self.growing. Cached.
+
+        See superclass method.
         """
-        growing = None if force_complete_data else self.growing
-        self._calculate_pn_from_cache(self._PN_cache_growing)
-        if growing not in self._PN_cache_growing:
-            self._PN_cache = None  # invalidate, so super (re)computes
-            self._PN_cache_growing[growing] = super().PN(force_complete_data)
-        return self._PN_cache_growing[growing]
+        if force_complete_data:
+            growing = None
+            y = self._y
+        else:
+            growing = self.growing
+            y = self.y
+        if growing not in self._PN_cache:
+            # TODO: maybe calculate from cache
+            self._PN_cache[growing] = self.count_PN(y)
+        return self._PN_cache[growing]
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Mimic `AbstractSecoImplementation.evaluate_rule` but use
@@ -493,7 +463,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         if self.growing:
             super().evaluate_rule(rule)
         else:
-            p, n = self.count_matches(rule)
+            p, n = rule.pn(self)
             # TODO: ensure rule._sort_key is not mixed. use incomparable types?
             rule._sort_key = (pruning_heuristic(rule, self),
                               p,
@@ -567,7 +537,7 @@ class CoverageRuleStop(AbstractSecoImplementation):
     @classmethod
     def rule_stopping_criterion(cls, theory: Theory, rule: AugmentedRule,
                                 context: RuleContext) -> bool:
-        p, n = context.count_matches(rule)
+        p, n = rule.pn(context)
         return p < n
 
 
@@ -586,7 +556,7 @@ class PositiveThresholdRuleStop(AbstractSecoImplementation):
         If threshold == 1, this corresponds to the "E is empty" condition in
         Table 3 of (Clark and Niblett 1989) used by CN2.
         """
-        p, n = context.count_matches(rule)
+        p, n = rule.pn(context)
         return p < cls.positive_coverage_stop_threshold
 
 
@@ -618,8 +588,8 @@ class RipperMdlRuleStopImplementation(AbstractSecoImplementation):
         assert isinstance(context, GrowPruneSplitRuleContext)
 
         context.growing = None
-        p, n = context.count_matches(rule)
-        P, N = context.PN()
+        p, n = rule.pn(context)
+        P, N = context.PN(rule)
         tctx.theory_pn.append((p, n))
 
         tctx.description_length_ += relative_description_length(
@@ -714,7 +684,7 @@ class RipperEstimator(SeCoEstimator):
             def inner_stopping_criterion(cls, rule: AugmentedRule,
                                          context: RuleContext) -> bool:
                 """Laplace-based criterion. Field `accuRate` in JRip.java."""
-                p, n = context.count_matches(rule)
+                p, n = rule.pn(context)
                 accuracy_rate = (p + 1) / (p + n + 1)
                 return accuracy_rate >= 1
 
@@ -730,7 +700,7 @@ class RipperEstimator(SeCoEstimator):
                 2p/(p+n) -1, so in this implementation we simply use p/(p+n)
                 (actually (p+1)/(p+n+2), thus if p+n is 0, it's 0.5)."
                 """
-                p, n = context.count_matches(rule)
+                p, n = rule.pn(context)
                 return (p + 1) / (p + n + 2)  # laplace
 
         class TheoryContextClass(GrowPruneSplitTheoryContext,
@@ -767,8 +737,8 @@ class IrepEstimator(SeCoEstimator):
                                   context: GrowPruneSplitRuleContext) -> float:
                 """:return: (#true positives + #true negatives) / #examples"""
                 context.growing = False
-                p, n = context.count_matches(rule)
-                P, N = context.PN()
+                p, n = rule.pn(context)
+                P, N = context.PN(rule)
                 tn = N - n
                 return (p + tn) / (P + N)
 
