@@ -95,11 +95,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                              " but got {}.".format(self.categorical_features))
 
         # run SeCo algorithm
-        self.theory_ = np.array(self.abstract_seco(X, y))
-        if len(self.theory_) and np.all(~ np.isfinite(self.theory_)):
+        self.theory_: Theory = self.abstract_seco(X, y)
+        if len(self.theory_) and all((~ np.isfinite(rule.body).any()
+                                      for rule in self.theory_)):
             # an empty theory is learned when the default rule is already very
             # good (i.e. the target class has very high a priori probability)
-            # therefore the case of only empty rules is superfluous
+            # therefore the case of only empty rules is an error
             raise ValueError("Invalid theory learned")
         return self
 
@@ -209,7 +210,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         match_rule = self.algorithm_config_.match_rule
         confidence = np.column_stack((
             self.confidence_estimates_ *
-            np.transpose([match_rule(X, rule, self.categorical_mask_)
+            np.transpose([match_rule(X, rule.body, self.categorical_mask_)
                          for rule in self.theory_])
                 .reshape((len(X), len(self.theory_))),
             np.zeros((len(X), 1))  # if theory empty
@@ -251,8 +252,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         negative_class = self.classes_[self.classes_ != target_class][0]
         default_rule = '(true) => ' + str(negative_class)
         return '\n'.join([
-            rule_to_string(rule, self.categorical_mask_,
-                           feature_names, target_class)
+            rule_to_string(rule, self.categorical_mask_, feature_names)
             for rule in self.theory_] + [default_rule])
 
 

@@ -12,7 +12,7 @@ from sklearn.utils import check_random_state
 from sklearn.utils.estimator_checks import check_estimator
 
 from sklearn_seco.abstract import _BinarySeCoEstimator
-from sklearn_seco.common import UPPER
+from sklearn_seco.common import Rule
 from sklearn_seco.concrete import grow_prune_split, SimpleSeCoEstimator
 from .conftest import count_conditions
 from .datasets import perfectly_correlated_multiclass
@@ -29,7 +29,7 @@ from .datasets import perfectly_correlated_multiclass
      pytest.param([10, 20, 20, 50]*250, 1, 0, 1, id="1k samples, ratio 1/3 test"),
      ])
 def test_grow_prune_split(y, ratio, grow, prune):
-    grow_act, prune_act = grow_prune_split(y, 20, ratio, check_random_state(1))
+    grow_act, prune_act = grow_prune_split(y, ratio, check_random_state(1))
     # cv, cc = np.unique(y[grow_act], return_counts=True)
     assert np.ndim(grow_act) == 1
     assert np.ndim(prune_act) == 1
@@ -60,7 +60,7 @@ def test_base_trivial(record_theory):
     assert est.target_class_ == 1
     assert len(est.theory_) == 1
     # first refinement wins (tie breaking)
-    assert_array_equal(est.theory_[0], [[100, NINF], [PINF, PINF]])
+    assert_array_equal(est.theory_[0].body, [[100, NINF], [PINF, PINF]])
 
     assert_array_equal(est.predict(X_train), y_train)
 
@@ -101,8 +101,8 @@ def test_base_easyrules(record_theory):
 
     assert est.target_class_ == 1
     assert len(est.theory_) == 2
-    assert_array_equal(est.theory_[0], np.array([[NINF, NINF], [PINF, -1.5]]))
-    assert_array_equal(est.theory_[1], np.array([[   0, NINF], [PINF,    0]]))
+    assert_array_equal(est.theory_[0].body, np.array([[NINF, NINF], [PINF, -1.5]]))
+    assert_array_equal(est.theory_[1].body, np.array([[   0, NINF], [PINF,    0]]))
 
     assert_array_equal(est.predict(X_train), y_train)
 
@@ -128,7 +128,8 @@ def test_trivial_decision_border(seco_estimator, trivial_decision_border,
     assert base.target_class_ == 0
     # check expected rule
     assert len(base.theory_) == 1
-    assert_array_almost_equal(base.theory_[0], [[NINF, NINF], [PINF, 1.0]],
+    assert_array_almost_equal(base.theory_[0].body,
+                              [[NINF, NINF], [PINF, 1.0]],
                               decimal=1)
 
 
@@ -144,7 +145,7 @@ def test_perfectly_correlated_categories_multiclass(seco_estimator,
     for base in bases:
         assert len(base.theory_) == 1
         assert count_conditions(base.theory_) == 1
-        assert count_conditions(base.theory_[:, UPPER]) == 0
+        assert count_conditions(base.theory_, limit=Rule.UPPER) == 0
     assert_array_equal(dataset.y_train,
                        seco_estimator.predict(dataset.x_train))
 
@@ -198,8 +199,8 @@ def assert_binary_problem(estimator) -> _BinarySeCoEstimator:
     base = estimator.base_estimator_
     assert isinstance(base, _BinarySeCoEstimator)
     assert len(base.theory_)
-    assert count_conditions(
-        base.theory_[:, UPPER, base.categorical_mask_]) == 0
+    assert count_conditions(base.theory_, Rule.UPPER,
+                            base.categorical_mask_) == 0
     return base
 
 
@@ -213,8 +214,8 @@ def assert_multiclass_problem(estimator) -> List[_BinarySeCoEstimator]:
     for base_ in bases:
         assert isinstance(base_, _BinarySeCoEstimator)
         assert len(base_.theory_)
-        assert count_conditions(
-            base_.theory_[:, UPPER, base_.categorical_mask_]) == 0
+        assert count_conditions(base_.theory_, Rule.UPPER,
+                                base_.categorical_mask_) == 0
     return bases
 
 

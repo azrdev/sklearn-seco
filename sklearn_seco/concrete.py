@@ -21,9 +21,9 @@ from sklearn.utils import check_random_state
 from sklearn_seco.abstract import \
     Theory, SeCoEstimator
 from sklearn_seco.common import \
-    Rule, RuleQueue, AugmentedRule, LOWER, UPPER, log2, \
+    Rule, RuleQueue, AugmentedRule, log2, TGT, \
     AbstractSecoImplementation, RuleContext, TheoryContext, \
-    SeCoAlgorithmConfiguration, TGT
+    SeCoAlgorithmConfiguration
 from sklearn_seco.ripper_mdl import \
     data_description_length, relative_description_length
 
@@ -116,7 +116,8 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
     @classmethod
     def init_rule(cls, context: RuleContext) -> AugmentedRule:
         tctx = context.theory_context
-        return tctx.algorithm_config.make_rule(n_features=tctx.n_features)
+        return tctx.algorithm_config.make_rule(n_features=tctx.n_features,
+                                               target_class=None)
 
     @classmethod
     def refine_rule(cls, rule: AugmentedRule, context: 'TopDownSearchContext'
@@ -136,9 +137,11 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
                                  ).ravel():
             # argwhere returns each index in separate list, ravel() unpacks
             for value in all_feature_values(index):
-                specialization = rule.copy()
-                specialization.set_condition(LOWER, index, value)
-                yield specialization
+                for target in context.theory_context.classes:
+                    specialization = rule.copy()
+                    specialization.raw.head = target
+                    specialization.set_condition(Rule.LOWER, index, value)
+                    yield specialization
 
         # numeric features
         for feature_index in np.nonzero(~categorical_mask)[0]:
@@ -153,18 +156,24 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
                 if no_old_lower or new_threshold > old_lower:
                     # don't test contradiction (e.g. f < 4 && f > 6)
                     if no_old_upper or new_threshold < old_upper:
-                        specialization = rule.copy()
-                        specialization.set_condition(LOWER, feature_index,
-                                                     new_threshold)
-                        yield specialization
+                        for target in context.theory_context.classes:
+                            specialization = rule.copy()
+                            specialization.raw.head = target
+                            specialization.set_condition(Rule.LOWER,
+                                                         feature_index,
+                                                         new_threshold)
+                            yield specialization
                 # override is collation of upper bounds
                 if no_old_upper or new_threshold < old_upper:
                     # don't test contradiction
                     if no_old_lower or new_threshold > old_lower:
-                        specialization = rule.copy()
-                        specialization.set_condition(UPPER, feature_index,
-                                                     new_threshold)
-                        yield specialization
+                        for target in context.theory_context.classes:
+                            specialization = rule.copy()
+                            specialization.raw.head = target
+                            specialization.set_condition(Rule.UPPER,
+                                                         feature_index,
+                                                         new_threshold)
+                            yield specialization
 
 
 class TopDownSearchContext(RuleContext):
@@ -317,8 +326,8 @@ class ConditionTracingAugmentedRule(AugmentedRule):
     -----
     condition_trace: List[ConditionTracingAugmentedRule.TraceEntry].
         Contains a tuple(UPPER/LOWER, feature_index, value, previous_value)
-        for each value that was set in conditions, in the same order they were
-        applied to the initially constructed rule to get to this rule.
+        for each value that was set in `_conditions`, in the same order they
+        were applied to the initially constructed rule to get to this rule.
     """
 
     class TraceEntry(NamedTuple):
@@ -327,21 +336,18 @@ class ConditionTracingAugmentedRule(AugmentedRule):
         value: float
         old_value: float
 
-    def __init__(self, *, conditions: Rule = None, n_features: int = None,
-                 original: 'ConditionTracingAugmentedRule' = None):
-        super().__init__(conditions=conditions,
-                         n_features=n_features,
-                         original=original)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.condition_trace = []
-        if original:
-            assert isinstance(original, ConditionTracingAugmentedRule)
+        if self.original:
+            assert isinstance(self.original, ConditionTracingAugmentedRule)
             # copy trace, but into a new list
-            self.condition_trace[:] = original.condition_trace
+            self.condition_trace[:] = self.original.condition_trace
 
     def set_condition(self, boundary: int, index: int, value):
         self.condition_trace.append(
             self.TraceEntry(boundary, index, value,
-                            self.conditions.body[boundary, index]))
+                            self.body[boundary, index]))
         super().set_condition(boundary, index, value)
 
 

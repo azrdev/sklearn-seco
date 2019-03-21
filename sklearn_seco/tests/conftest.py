@@ -1,12 +1,13 @@
 """pytest fixtures for the test cases in this directory."""
 from functools import partialmethod
-from typing import Union, List
+from typing import Optional
 
 import numpy as np
 import pytest
 from sklearn.utils import check_random_state
 
 from sklearn_seco.abstract import SeCoEstimator
+from sklearn_seco.common import Theory
 from sklearn_seco.concrete import \
     SimpleSeCoEstimator, CN2Estimator, IrepEstimator, RipperEstimator, \
     GrowPruneSplitTheoryContext
@@ -33,17 +34,22 @@ def pytest_runtest_makereport(item, call):
 
 @pytest.fixture
 def record_theory(record_property):
-    def _record(theory: Union[np.ndarray, List[np.ndarray]]):
+    def _record(theory: Theory):
         record_property("theory", theory)
     return _record
 
 
-def count_conditions(theory):
+def count_conditions(theory: Theory,
+                     limit: Optional[int] = None,
+                     feature_mask: np.ndarray = None):
     """
     :return: the number of conditions (i.e. non-infinite bounds) of all rules
       in `theory`.
+    :param limit: None or 'lower' or 'upper'
+      If not None, only check the named part of the conditions.
     """
-    return np.count_nonzero(np.isfinite(theory))
+    return np.count_nonzero([np.isfinite(rule.body[limit, feature_mask])
+                             for rule in theory])
 
 
 @pytest.fixture(params=[SimpleSeCoEstimator,

@@ -4,7 +4,7 @@ import numpy as np
 from numpy.core.umath import NINF, PINF
 from numpy.testing import assert_array_equal
 
-from sklearn_seco.common import match_rule, Rule, make_empty_rule
+from sklearn_seco.common import match_rule, Rule
 
 
 def test_match_rule():
@@ -17,7 +17,7 @@ def test_match_rule():
                                       categorical_mask),
                            expected_result)
 
-    am(make_empty_rule(len(categorical_mask), 100), [True])
+    am(Rule.make_empty(len(categorical_mask), 100), [True])
     am([[NINF, NINF, NINF, NINF], [PINF, PINF, PINF, PINF]], [True])
     # categorical: upper unused
     am([[NINF, NINF, NINF, NINF], [7,    7,    PINF, PINF]], [True])

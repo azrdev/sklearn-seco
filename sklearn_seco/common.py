@@ -6,36 +6,56 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 import math
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import Iterable, List, NamedTuple, Tuple, Type, TypeVar, Dict
+from typing import Iterable, List, Tuple, Type, TypeVar, Dict
 
 import numpy as np
 
 
 TGT = TypeVar("TGT")
-Rule = NamedTuple('Rule', [('head', TGT), ('body', np.ndarray)])
-Rule.__doc__ = """A rule mapping feature values to a target classification.
 
-Fields
------
-- head: a single value
-    The classification of a sample, if it matches the body.
 
-- body: array of dtype float, shape `(2, n_features)`
-    Represents a conjunction of conditions.
+class Rule:
+    """A rule mapping feature values to a target classification.
 
-    - first row "lower"
-        - categorical features: contains categories to be matched with `==`
-        - numerical features: contains lower bound (`rule[LOWER] <= X`)
-    - second row "upper"
-        - categorical features: invalid (TODO: unequal operator ?)
-        - numerical features: contains upper bound (`rule[UPPER] >= X`)
+    Fields
+    -----
+    - head: a single value
+        The classification of a sample, if it matches the body.
 
-    To specify "no test", use appropriate infinity values for numerical features
-    (np.NINF and np.PINF for lower and upper), and for categorical features any
-    non-finite value (np.NaN, np.NINF, np.PINF).
-"""
-LOWER = 0
-UPPER = 1
+    - body: array of dtype float, shape `(2, n_features)`
+        Represents a conjunction of conditions.
+
+        - first row "lower"
+            - categorical features: contains categories to be matched with `==`
+            - numerical features: contains lower bound (`rule[LOWER] <= X`)
+        - second row "upper"
+            - categorical features: invalid (TODO: unequal operator ?)
+            - numerical features: contains upper bound (`rule[UPPER] >= X`)
+
+        To specify "no test", use appropriate infinity values for numerical features
+        (np.NINF and np.PINF for lower and upper), and for categorical features any
+        non-finite value (np.NaN, np.NINF, np.PINF).
+    """
+    head: TGT
+    body: np.ndarray
+
+    def __init__(self, head: TGT, body):
+        self.head = head
+        self.body = body
+
+    @staticmethod
+    def make_empty(n_features: int, target_class: TGT) -> 'Rule':
+        """:return: A `Rule` with no conditions, it always matches."""
+        # NOTE: even if user inputs a dtype which doesn't have np.inf
+        # (e.g. `int`), `Rule.body` always has dtype float which has.
+        return Rule(target_class,
+                    np.vstack([np.repeat(np.NINF, n_features),  # lower
+                               np.repeat(np.PINF, n_features)  # upper
+                               ]))
+    LOWER = 0
+    UPPER = 1
+
+
 Theory = List[Rule]
 RuleQueue = List['AugmentedRule']
 
@@ -43,16 +63,6 @@ RuleQueue = List['AugmentedRule']
 def log2(x: float) -> float:
     """`log2(x) if x > 0 else 0`"""
     return math.log2(x) if x > 0 else 0
-
-
-def make_empty_rule(n_features: int, target_class: TGT) -> Rule:
-    """:return: A `Rule` with no conditions, it always matches."""
-    # NOTE: even if user inputs a dtype which doesn't have np.inf (e.g. `int`),
-    # `Rule.body` always has dtype float which has.
-    return Rule(target_class,
-                np.vstack([np.repeat(np.NINF, n_features),  # lower
-                           np.repeat(np.PINF, n_features)  # upper
-                           ]))
 
 
 def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
@@ -75,11 +85,11 @@ def rule_to_string(rule: Rule,
         '({ft} {op} {thresh:.3})'.format(
             ft=feature_names[ti[1]],
             op='==' if categorical_mask[ti[1]] else
-            '>=' if ti[0] == LOWER else '<=',
+            '>=' if ti[0] == Rule.LOWER else '<=',
             thresh=rule.body[ti])
         # ti has type: Tuple[int, int]
         # where ti[0] is LOWER or UPPER and ti[1] is the feature index
-        for ti in zip(*np.isfinite(rule).nonzero()))
+        for ti in zip(*np.isfinite(rule.body).nonzero()))
     return conds + ' => ' + str(rule.head)
 
 
@@ -107,8 +117,8 @@ def match_rule(X: np.ndarray,
                      && rule[UPPER] is NaN  or  rule[UPPER] >= X
     """
 
-    lower = rule.body[LOWER]
-    upper = rule.body[UPPER]
+    lower = rule.body[Rule.LOWER]
+    upper = rule.body[Rule.UPPER]
 
     return (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
             | (~categorical_mask
@@ -127,17 +137,17 @@ class AugmentedRule:
     forked from others (with `copy()`) a reference to the original rule.
 
     Lifetime of an AugmentedRule is from its creation (in `init_rule` or
-    `refine_rule`) until its `conditions` are added to the theory in
+    `refine_rule`) until its `_conditions` are added to the theory in
     `abstract_seco`.
 
     Attributes
     -----
-    conditions: Rule
+    raw: Rule
         The actual antecedent / conjunction of conditions, and the target
         class. Always use `set_condition` for write access to the rule body.
 
     lower, upper: np.ndarray
-        Return only the lower/upper part of `self.conditions`. Always use
+        Return only the lower/upper part of `self._conditions.body`. Always use
         `set_condition` for write access.
 
     instance_no: int
@@ -158,69 +168,63 @@ class AugmentedRule:
     """
     __rule_counter = 0  # TODO: shared across runs/instances
 
-    def __init__(self, *,
-                 conditions: Rule = None, n_features: int = None,
-                 original: 'AugmentedRule' = None,
-                 target_class: TGT = None):
-        """Construct an `AugmentedRule` with either `n_features` or the given
-        `conditions`.
+    @classmethod
+    def from_raw_rule(cls, raw_rule: Rule, original: 'AugmentedRule' = None,
+                      ) -> 'AugmentedRule':
+        return cls(raw_rule, original)
+
+    @classmethod
+    def make_empty(cls, n_features: int, target_class: TGT) -> 'AugmentedRule':
+        return cls(Rule.make_empty(n_features, target_class))
+
+    def __init__(self, conditions: Rule, original: 'AugmentedRule' = None):
+        """Construct an `AugmentedRule`, use `from_raw_rule` or `make_empty`
+        instead.
         """
         self.instance_no = AugmentedRule.__rule_counter
         AugmentedRule.__rule_counter += 1
         self.original = original
-
-        if conditions is None:
-            assert n_features is not None
-            self.conditions = make_empty_rule(n_features, target_class)
-        elif n_features is None:
-            assert conditions is not None
-            assert target_class is not None  # TODO: correct assertion?
-            self.conditions = conditions
-        else:
-            raise ValueError("Exactly one of (conditions, n_features) "
-                             "must be not None.")
+        self._conditions = conditions
         # init fields
         self._pn_cache: Dict[bool, Tuple[int, int]] = {}
         self._sort_key = None
 
     def copy(self: T) -> T:
-        """:return: A new `AugmentedRule` with a copy of `self.conditions`."""
-        cls = type(self)
-        return cls(conditions=Rule(self.conditions.head,
-                                   self.conditions.copy()),
-                   original=self)
+        """:return: A new `AugmentedRule` with a copy of `self._conditions`."""
+        return type(self).from_raw_rule(Rule(self.head, self.body.copy()),
+                                        original=self)
 
     @property
     def head(self) -> TGT:
         """The rules' target class, i.e. `rule.head`."""
-        return self.conditions.head
+        return self._conditions.head
 
     @property
     def body(self) -> np.ndarray:
         """The rules' conditions, i.e. `rule.body`."""
-        return self.conditions.body
+        return self._conditions.body
 
     @property
     def lower(self) -> np.ndarray:
         """The "lower" part of the rules' conditions, i.e. `rule.lower <= X`.
         """
-        return self.conditions.body[LOWER]
+        return self._conditions.body[Rule.LOWER]
 
     @property
     def upper(self) -> np.ndarray:
         """The "upper" part of the rules' conditions, i.e. `rule.upper >= X`.
         """
-        return self.conditions.body[UPPER]
+        return self._conditions.body[Rule.UPPER]
 
     @property
     def raw(self) -> Rule:
         """:return: The rule conditions without augmentation, as needed for the
         theory.
         """
-        return self.conditions
+        return self._conditions
 
     def set_condition(self, boundary: int, index: int, value):
-        self.conditions.body[boundary, index] = value
+        self._conditions.body[boundary, index] = value
 
     def __lt__(self, other):
         if not hasattr(other, '_sort_key'):
@@ -368,7 +372,7 @@ class RuleContext:
         tctx = self.theory_context
         X = self._X if force_complete_data else self.X
         return tctx.algorithm_config.match_rule(X,
-                                                rule.conditions,
+                                                rule.raw,
                                                 tctx.categorical_mask)
 
     def count_matches(self, rule: AugmentedRule,
@@ -376,7 +380,7 @@ class RuleContext:
         """:return: Counts (p, n) for `rule`. Uncached."""
         covered = self.match_rule(rule, force_complete_data)
         y = self._y if force_complete_data else self.y
-        positives = y == rule.conditions.head
+        positives = y == rule.head
         # NOTE: nonzero() is test for True
         p = np.count_nonzero(covered & positives)
         n = np.count_nonzero(covered & ~positives)
@@ -512,7 +516,7 @@ class SeCoAlgorithmConfiguration:
       defining all callback methods needed by `abstract_seco` and
       `find_best_rule`.
     - `RuleClass`: A subclass of `AugmentedRule` defining the attributes that
-      supplement the basic `Rule` object (which is the `conditions` field).
+      supplement the basic `Rule` object (which is the `_conditions` field).
     - `TheoryContextClass`: A subclass of `TheoryContext` managing state of an
       `abstract_seco` run.
     - `RuleContextClass`: A subclass of `RuleContext` managing state of a
@@ -531,7 +535,7 @@ class SeCoAlgorithmConfiguration:
 
     def make_rule(self, *args, **kwargs) -> 'RuleClass':
         """:return: An instance of `RuleClass`."""
-        return self.RuleClass(*args, **kwargs)
+        return self.RuleClass.make_empty(*args, **kwargs)
 
     def make_theory_context(self, *args, **kwargs) -> 'TheoryContextClass':
         """:return: An instance of `TheoryContextClass`."""
