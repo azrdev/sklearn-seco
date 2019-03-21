@@ -12,7 +12,7 @@ import functools
 import math
 from abc import abstractmethod, ABC
 from functools import lru_cache
-from typing import Iterable, NamedTuple, Dict, Tuple
+from typing import Iterable, NamedTuple, Tuple
 
 import numpy as np
 from scipy.special import xlogy
@@ -23,7 +23,7 @@ from sklearn_seco.abstract import \
 from sklearn_seco.common import \
     Rule, RuleQueue, AugmentedRule, LOWER, UPPER, log2, \
     AbstractSecoImplementation, RuleContext, TheoryContext, \
-    SeCoAlgorithmConfiguration
+    SeCoAlgorithmConfiguration, TGT
 from sklearn_seco.ripper_mdl import \
     data_description_length, relative_description_length
 
@@ -38,13 +38,12 @@ def pairwise(iterable):
 
 
 def grow_prune_split(y,
-                     target_class,
                      split_ratio: float,
                      rng):
     """
     Split `y` into grow and pruning set according to `split_ratio` for RIPPER.
 
-    Make sure that `target_class` is included in the growing set, if it has
+    Make sure that every class is included in the growing set, even if it has
     little instances.
 
     Partially adapted from `sklearn.model_selection.StratifiedShuffleSplit`.
@@ -53,9 +52,6 @@ def grow_prune_split(y,
       Size of pruning set.
     :param y: array-like of single dimension.
       The y/class values of all instances.
-    :param target_class: dtype of `y`.
-      The class which should always if possible be present in the growing set.
-      To disable this behaviour, just pass a value which is not in `y`.
     :param rng: np.random.RandomState
       RNG to perform splitting.
     :return: tuple(np.ndarray, np.ndarray), both arrays of single dimension.
@@ -66,25 +62,11 @@ def grow_prune_split(y,
     classes, y_indices, class_counts = \
         np.unique(y, return_inverse=True, return_counts=True)
 
-    # handle target class first, to always round down its pruning count
-    class_index = target_index = np.argwhere(classes == target_class)[0]
-    n_prune = math.floor(class_counts[class_index] * split_ratio)
-    y_indices_shuffled = \
-        rng.permutation(np.nonzero(y_indices == class_index)[0]).tolist()
-    prune = y_indices_shuffled[:n_prune]
-    grow = y_indices_shuffled[n_prune:]
-
+    grow = []
+    prune = []
     for class_index, class_count in enumerate(class_counts):
-        if class_index == target_index:
-            continue  # handled separately beforehand
-        n_prune = class_count * split_ratio
-        # decide how to round (up/down) by looking at the previous bias
-        ratio_pre = len(prune) / (len(prune) + len(grow))
-        if ratio_pre > split_ratio:
-            n_prune = math.floor(n_prune)
-        else:
-            n_prune = math.ceil(n_prune)
-
+        # TODO: split undefined if too few examples => pruning set will be empty
+        n_prune = math.floor(class_count * split_ratio)
         y_indices_shuffled = \
             rng.permutation(np.nonzero(y_indices == class_index)[0]).tolist()
         prune.extend(y_indices_shuffled[:n_prune])
@@ -359,7 +341,7 @@ class ConditionTracingAugmentedRule(AugmentedRule):
     def set_condition(self, boundary: int, index: int, value):
         self.condition_trace.append(
             self.TraceEntry(boundary, index, value,
-                            self.conditions[boundary, index]))
+                            self.conditions.body[boundary, index]))
         super().set_condition(boundary, index, value)
 
 
@@ -415,7 +397,6 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         # split examples
         grow_idx, prune_idx = grow_prune_split(
             y,
-            theory_context.target_class,
             self.pruning_split_ratio,
             theory_context.grow_prune_random,)
         self._growing_X = X[grow_idx]
@@ -439,7 +420,8 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
             rule._pn_cache = self.count_matches(rule, force_complete_data)
         return rule._pn_cache[growing]
 
-    def PN(self, force_complete_data: bool = False) -> Tuple[int, int]:
+    def PN(self, target_class: TGT, force_complete_data: bool = False
+           ) -> Tuple[int, int]:
         """:return: (P, N) depending on the value of self.growing. Cached.
 
         See superclass method.
@@ -453,7 +435,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         if growing not in self._PN_cache:
             # TODO: maybe calculate from cache
             self._PN_cache[growing] = self.count_PN(y)
-        return self._PN_cache[growing]
+        return self._PN_cache[growing][target_class]
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Mimic `AbstractSecoImplementation.evaluate_rule` but use
@@ -609,10 +591,9 @@ class RipperMdlRuleStopImplementation(AbstractSecoImplementation):
 
 
 class RipperMdlRuleStopTheoryContext(TheoryContext):
-    def __init__(self, algorithm_config, categorical_mask, n_features,
-                 target_class, X, y, **kwargs):
-        super().__init__(algorithm_config, categorical_mask, n_features,
-                         target_class, X, y, **kwargs)
+    def __init__(self, algorithm_config, categorical_mask, n_features, X, y, **kwargs):
+        super().__init__(algorithm_config, categorical_mask, n_features, X, y,
+                         **kwargs)
 
         positives = np.count_nonzero(y == self.target_class)
         # set expected fp/(err = fp+fn) rate := proportion of the class

@@ -6,14 +6,22 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 import math
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import NewType, Iterable, List, Type, TypeVar, Tuple
+from typing import Iterable, List, NamedTuple, Tuple, Type, TypeVar, Dict
+
 import numpy as np
 
 
-Rule = NewType('Rule', np.ndarray)
-Rule.__doc__ = """Represents a conjunction of conditions.
+TGT = TypeVar("TGT")
+Rule = NamedTuple('Rule', [('head', TGT), ('body', np.ndarray)])
+Rule.__doc__ = """A rule mapping feature values to a target classification.
 
-:type: array of dtype float, shape `(2, n_features)`
+Fields
+-----
+- head: a single value
+    The classification of a sample, if it matches the body.
+
+- body: array of dtype float, shape `(2, n_features)`
+    Represents a conjunction of conditions.
 
     - first row "lower"
         - categorical features: contains categories to be matched with `==`
@@ -37,11 +45,12 @@ def log2(x: float) -> float:
     return math.log2(x) if x > 0 else 0
 
 
-def make_empty_rule(n_features: int) -> Rule:
+def make_empty_rule(n_features: int, target_class: TGT) -> Rule:
     """:return: A `Rule` with no conditions, it always matches."""
-    # NOTE: even if user inputs a dtype which doesn't know np.inf (e.g. `int`),
-    # `Rule` always has dtype float which does
-    return Rule(np.vstack([np.repeat(np.NINF, n_features),  # lower
+    # NOTE: even if user inputs a dtype which doesn't have np.inf (e.g. `int`),
+    # `Rule.body` always has dtype float which has.
+    return Rule(target_class,
+                np.vstack([np.repeat(np.NINF, n_features),  # lower
                            np.repeat(np.PINF, n_features)  # upper
                            ]))
 
@@ -53,12 +62,11 @@ def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
         rule = rule.original
 
 
-def rule_to_string(conditions: Rule,
+def rule_to_string(rule: Rule,
                    categorical_mask: np.ndarray,
-                   feature_names: List[str] = None,
-                   target_class=None) -> str:
-    """:return: a string representation of `conditions`."""
-    n_features = conditions.shape[1]
+                   feature_names: List[str] = None) -> str:
+    """:return: a string representation of `rule`."""
+    n_features = rule.body.shape[1]
     if feature_names:
         assert n_features == len(feature_names)
     else:
@@ -68,14 +76,11 @@ def rule_to_string(conditions: Rule,
             ft=feature_names[ti[1]],
             op='==' if categorical_mask[ti[1]] else
             '>=' if ti[0] == LOWER else '<=',
-            thresh=conditions[ti])
+            thresh=rule.body[ti])
         # ti has type: Tuple[int, int]
         # where ti[0] is LOWER or UPPER and ti[1] is the feature index
-        for ti in zip(*np.isfinite(conditions).nonzero()))
-    if target_class is None:
-        return conds
-    else:
-        return conds + ' => ' + str(target_class)
+        for ti in zip(*np.isfinite(rule).nonzero()))
+    return conds + ' => ' + str(rule.head)
 
 
 def match_rule(X: np.ndarray,
@@ -102,8 +107,8 @@ def match_rule(X: np.ndarray,
                      && rule[UPPER] is NaN  or  rule[UPPER] >= X
     """
 
-    lower = rule[LOWER]
-    upper = rule[UPPER]
+    lower = rule.body[LOWER]
+    upper = rule.body[UPPER]
 
     return (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
             | (~categorical_mask
@@ -128,8 +133,8 @@ class AugmentedRule:
     Attributes
     -----
     conditions: Rule
-        The actual antecedent / conjunction of conditions. Always use
-        `set_condition` for write access.
+        The actual antecedent / conjunction of conditions, and the target
+        class. Always use `set_condition` for write access to the rule body.
 
     lower, upper: np.ndarray
         Return only the lower/upper part of `self.conditions`. Always use
@@ -155,12 +160,10 @@ class AugmentedRule:
 
     def __init__(self, *,
                  conditions: Rule = None, n_features: int = None,
-                 original: 'AugmentedRule' = None):
+                 original: 'AugmentedRule' = None,
+                 target_class: TGT = None):
         """Construct an `AugmentedRule` with either `n_features` or the given
         `conditions`.
-
-        :param original: A reference to an "original" rule, saved as attribute.
-          See `copy()`.
         """
         self.instance_no = AugmentedRule.__rule_counter
         AugmentedRule.__rule_counter += 1
@@ -168,9 +171,10 @@ class AugmentedRule:
 
         if conditions is None:
             assert n_features is not None
-            self.conditions = make_empty_rule(n_features)
+            self.conditions = make_empty_rule(n_features, target_class)
         elif n_features is None:
             assert conditions is not None
+            assert target_class is not None  # TODO: correct assertion?
             self.conditions = conditions
         else:
             raise ValueError("Exactly one of (conditions, n_features) "
@@ -182,22 +186,41 @@ class AugmentedRule:
     def copy(self: T) -> T:
         """:return: A new `AugmentedRule` with a copy of `self.conditions`."""
         cls = type(self)
-        return cls(conditions=self.conditions.copy(), original=self)
+        return cls(conditions=Rule(self.conditions.head,
+                                   self.conditions.copy()),
+                   original=self)
+
+    @property
+    def head(self) -> TGT:
+        """The rules' target class, i.e. `rule.head`."""
+        return self.conditions.head
+
+    @property
+    def body(self) -> np.ndarray:
+        """The rules' conditions, i.e. `rule.body`."""
+        return self.conditions.body
 
     @property
     def lower(self) -> np.ndarray:
         """The "lower" part of the rules' conditions, i.e. `rule.lower <= X`.
         """
-        return self.conditions[LOWER]
+        return self.conditions.body[LOWER]
 
     @property
     def upper(self) -> np.ndarray:
         """The "upper" part of the rules' conditions, i.e. `rule.upper >= X`.
         """
-        return self.conditions[UPPER]
+        return self.conditions.body[UPPER]
+
+    @property
+    def raw(self) -> Rule:
+        """:return: The rule conditions without augmentation, as needed for the
+        theory.
+        """
+        return self.conditions
 
     def set_condition(self, boundary: int, index: int, value):
-        self.conditions[boundary, index] = value
+        self.conditions.body[boundary, index] = value
 
     def __lt__(self, other):
         if not hasattr(other, '_sort_key'):
@@ -227,18 +250,15 @@ class TheoryContext:
       indicating if a feature is categorical (`True`) or numerical (`False`).
     * `n_features`: The number of features in the dataset, equivalent to
       `X.shape[1]`.
-    * `target_class`: The value of the positive class in `y`.
     * `algorithm_config`: A reference to the used `SeCoAlgorithmConfiguration`.
     * `complete_X`: All training examples `X` *at start of training*.
     * `complete_y`: All training classifications `y` *at start of training*.
     """
 
     def __init__(self, algorithm_config: 'SeCoAlgorithmConfiguration',
-                 categorical_mask, n_features, target_class,
-                 X, y):
+                 categorical_mask, n_features, X, y):
         self.categorical_mask = categorical_mask
         self.n_features = n_features
-        self.target_class = target_class
         # keep reference
         self.algorithm_config = algorithm_config
         self.complete_X = X
@@ -263,7 +283,8 @@ class RuleContext:
     * `X` and `y`: The current training data and -labels.
       (See also `concrete.GrowPruneSplit` which overrides these properties).
     * `PN`: Tuple[P: int, N: int]
-        The count of positive and negative examples in X. Cached.
+        The count of positive and negative examples in X, for given
+        target_class. Cached.
     """
 
     def __init__(self, theory_context: TheoryContext, X, y):
@@ -273,9 +294,11 @@ class RuleContext:
         # _PN_cache maps force_complete_data:bool to the P,N counts per target
         self._PN_cache: Dict[bool, Dict[TGT, Tuple[int, int]]] = {}
 
-    def PN(self, force_complete_data: bool = False) -> Tuple[int, int]:
+    def PN(self, target_class: TGT, force_complete_data: bool = False
+           ) -> Tuple[int, int]:
         """
-        :return: (P, N), the count of (positive, negative) examples. Cached.
+        :return: (P, N), the count of (positive, negative) examples for
+            `target_class`. Cached.
         :param force_complete_data:
             Iff True, always use complete dataset (e.g. if growing/pruning
             datasets would be used otherwise).
@@ -283,15 +306,20 @@ class RuleContext:
         if force_complete_data not in self._PN_cache:
             y = self._y if force_complete_data else self.y
             self._PN_cache[force_complete_data] = self.count_PN(y)
-        return self._PN_cache[force_complete_data]
+        return self._PN_cache[force_complete_data][target_class]
 
-    def count_PN(self, y) -> Tuple[int, int]:
-        """:return: (P, N). Not Cached."""
-        target_class = self.theory_context.target_class
-        P = np.count_nonzero(y == target_class)
-        N = len(y) - P
-        assert N == np.count_nonzero(y != target_class)
-        return (P, N)
+    @staticmethod
+    def count_PN(y) -> Dict[TGT, Tuple[int, int]]:
+        """:return: A mapping `target_class => (P, N)` for all classes in y.
+            Not Cached.
+        """
+        counts = {}
+        for target_class, P in zip(*np.unique(y, return_counts=True)):
+            N = len(y) - P
+            assert P == np.count_nonzero(y == target_class)
+            assert N == np.count_nonzero(y != target_class)
+            counts[target_class] = (P, N)
+        return counts
 
     @property
     def X(self):
@@ -441,7 +469,7 @@ class AbstractSecoImplementation(ABC):
     def rule_stopping_criterion(cls, theory: Theory, rule: AugmentedRule,
                                 context: RuleContext) -> bool:
         """return `True` to stop finding more rules, given `rule` was the
-        best Rule found.
+        best one found.
         """
         raise NotImplementedError
 

@@ -60,7 +60,7 @@ def rule_description_length(rule: AugmentedRule, max_n_conditions: int
 
     NOTE: Named `RuleStats.theoryDL` in weka.JRip.
     """
-    n_conditions = np.count_nonzero(np.isfinite(rule.conditions))
+    n_conditions = np.count_nonzero(np.isfinite(rule.conditions.body))
 
     kbits = log2(n_conditions)  # no. of bits to send `n_conditions`
     if n_conditions > 1:

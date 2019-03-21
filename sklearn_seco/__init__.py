@@ -9,7 +9,7 @@ Limitations / Assumptions (partly TODO)
 - binary estimator, applies binarization to multi-class problems
   TODO: multi-class rule learning (learn any rule, find class with max covered examples)
 - implicit default rule
-- TODO: only ordered rule list (no unordered rule set / tree)
+- TODO: only ordered rule list (no unordered rule set / tree)  Only useful for direct multiclass?
 - limited operator set:
     - for categorical only ==
     - for numerical only <= and >=
