@@ -410,6 +410,14 @@ class AbstractSecoImplementation(ABC):
     """
 
     @classmethod
+    def abstract_seco_continue(cls, y: np.ndarray,
+                               theory_context: TheoryContext) -> bool:
+        # NOTE: for binary tasks, we stop on `any(y != target_class)` too, as
+        #   opposed to the papers `abstract_seco` which has only
+        #   `any(y == target_class)`. Hopefully this doesn't harm.
+        return len(np.unique(y)) > 1
+
+    @classmethod
     @abstractmethod
     def init_rule(cls, context: RuleContext) -> AugmentedRule:
         """Create a new rule to be refined before added to the theory."""
@@ -522,6 +530,7 @@ class SeCoAlgorithmConfiguration:
     - `RuleContextClass`: A subclass of `RuleContext` managing state of a
       `find_best_rule` run.
     """
+
     match_rule = staticmethod(match_rule)
     # TODO: maybe use a Sequence of classes here and construct subclass with type(name, bases, []) in __init__
     Implementation: Type[AbstractSecoImplementation] = \

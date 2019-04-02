@@ -142,6 +142,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # resolve methods once for performance
         implementation = self.algorithm_config_.implementation
+        abstract_seco_continue = implementation.abstract_seco_continue
         make_rule_context = self.algorithm_config_.make_rule_context
         find_best_rule = self.find_best_rule
         simplify_rule = implementation.simplify_rule
@@ -151,7 +152,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # main loop
         theory: Theory = list()
-        while np.any(y == target_class):
+        while abstract_seco_continue(y, theory_context):
             rule_context = make_rule_context(theory_context, X, y)
             rule = find_best_rule(rule_context)
             rule = simplify_rule(rule, rule_context)
@@ -159,7 +160,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                 break
             uncovered = np.invert(
                 rule_context.match_rule(rule, force_complete_data=True))
-            X = X[uncovered]
+            X = X[uncovered]  # TODO: optionally/if theory unordered: remove only positive
             y = y[uncovered]
             theory.append(rule.raw)  # throw away augmentation
         theory = post_process(theory, theory_context)
