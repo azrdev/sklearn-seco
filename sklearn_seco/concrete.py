@@ -129,7 +129,17 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
         assert isinstance(context, TopDownSearchContext)
         all_feature_values = context.all_feature_values
         categorical_mask = context.theory_context.categorical_mask
-        # TODO: maybe mark constant features for exclusion in future specializations
+        # TODO: maybe mark constant features (or with p < threshold) for exclusion in future specializations
+
+        def specialize(boundary: int, index: int, value):
+            for target_class in context.theory_context.classes:
+                P, N = context.PN(target_class)
+                if not P:
+                    continue
+                specialization = rule.copy()
+                specialization.head = target_class
+                specialization.set_condition(boundary, index, value)
+                yield specialization
 
         # categorical features
         for index in np.argwhere(categorical_mask
@@ -137,11 +147,7 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
                                  ).ravel():
             # argwhere returns each index in separate list, ravel() unpacks
             for value in all_feature_values(index):
-                for target in context.theory_context.classes:
-                    specialization = rule.copy()
-                    specialization.raw.head = target
-                    specialization.set_condition(Rule.LOWER, index, value)
-                    yield specialization
+                yield from specialize(Rule.LOWER, index, value)
 
         # numeric features
         for feature_index in np.nonzero(~categorical_mask)[0]:
@@ -156,24 +162,14 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
                 if no_old_lower or new_threshold > old_lower:
                     # don't test contradiction (e.g. f < 4 && f > 6)
                     if no_old_upper or new_threshold < old_upper:
-                        for target in context.theory_context.classes:
-                            specialization = rule.copy()
-                            specialization.raw.head = target
-                            specialization.set_condition(Rule.LOWER,
-                                                         feature_index,
-                                                         new_threshold)
-                            yield specialization
+                        yield from specialize(Rule.LOWER, feature_index,
+                                              new_threshold)
                 # override is collation of upper bounds
                 if no_old_upper or new_threshold < old_upper:
                     # don't test contradiction
                     if no_old_lower or new_threshold > old_lower:
-                        for target in context.theory_context.classes:
-                            specialization = rule.copy()
-                            specialization.raw.head = target
-                            specialization.set_condition(Rule.UPPER,
-                                                         feature_index,
-                                                         new_threshold)
-                            yield specialization
+                        yield from specialize(Rule.UPPER, feature_index,
+                                              new_threshold)
 
 
 class TopDownSearchContext(RuleContext):
@@ -183,8 +179,16 @@ class TopDownSearchContext(RuleContext):
         :return: All distinct values of feature (in examples) with given index,
              sorted.
         """
-        # unique also sorts
-        return np.unique(self.X[:, feature_index])
+        # use _X instead of self.X to get all possibilities, even if e.g.
+        # grow/prune split is used
+        return np.unique(self._X[:, feature_index])  # unique also sorts
+
+    @lru_cache(maxsize=None)
+    def all_classes(self):
+        """:return: All classes present in the current training data."""
+        # use _y instead of self.y to get all possibilities, even if e.g.
+        # grow/prune split is used
+        return np.unique(self._y)
 
 
 class PurityHeuristic(AbstractSecoImplementation):
