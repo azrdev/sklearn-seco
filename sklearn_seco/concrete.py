@@ -45,6 +45,7 @@ def grow_prune_split(y,
 
     Make sure that every class is included in the growing set, even if it has
     little instances.
+    # TODO: split undefined if too few examples => pruning set will be empty
 
     Partially adapted from `sklearn.model_selection.StratifiedShuffleSplit`.
 
@@ -65,7 +66,6 @@ def grow_prune_split(y,
     grow = []
     prune = []
     for class_index, class_count in enumerate(class_counts):
-        # TODO: split undefined if too few examples => pruning set will be empty
         n_prune = math.floor(class_count * split_ratio)
         y_indices_shuffled = \
             rng.permutation(np.nonzero(y_indices == class_index)[0]).tolist()
@@ -116,8 +116,9 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
     @classmethod
     def init_rule(cls, context: RuleContext) -> AugmentedRule:
         tctx = context.theory_context
-        return tctx.algorithm_config.make_rule(n_features=tctx.n_features,
-                                               target_class=None)
+        return tctx.algorithm_config.make_rule(
+            n_features=tctx.n_features,
+            target_class=tctx.target_class)
 
     @classmethod
     def refine_rule(cls, rule: AugmentedRule, context: 'TopDownSearchContext'
@@ -132,7 +133,14 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
         # TODO: maybe mark constant features (or with p < threshold) for exclusion in future specializations
 
         def specialize(boundary: int, index: int, value):
-            for target_class in context.theory_context.classes:
+            if len(context.theory_context.classes) == 2:
+                # in binary case, only emit rules for target_class,
+                # i.e. do concept learning  # FIXME: configure
+                classes = [context.theory_context.target_class]
+            else:
+                classes = context.all_classes()
+
+            for target_class in classes:
                 P, N = context.PN(target_class)
                 if not P:
                     continue
@@ -152,12 +160,13 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
         # numeric features
         for feature_index in np.nonzero(~categorical_mask)[0]:
             old_lower = rule.lower[feature_index]
-            no_old_lower = ~np.isfinite(old_lower)
+            no_old_lower = ~np.isfinite(old_lower)  # TODO: no_old_ tests superfluous
             old_upper = rule.upper[feature_index]
             no_old_upper = ~np.isfinite(old_upper)
             for value1, value2 in pairwise(all_feature_values(feature_index)):
                 new_threshold = (value1 + value2) / 2  # TODO: JRip uses left value1
                 # TODO: lower/upper coverage here are complementary: can use single match_rule invocation, like JRip?
+                # TODO: maybe only split if classes of value1,value2 differ
                 # override is collation of lower bounds
                 if no_old_lower or new_threshold > old_lower:
                     # don't test contradiction (e.g. f < 4 && f > 6)
@@ -236,7 +245,7 @@ class InformationGainHeuristic(AbstractSecoImplementation):
         if rule.original:
             P, N = rule.original.pn(context)
         else:
-            P, N = context.PN(rule)
+            P, N = context.PN(rule.head)
         # TODO: Frank,Hall,Witten fig 6.4 has P,N but JRip and (Fürnkranz 1999) have rule.original.pn
         if p == 0:
             return 0
@@ -258,7 +267,7 @@ class SignificanceStoppingCriterion(AbstractSecoImplementation):
         following (Clark and Boswell 1991).
         """
         p, n = rule.pn(context)
-        P, N = context.PN(rule)
+        P, N = context.PN(rule.head)
         if 0 in (p, P, N):
             return True
         # purity = p / (p + n)
@@ -427,7 +436,8 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         growing = None if force_complete_data else self.growing
         # TODO: maybe calculate from cache
         if growing not in rule._pn_cache:
-            rule._pn_cache = self.count_matches(rule, force_complete_data)
+            rule._pn_cache[growing] = self.count_matches(rule,
+                                                         force_complete_data)
         return rule._pn_cache[growing]
 
     def PN(self, target_class: TGT, force_complete_data: bool = False
@@ -559,6 +569,9 @@ class RipperMdlRuleStopImplementation(AbstractSecoImplementation):
     the best so far + some margin (`description_length_surplus`), or `p=0` or
     (if `check_error_rate is True`) `n >= p`.
 
+    The description length is only defined for binary classification tasks, so
+    use of this criterion prevents direct multiclass learning.
+
     NOTE: Reconstructed mainly from JRip.java source, no guarantee on all
       details being correct and identical to other implementation(s).
 
@@ -581,7 +594,7 @@ class RipperMdlRuleStopImplementation(AbstractSecoImplementation):
 
         context.growing = None
         p, n = rule.pn(context)
-        P, N = context.PN(rule)
+        P, N = context.PN(rule.head)
         tctx.theory_pn.append((p, n))
 
         tctx.description_length_ += relative_description_length(
@@ -601,22 +614,23 @@ class RipperMdlRuleStopImplementation(AbstractSecoImplementation):
 
 
 class RipperMdlRuleStopTheoryContext(TheoryContext):
-    def __init__(self, algorithm_config, categorical_mask, n_features, X, y, **kwargs):
-        super().__init__(algorithm_config, categorical_mask, n_features, X, y,
-                         **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if len(self.classes) != 2:
+            raise ValueError()
 
-        positives = np.count_nonzero(y == self.target_class)
+        positives = np.count_nonzero(self.complete_y == self.target_class)
         # set expected fp/(err = fp+fn) rate := proportion of the class
-        self.expected_fp_over_err = positives / len(y)
+        self.expected_fp_over_err = positives / len(self.complete_y)
         # set default DL (only data, empty theory)
         self.description_length_ = self.best_description_length_ = \
             data_description_length(
                 expected_fp_over_err=self.expected_fp_over_err,
-                covered=0, uncovered=len(y), fp=0, fn=positives)
+                covered=0, uncovered=len(self.complete_y), fp=0, fn=positives)
         self.max_n_conditions = sum(
-            len(np.unique(X[:, feature]))
-            * (1 if categorical_mask[feature] else 2)
-            for feature in range(n_features)
+            len(np.unique(self.complete_X[:, feature]))
+            * (1 if self.categorical_mask[feature] else 2)
+            for feature in range(self.n_features)
         )
         self.theory_pn = []
 
@@ -729,7 +743,9 @@ class IrepEstimator(SeCoEstimator):
                 """:return: (#true positives + #true negatives) / #examples"""
                 context.growing = False
                 p, n = rule.pn(context)
-                P, N = context.PN(rule)
+                P, N = context.PN(rule.head)
+                if P + N == 0:
+                    return 0
                 tn = N - n
                 return (p + tn) / (P + N)
 

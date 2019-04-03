@@ -1,6 +1,6 @@
 """pytest fixtures for the test cases in this directory."""
 from functools import partialmethod
-from typing import Optional
+from typing import Optional, Type
 
 import numpy as np
 import pytest
@@ -56,13 +56,13 @@ def count_conditions(theory: Theory,
                         CN2Estimator,
                         IrepEstimator,
                         RipperEstimator])
-def seco_estimator_class(request):
+def seco_estimator_class(request) -> Type[SeCoEstimator]:
     """Fixture running for each of the pre-defined estimator classes from
     `sklearn_seco.concrete`.
 
     :return: An estimator class.
     """
-    est_cls: SeCoEstimator = request.param
+    est_cls: Type[SeCoEstimator] = request.param
 
     if issubclass(est_cls.algorithm_config.TheoryContextClass,
                   GrowPruneSplitTheoryContext):

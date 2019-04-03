@@ -57,7 +57,9 @@ def test_base_trivial(record_theory):
     assert isinstance(est, _BinarySeCoEstimator)
     record_theory(est.theory_)
 
-    assert est.target_class_ == 1
+    assert_array_equal(est.classes_,  y_train)
+    assert_array_equal(est.classes_by_size_,  [0, 1])
+    assert est.target_class_idx_ == 0
     assert len(est.theory_) == 1
     # first refinement wins (tie breaking)
     assert_array_equal(est.theory_[0].body, [[100, NINF], [PINF, PINF]])
@@ -99,7 +101,9 @@ def test_base_easyrules(record_theory):
     assert isinstance(est, _BinarySeCoEstimator)
     record_theory(est.theory_)
 
-    assert est.target_class_ == 1
+    assert_array_equal(est.classes_, [1, 2])
+    assert_array_equal(est.classes_by_size_, [0, 1])
+    assert est.target_class_idx_ == 0
     assert len(est.theory_) == 2
     assert_array_equal(est.theory_[0].body, np.array([[NINF, NINF], [PINF, -1.5]]))
     assert_array_equal(est.theory_[1].body, np.array([[   0, NINF], [PINF,    0]]))
@@ -169,7 +173,8 @@ def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
         categorical_features=blackbox_test.categorical_features,
         explicit_target_class=blackbox_test.get_opt("target_class"))
 
-    is_binary = len(np.unique(blackbox_test.y_train)) == 2
+    is_binary = (len(np.unique(blackbox_test.y_train)) == 2
+                 or seco_estimator.multi_class == 'direct')
     if is_binary:
         base = assert_binary_problem(seco_estimator)
         record_theory(base.theory_)

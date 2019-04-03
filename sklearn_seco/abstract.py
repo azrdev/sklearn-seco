@@ -1,7 +1,7 @@
 """
 Implementation of SeCo / Covering algorithm: Abstract base algorithm.
 """
-
+import warnings
 from typing import Union, Type, List
 
 import numpy as np
@@ -54,11 +54,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     def __init__(self,
                  algorithm_config_class: Type['SeCoAlgorithmConfiguration'],
                  categorical_features: Union[None, str, np.ndarray] = None,
-                 explicit_target_class=None):
+                 explicit_target_class=None, direct_multiclass: bool = True):
         super().__init__()
         self.algorithm_config_class = algorithm_config_class
         self.categorical_features = categorical_features
         self.explicit_target_class = explicit_target_class
+        self.direct_multiclass = direct_multiclass
 
     def fit(self, X, y):
         """Fit to data, i.e. learn theory
@@ -71,11 +72,29 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # prepare  target / labels / y
         check_classification_targets(y)
-        self.classes_, class_counts = np.unique(y, return_counts=True)
-        if self.explicit_target_class is not None:
-            self.target_class_ = self.explicit_target_class
+        self.classes_, self.class_counts_ = np.unique(y, return_counts=True)
+        self.classes_by_size_ = np.argsort(self.class_counts_)
+        if self.direct_multiclass and len(self.classes_) > 2:
+            # TODO: learn rules with different heads for binary problem?
+            # TODO: learn single concept on multiclass problem
+            # TODO: error out if algorithm config only supports binary (eg ripper)
+            if self.explicit_target_class is not None:
+                warnings.warn("explicit_target_class set but direct_multiclass"
+                              " is True. Ignoring explicit_target_class.")
+            # learning multiclass directly, no global target
+            self.target_class_idx_ = None  # implicit default class = biggest
         else:
-            self.target_class_ = self.classes_[np.argmax(class_counts)]
+            if self.explicit_target_class is None:
+                # binary target: most prevalent class
+                self.target_class_idx_ = np.argmax(self.class_counts_)
+            else:
+                # binary target explicitly specified
+                target_class_idx = np.argwhere(
+                    self.explicit_target_class == self.classes_)
+                if not target_class_idx.size:
+                    raise ValueError("explicit_target_class {!s} not in y"
+                                     .format(self.explicit_target_class))
+                self.target_class_idx_ = np.take(target_class_idx, 0)
 
         # prepare  attributes / features / X
         self.n_features_ = X.shape[1]
@@ -135,10 +154,10 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     def abstract_seco(self, X: np.ndarray, y: np.ndarray) -> 'Theory':
         """Main loop of abstract SeCo/Covering algorithm."""
 
-        target_class = self.target_class_
-
         theory_context = self.algorithm_config_.make_theory_context(
-            self.categorical_mask_, self.n_features_, X, y)
+            self.categorical_mask_, self.n_features_, self.classes_,
+            self.class_counts_, self.classes_by_size_, self.target_class_idx_,
+            X, y)
 
         # resolve methods once for performance
         implementation = self.algorithm_config_.implementation
@@ -182,60 +201,82 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         See <https://scikit-learn.org/dev/glossary.html#term-predict>
         """
-        check_is_fitted(self, ['theory_', 'categorical_mask_'])
-        X: np.ndarray = check_array(X)
-        target_class = self.target_class_
-        negative_class = self.classes_[self.classes_ != target_class][0]
-        match_rule = self.algorithm_config_.match_rule
-        matches = (np.array([match_rule(X, rule, self.categorical_mask_)
-                             for rule in self.theory_]
-                            # note: samples are columns at this point
-                            )
-                   .reshape((len(self.theory_), len(X)))  # if theory empty
-                   .any(axis=0)  # any of the rules matched
-                   )
-        # translate bool to class value
-        return np.where(matches, target_class, negative_class)
+        check_is_fitted(self, ['theory_', 'categorical_mask_',
+                               'confidence_estimates_'])
+        if len(self.classes_) == 2:
+            cl: List = self.classes_.tolist()
+            positive = cl.pop(self.target_class_idx_)
+            negative = cl.pop()
+            return np.where(self.decision_function(X), positive, negative)
+        else:
+            # multi-class case: break ties by size
+            # reorder classes by size reversed, argmax takes the first option
+            cidx_by_size_rev = self.classes_by_size_[::-1]
+            cs_by_size_rev = self.classes_[cidx_by_size_rev]
+            decisions = self.decision_function(X)
+            return cs_by_size_rev[decisions[:, cidx_by_size_rev].argmax(axis=1)]
 
     def decision_function(self, X: np.ndarray) -> np.ndarray:
-        """Predict a “soft” score for each sample, values strictly greater than
-        zero indicate the positive class.
+        """Predict a "soft" score for each sample.
+
+        :return: np.ndarray
+          Contains for each sample and each class a floating value representing
+          confidence that the sample is of that class.
+
+          If binary, shape is `(n_samples,)` and values strictly greater than
+          zero indicate the positive class.
+
+          If multiclass, shape is `(n_samples, n_classes)`.
 
         Used by `sklearn.multiclass.OneVsRestClassifier` through
         `sklearn.utils.multiclass._ovr_decision_function`.
 
         See <https://scikit-learn.org/dev/glossary.html#term-decision-function>
         """
-        check_is_fitted(self, ['theory_', 'categorical_mask_'])
+        check_is_fitted(self, ['theory_', 'categorical_mask_',
+                               'confidence_estimates_'])
         X: np.ndarray = check_array(X)
         match_rule = self.algorithm_config_.match_rule
-        confidence = np.column_stack((
-            self.confidence_estimates_ *
-            np.transpose([match_rule(X, rule.body, self.categorical_mask_)
-                         for rule in self.theory_])
-                .reshape((len(X), len(self.theory_))),
-            np.zeros((len(X), 1))  # if theory empty
-        ))
-        # for ordered: get leftmost nonzero value i.e. first matched rule
-        # for unordered, would just do confidence.max(axis=1)
-        return confidence[range(len(confidence)),
-                          np.argmax(confidence > 0, axis=1)]
+        ordered = True  # TODO: unordered theory
+        # TODO: valid if any(confidence_estimates_ < 0) ?
+        confidence_by_class = np.zeros((len(X), len(self.classes_)))
+        for rule, rule_confidence in zip(
+                # backwards so earlier rules overwrite later ones.
+                # needed if ordered theory
+                reversed(self.theory_),
+                reversed(self.confidence_estimates_)):
+            class_index = np.take(np.argwhere(rule.head == self.classes_), 0)
+            matches = match_rule(X, rule, self.categorical_mask_)
+            if not ordered:  # if unordered, get the max among rules
+                confidence_by_class[:, class_index] = np.max(
+                    confidence_by_class[:, class_index],
+                    matches * rule_confidence)
+            else:  # if ordered, get leftmost match. i.e. overwrite if match
+                confidence_by_class[matches, class_index] = rule_confidence
+
+        if len(self.classes_) == 2:
+            assert self.target_class_idx_ is not None
+            target_class = self.classes_[self.target_class_idx_]
+            positive_class_index = np.take(
+                np.argwhere(self.classes_ == target_class), 0)
+            return confidence_by_class[:, positive_class_index]
+        return confidence_by_class
 
     def export_text(self, feature_names: List[str] = None,
-                    target_class: str = None) -> str:
+                    class_names: List[str] = None) -> str:
         """Build a text report showing the rules in the learned theory.
 
         See Also `sklearn.tree.export_tree`
 
         Parameters
         -----
-        feature_names : list, optional (default=None)
+        feature_names : list, optional
             A list of length n_features containing the feature names.
-            If None generic names will be used ("feature_0", "feature_1", ...).
+            If None, generic names will be generated.
 
-        target_class: str, optional
-            A string representation of the target class. If None, the value of
-            self.target_class_ is used.
+        class_names: list, optional
+            A list of length n_classes containing the class names, ordered like
+            `self.classes_`. If None, indices will be used.
         """
 
         if feature_names:
@@ -244,16 +285,24 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                     "feature_names must contain %d elements, got %d"
                     % (self.n_features_, len(feature_names)))
         else:
-            feature_names = ["feature_{}".format(i)
+            feature_names = ["feature_{}".format(i + 1)
                              for i in range(self.n_features_)]
 
-        if not target_class:
-            target_class = self.target_class_
+        if len(self.classes_) == 2:
+            # in binary, fallback to the negative class
+            negative_idx = (set(self.classes_by_size_)
+                            - {self.target_class_idx_}).pop()
+            default_class = self.classes_[negative_idx]
+        else:
+            # in multiclass, fallback to the biggest
+            default_class = self.classes_[self.classes_by_size_[-1]]
+        if class_names:
+            default_class = class_names[default_class]
+        default_rule = '(true) => ' + str(default_class)
 
-        negative_class = self.classes_[self.classes_ != target_class][0]
-        default_rule = '(true) => ' + str(negative_class)
         return '\n'.join([
-            rule_to_string(rule, self.categorical_mask_, feature_names)
+            rule_to_string(rule, self.categorical_mask_,
+                           feature_names, class_names)
             for rule in self.theory_] + [default_rule])
 
 
@@ -286,6 +335,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
                              % self.classes_[0])
         elif n_classes_ > 2:
             # TODO: multi_class strategy of ripper: OneVsRest, remove C_i after learning rules for it
+            # TODO: other strategy: direct multiclass learning
             if self.multi_class == "one_vs_rest":
                 self.base_estimator_.set_params(explicit_target_class=1)
                 self.base_estimator_ = OneVsRestClassifier(self.base_estimator_,

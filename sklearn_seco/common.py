@@ -5,8 +5,8 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 
 import math
 from abc import ABC, abstractmethod
-from functools import total_ordering
-from typing import Iterable, List, Tuple, Type, TypeVar, Dict
+from functools import total_ordering, lru_cache
+from typing import Iterable, List, Tuple, Type, TypeVar, Dict, Optional
 
 import numpy as np
 
@@ -74,7 +74,9 @@ def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
 
 def rule_to_string(rule: Rule,
                    categorical_mask: np.ndarray,
-                   feature_names: List[str] = None) -> str:
+                   feature_names: List[str] = None,
+                   class_names: List[str] = None,
+                   ) -> str:
     """:return: a string representation of `rule`."""
     n_features = rule.body.shape[1]
     if feature_names:
@@ -90,8 +92,10 @@ def rule_to_string(rule: Rule,
         # ti has type: Tuple[int, int]
         # where ti[0] is LOWER or UPPER and ti[1] is the feature index
         for ti in zip(*np.isfinite(rule.body).nonzero()))
-    return conds + ' => ' + str(rule.head)
 
+    return conds + ' => ' + str(class_names[rule.head]
+                                if class_names
+                                else rule.head)
 
 def match_rule(X: np.ndarray,
                rule: Rule,
@@ -186,7 +190,7 @@ class AugmentedRule:
         self.original = original
         self._conditions = conditions
         # init fields
-        self._pn_cache: Dict[bool, Tuple[int, int]] = {}
+        self._pn_cache: Dict[bool, Tuple[int, int]] = {}  # TODO: store [class -> p] instead
         self._sort_key = None
 
     def copy(self: T) -> T:
@@ -198,6 +202,10 @@ class AugmentedRule:
     def head(self) -> TGT:
         """The rules' target class, i.e. `rule.head`."""
         return self._conditions.head
+
+    @head.setter
+    def head(self, target_class: TGT):
+        self._conditions.head = target_class
 
     @property
     def body(self) -> np.ndarray:
@@ -260,10 +268,14 @@ class TheoryContext:
     """
 
     def __init__(self, algorithm_config: 'SeCoAlgorithmConfiguration',
-                 categorical_mask, n_features, X, y):
+                 categorical_mask, n_features, classes, class_counts,
+                 classes_by_size, target_class_idx, X, y):
         self.categorical_mask = categorical_mask
         self.n_features = n_features
-        # keep reference
+        self.classes = classes
+        self.class_counts = class_counts
+        self.classes_by_size = classes_by_size
+        self.target_class_idx: Optional[int] = target_class_idx
         self.algorithm_config = algorithm_config
         self.complete_X = X
         self.complete_y = y
@@ -271,6 +283,18 @@ class TheoryContext:
     @property
     def implementation(self) -> 'AbstractSecoImplementation':
         return self.algorithm_config.implementation
+
+    @property
+    @lru_cache(maxsize=1)
+    def target_class(self):
+        """:return: The searched target class
+          `self.classes[self.target_class_idx_]` if it is specified, otherwise
+          the class with the most instances on all training data.
+          """
+        if self.target_class_idx is not None:
+            return self.classes[self.target_class_idx]
+        # if no target defined, use class with most instances on training data
+        return self.classes[self.classes_by_size[-1]]
 
 
 class RuleContext:
@@ -312,12 +336,11 @@ class RuleContext:
             self._PN_cache[force_complete_data] = self.count_PN(y)
         return self._PN_cache[force_complete_data][target_class]
 
-    @staticmethod
-    def count_PN(y) -> Dict[TGT, Tuple[int, int]]:
+    def count_PN(self, y) -> Dict[TGT, Tuple[int, int]]:
         """:return: A mapping `target_class => (P, N)` for all classes in y.
             Not Cached.
         """
-        counts = {}
+        counts = dict.fromkeys(self.theory_context.classes, (0, 0))
         for target_class, P in zip(*np.unique(y, return_counts=True)):
             N = len(y) - P
             assert P == np.count_nonzero(y == target_class)
@@ -391,7 +414,7 @@ class RuleContext:
         """Rate rule to allow comparison & finding the best refinement."""
         growing_heuristic = \
             self.theory_context.implementation.growing_heuristic
-        p, n = rule.pn(self)
+        p, n = self.pn(rule)
         rule._sort_key = (growing_heuristic(rule, self),
                           # default tie-breaking: by positive coverage
                           p,
