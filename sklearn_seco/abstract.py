@@ -56,19 +56,27 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         prediction, this means that the rule with the highest confidence
         estimate will "win" among the ones covering a sample (ties are broken
         by favoring bigger classes).
+
+    :param remove_false_positives: bool or None
+        Relevant while rule learning in `abstract_seco`:
+        If True, remove all examples covered by the just learned rule.
+        If False, remove only the true positives.
+        If None, set `remove_false_positives=ordered_matching`.
     """
 
     def __init__(self,
                  algorithm_config_class: Type['SeCoAlgorithmConfiguration'],
                  categorical_features: Union[None, str, np.ndarray] = None,
                  explicit_target_class=None, direct_multiclass: bool = True,
-                 ordered_matching: bool = True):
+                 ordered_matching: bool = True,
+                 remove_false_positives: bool = None):
         super().__init__()
         self.algorithm_config_class = algorithm_config_class
         self.categorical_features = categorical_features
         self.explicit_target_class = explicit_target_class
         self.direct_multiclass = direct_multiclass
         self.ordered_matching = ordered_matching
+        self.remove_false_positives = remove_false_positives
 
     def fit(self, X, y):
         """Fit to data, i.e. learn theory
@@ -167,6 +175,10 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             self.categorical_mask_, self.n_features_, self.classes_,
             self.class_counts_, self.classes_by_size_, self.target_class_idx_,
             X, y)
+        remove_false_positives = (
+            self.remove_false_positives
+            if self.remove_false_positives is not None
+            else self.ordered_matching)
 
         # resolve methods once for performance
         implementation = self.algorithm_config_.implementation
@@ -188,7 +200,9 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                 break
             uncovered = np.invert(
                 rule_context.match_rule(rule, force_complete_data=True))
-            X = X[uncovered]  # TODO: optionally/if theory unordered: remove only positive
+            if not remove_false_positives:
+                uncovered[y != rule.head] = True  # keep false positives
+            X = X[uncovered]
             y = y[uncovered]
             theory.append(rule.raw)  # throw away augmentation
         theory = post_process(theory, theory_context)
