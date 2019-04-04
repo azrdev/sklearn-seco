@@ -14,8 +14,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from sklearn_seco.common import \
     AugmentedRule, RuleQueue, Theory, \
-    RuleContext, SeCoAlgorithmConfiguration, \
-    rule_to_string
+    RuleContext, SeCoAlgorithmConfiguration
 
 
 # noinspection PyAttributeOutsideInit
@@ -125,12 +124,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # run SeCo algorithm
         self.theory_: Theory = self.abstract_seco(X, y)
-        if len(self.theory_) and all((~ np.isfinite(rule.body).any()
-                                      for rule in self.theory_)):
+        if len(self.theory_):
             # an empty theory is learned when the default rule is already very
             # good (i.e. the target class has very high a priori probability)
-            # therefore the case of only empty rules is an error
-            raise ValueError("Invalid theory learned")
+            if all(rule.body_empty() for rule in self.theory_):
+                # therefore only the case of only empty rules is an error
+                raise ValueError("Invalid theory learned")
         return self
 
     def find_best_rule(self, context: 'RuleContext') -> 'AugmentedRule':
@@ -309,8 +308,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         default_rule = '(true) => ' + str(default_class)
 
         return '\n'.join([
-            rule_to_string(rule, self.categorical_mask_,
-                           feature_names, class_names)
+            rule.to_string(self.categorical_mask_, feature_names, class_names)
             for rule in self.theory_] + [default_rule])
 
 

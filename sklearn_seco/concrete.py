@@ -21,11 +21,11 @@ from sklearn.utils import check_random_state
 from sklearn_seco.abstract import \
     Theory, SeCoEstimator
 from sklearn_seco.common import \
-    Rule, RuleQueue, AugmentedRule, log2, TGT, \
-    AbstractSecoImplementation, RuleContext, TheoryContext, \
-    SeCoAlgorithmConfiguration
+    Rule, RuleQueue, AugmentedRule, TGT, SeCoAlgorithmConfiguration, \
+    AbstractSecoImplementation, RuleContext, TheoryContext
 from sklearn_seco.ripper_mdl import \
     data_description_length, relative_description_length
+from sklearn_seco.util import log2
 
 
 def pairwise(iterable):

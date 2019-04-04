@@ -15,7 +15,8 @@ Most parts are described in
 
 import numpy as np
 
-from sklearn_seco.common import AugmentedRule, log2
+from sklearn_seco.common import AugmentedRule
+from util import log2
 
 
 def subset_description_length(n, k, p) -> float:

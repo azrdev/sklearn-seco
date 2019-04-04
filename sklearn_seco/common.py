@@ -3,7 +3,6 @@ Implementation of SeCo / Covering algorithm:
 Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 """
 
-import math
 from abc import ABC, abstractmethod
 from functools import total_ordering, lru_cache
 from typing import Iterable, List, Tuple, Type, TypeVar, Dict, Optional
@@ -55,47 +54,39 @@ class Rule:
     LOWER = 0
     UPPER = 1
 
+    def body_empty(self):
+        """
+        :return: True iff the rule body is empty, i.e. no conditions are set.
+            Such a rule matches any sample.
+        """
+        return not np.isfinite(self.body).any()
 
-Theory = List[Rule]
-RuleQueue = List['AugmentedRule']
+    def to_string(self: 'Rule',
+                  categorical_mask: np.ndarray,
+                  feature_names: List[str] = None,
+                  class_names: List[str] = None,
+                  ) -> str:
+        """:return: a string representation of `self`."""
 
+        n_features = self.body.shape[1]
+        if feature_names:
+            assert n_features == len(feature_names)
+        else:
+            feature_names = ['feature_{}'.format(i + 1)
+                             for i in range(n_features)]
+        classification = ' => ' + str(class_names[self.head]
+                                      if class_names
+                                      else self.head)
+        return ' and '.join(
+            '({ft} {op} {thresh:.3})'.format(
+                ft=feature_names[ti[1]],
+                op='==' if categorical_mask[ti[1]] else
+                '>=' if ti[0] == Rule.LOWER else '<=',
+                thresh=self.body[ti])
+            # ti has type: Tuple[int, int]
+            # where ti[0] is LOWER or UPPER and ti[1] is the feature index
+            for ti in zip(*np.isfinite(self.body).nonzero())) + classification
 
-def log2(x: float) -> float:
-    """`log2(x) if x > 0 else 0`"""
-    return math.log2(x) if x > 0 else 0
-
-
-def rule_ancestors(rule: 'AugmentedRule') -> Iterable['AugmentedRule']:
-    """:return: `rule` and all its ancestors, see `AugmentedRule.copy()`."""
-    while rule:
-        yield rule
-        rule = rule.original
-
-
-def rule_to_string(rule: Rule,
-                   categorical_mask: np.ndarray,
-                   feature_names: List[str] = None,
-                   class_names: List[str] = None,
-                   ) -> str:
-    """:return: a string representation of `rule`."""
-    n_features = rule.body.shape[1]
-    if feature_names:
-        assert n_features == len(feature_names)
-    else:
-        feature_names = ['feature_{}'.format(i + 1) for i in range(n_features)]
-    conds = ' and '.join(
-        '({ft} {op} {thresh:.3})'.format(
-            ft=feature_names[ti[1]],
-            op='==' if categorical_mask[ti[1]] else
-            '>=' if ti[0] == Rule.LOWER else '<=',
-            thresh=rule.body[ti])
-        # ti has type: Tuple[int, int]
-        # where ti[0] is LOWER or UPPER and ti[1] is the feature index
-        for ti in zip(*np.isfinite(rule.body).nonzero()))
-
-    return conds + ' => ' + str(class_names[rule.head]
-                                if class_names
-                                else rule.head)
 
 def match_rule(X: np.ndarray,
                rule: Rule,
@@ -197,6 +188,13 @@ class AugmentedRule:
         """:return: A new `AugmentedRule` with a copy of `self._conditions`."""
         return type(self).from_raw_rule(Rule(self.head, self.body.copy()),
                                         original=self)
+
+    def ancestors(self: T) -> Iterable[T]:
+        """:return: `self` and all its ancestors, see `copy`."""
+        rule = self
+        while rule:
+            yield rule
+            rule = rule.original
 
     @property
     def head(self) -> TGT:
