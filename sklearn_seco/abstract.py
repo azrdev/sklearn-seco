@@ -49,17 +49,27 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     :param explicit_target_class: Use as positive/target class for learning. If
         `None` (the default), use the first class from `np.unique(y)` (which is
         sorted).
+
+    :param ordered_matching: bool
+        If True (the default), learn & use the theory as an ordered rule list,
+        i.e. a match of one rule shadows any possible match of later rules.
+        If False, learn & use it as an unordered rule set. Particularly for
+        prediction, this means that the rule with the highest confidence
+        estimate will "win" among the ones covering a sample (ties are broken
+        by favoring bigger classes).
     """
 
     def __init__(self,
                  algorithm_config_class: Type['SeCoAlgorithmConfiguration'],
                  categorical_features: Union[None, str, np.ndarray] = None,
-                 explicit_target_class=None, direct_multiclass: bool = True):
+                 explicit_target_class=None, direct_multiclass: bool = True,
+                 ordered_matching: bool = True):
         super().__init__()
         self.algorithm_config_class = algorithm_config_class
         self.categorical_features = categorical_features
         self.explicit_target_class = explicit_target_class
         self.direct_multiclass = direct_multiclass
+        self.ordered_matching = ordered_matching
 
     def fit(self, X, y):
         """Fit to data, i.e. learn theory
@@ -237,7 +247,6 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                                'confidence_estimates_'])
         X: np.ndarray = check_array(X)
         match_rule = self.algorithm_config_.match_rule
-        ordered = True  # TODO: unordered theory
         # TODO: valid if any(confidence_estimates_ < 0) ?
         confidence_by_class = np.zeros((len(X), len(self.classes_)))
         for rule, rule_confidence in zip(
@@ -247,19 +256,18 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                 reversed(self.confidence_estimates_)):
             class_index = np.take(np.argwhere(rule.head == self.classes_), 0)
             matches = match_rule(X, rule, self.categorical_mask_)
-            if not ordered:  # if unordered, get the max among rules
+            if self.ordered_matching:
+                # if ordered, get leftmost match; i.e. overwrite if match
+                confidence_by_class[matches, class_index] = rule_confidence
+            else:
+                # if unordered, get the max confidence among matching rules
                 confidence_by_class[:, class_index] = np.max(
                     confidence_by_class[:, class_index],
                     matches * rule_confidence)
-            else:  # if ordered, get leftmost match. i.e. overwrite if match
-                confidence_by_class[matches, class_index] = rule_confidence
 
         if len(self.classes_) == 2:
             assert self.target_class_idx_ is not None
-            target_class = self.classes_[self.target_class_idx_]
-            positive_class_index = np.take(
-                np.argwhere(self.classes_ == target_class), 0)
-            return confidence_by_class[:, positive_class_index]
+            return confidence_by_class[:, self.target_class_idx_]
         return confidence_by_class
 
     def export_text(self, feature_names: List[str] = None,
