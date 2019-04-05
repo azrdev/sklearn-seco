@@ -614,10 +614,11 @@ class RipperMdlRuleStopImplementation(AbstractSecoImplementation):
 
 
 class RipperMdlRuleStopTheoryContext(TheoryContext):
+    direct_multiclass_support = False
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if len(self.classes) != 2:
-            raise ValueError()
+        assert len(self.classes) == 2
 
         positives = np.count_nonzero(self.complete_y == self.target_class)
         # set expected fp/(err = fp+fn) rate := proportion of the class

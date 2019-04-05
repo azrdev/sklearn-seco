@@ -174,7 +174,7 @@ def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
         explicit_target_class=blackbox_test.get_opt("target_class"))
 
     is_binary = (len(np.unique(blackbox_test.y_train)) == 2
-                 or seco_estimator.multi_class == 'direct')
+                 or seco_estimator.multi_class_ == 'direct')
     if is_binary:
         base = assert_binary_problem(seco_estimator)
         record_theory(base.theory_)

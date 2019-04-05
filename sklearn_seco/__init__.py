@@ -6,8 +6,9 @@ Limitations / Assumptions (partly TODO)
 - at most two tests per feature and rule
 - no sparse input
 - no missing values
-- binary estimator, applies binarization to multi-class problems
-  TODO: multi-class rule learning (learn any rule, find class with max covered examples)
+- binary problems are always solved as concept learning, i.e. all rules are
+  learned to identify a "positive class" and only the default rule classifies
+  as "negative class".
 - implicit default rule
 - limited operator set:
     - for categorical only ==

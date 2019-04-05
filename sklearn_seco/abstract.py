@@ -45,9 +45,9 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         using e.g. :class:`sklearn.preprocessing.OneHotEncoder` or
         :class:`sklearn.preprocessing.Binarizer`.
 
-    :param explicit_target_class: Use as positive/target class for learning. If
-        `None` (the default), use the first class from `np.unique(y)` (which is
-        sorted).
+    :param explicit_target_class:
+        Use as positive/target class for learning. If `None` (the default),
+        use the most prevalent class. `fit` fails is this value is not in `y`.
 
     :param ordered_matching: bool
         If True (the default), learn & use the theory as an ordered rule list,
@@ -67,14 +67,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     def __init__(self,
                  algorithm_config_class: Type['SeCoAlgorithmConfiguration'],
                  categorical_features: Union[None, str, np.ndarray] = None,
-                 explicit_target_class=None, direct_multiclass: bool = True,
-                 ordered_matching: bool = True,
+                 explicit_target_class=None, ordered_matching: bool = True,
                  remove_false_positives: bool = None):
         super().__init__()
         self.algorithm_config_class = algorithm_config_class
         self.categorical_features = categorical_features
         self.explicit_target_class = explicit_target_class
-        self.direct_multiclass = direct_multiclass
         self.ordered_matching = ordered_matching
         self.remove_false_positives = remove_false_positives
 
@@ -91,19 +89,15 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         check_classification_targets(y)
         self.classes_, self.class_counts_ = np.unique(y, return_counts=True)
         self.classes_by_size_ = np.argsort(self.class_counts_)
-        if self.direct_multiclass and len(self.classes_) > 2:
-            # TODO: learn rules with different heads for binary problem?
-            # TODO: learn single concept on multiclass problem
-            # TODO: error out if algorithm config only supports binary (eg ripper)
-            if self.explicit_target_class is not None:
-                warnings.warn("explicit_target_class set but direct_multiclass"
-                              " is True. Ignoring explicit_target_class.")
-            # learning multiclass directly, no global target
-            self.target_class_idx_ = None  # implicit default class = biggest
-        else:
+        self.is_binary_ = len(self.classes_) == 2
+        if self.is_binary_:
             if self.explicit_target_class is None:
                 # binary target: most prevalent class
                 self.target_class_idx_ = np.argmax(self.class_counts_)
+                # NOTE: for binary targets we always do concept learning, i.e.
+                #   all rules have the same (target_class) head, and only the
+                #   "fallback" default rule classifies as the other "negative"
+                #   class.
             else:
                 # binary target explicitly specified
                 target_class_idx = np.argwhere(
@@ -112,6 +106,18 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                     raise ValueError("explicit_target_class {!s} not in y"
                                      .format(self.explicit_target_class))
                 self.target_class_idx_ = np.take(target_class_idx, 0)
+        else:  # multiclass
+            assert self.algorithm_config_.direct_multiclass_support()
+            if self.explicit_target_class is not None:
+                # NOTE: we cannot learn a single concept on a multiclass
+                #   problem: which of the other classes would be the "negative"
+                #   default class? Binarize your problem beforehand if you need
+                #   that behavior.
+                warnings.warn("explicit_target_class set on multiclass "
+                              "problem. Ignoring explicit_target_class.")
+
+            # learning multiclass directly, no global target
+            self.target_class_idx_ = None  # implicit default class = biggest
 
         # prepare  attributes / features / X
         self.n_features_ = X.shape[1]
@@ -226,7 +232,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         """
         check_is_fitted(self, ['theory_', 'categorical_mask_',
                                'confidence_estimates_'])
-        if len(self.classes_) == 2:
+        if self.is_binary_:
             cl: List = self.classes_.tolist()
             positive = cl.pop(self.target_class_idx_)
             negative = cl.pop()
@@ -278,7 +284,8 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                     confidence_by_class[:, class_index],
                     matches * rule_confidence)
 
-        if len(self.classes_) == 2:
+        if self.is_binary_:
+            # specified by sklearn: only return one column, for positive class
             assert self.target_class_idx_ is not None
             return confidence_by_class[:, self.target_class_idx_]
         return confidence_by_class
@@ -309,7 +316,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             feature_names = ["feature_{}".format(i + 1)
                              for i in range(self.n_features_)]
 
-        if len(self.classes_) == 2:
+        if self.is_binary_:
             # in binary, fallback to the negative class
             negative_idx = (set(self.classes_by_size_)
                             - {self.target_class_idx_}).pop()
@@ -331,22 +338,72 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
     """Wrap the base SeCo to provide class label binarization.
 
     The concrete SeCo variant to run is defined by `algorithm_config`.
+
+    Fields
+    -----
+    algorithm_config : subclass of SeCoAlgorithmConfiguration
+        Defines the concrete SeCo algorithm to run, see
+        :class:`SeCoAlgorithmConfiguration`.
+
+    Parameters
+    -----
+    multi_class : callable or str or None
+        Which strategy to use for non-binary problems. Possible values:
+
+        - None: auto-select; use 'direct' if possible
+          (`algorithm_config.direct_multiclass_support()` returns True),
+          'one_vs_rest' otherwise.
+        - A callable: Construct
+          `self.base_estimator_ = multi_class(_BinarySeCoEstimator())` and
+          delegate to that estimator. Useful if you want to roll a different
+          binarization strategy, e.g.
+          >>> multi_class=partial(sklearn.multiclass.OutputCodeClassifier,
+                                  code_size=0.7, random_state=42)
+        - 'direct': Directly learn a theory of rules with different heads
+          (target classes).
+        - 'one_vs_rest': Use `sklearn.multiclass.OneVsRestClassifier` for class
+          binarization and learn binary theories.
+        - 'one_vs_one': Use `sklearn.multiclass.OneVsOneClassifier` for class
+          binarization and learn binary theories.
+
+    n_jobs : int, optional
+        Passed to `OneVsRestClassifier` or `OneVsOneClassifier` if these are
+        used.
+
+    Attributes
+    -----
+    base_estimator_ : estimator instance
+        The estimator object that all tasks are delegated to. A
+        `sklearn.multiclass.OneVsRestClassifier` or
+        `sklearn.multiclass.OneVsOneClassifier` if demanded by the
+        `multi_class_` strategy, a `_BinarySeCoEstimator` otherwise.
+
+    multi_class_ : callable or str
+        The actual strategy used on a non-binary problem. Relevant if
+        `multi_class=None` demanded auto-selection.
+
+    classes_ : np.ndarray
+        `np.unique(y)`
+
     """
 
     algorithm_config: Type[SeCoAlgorithmConfiguration]
 
-    def __init__(self, multi_class="one_vs_rest", n_jobs=1):
+    def __init__(self, multi_class=None, n_jobs=1):
         self.multi_class = multi_class
         self.n_jobs = n_jobs
 
     def fit(self, X, y, **kwargs):
-        # TODO: document available kwargs or link `_BinarySeCoEstimator.fit`
-        X, y = check_X_y(X, y, multi_output=False)
+        """Learn SeCo theory/theories on training data `X, y`.
 
+        For possible parameters (`**kwargs`), refer to
+        :class:`_BinarySeCoEstimator`.
+        """
+        X, y = check_X_y(X, y, multi_output=False)
+        self.multi_class_ = self.multi_class
         self.base_estimator_ = _BinarySeCoEstimator(self.algorithm_config,
                                                     **kwargs)
 
-        # copied from GaussianProcessClassifier
         self.classes_ = np.unique(y)
         n_classes_ = self.classes_.size
         if n_classes_ == 1:
@@ -355,19 +412,29 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
                              % self.classes_[0])
         elif n_classes_ > 2:
             # TODO: multi_class strategy of ripper: OneVsRest, remove C_i after learning rules for it
-            # TODO: other strategy: direct multiclass learning
-            if self.multi_class == "one_vs_rest":
+            if self.multi_class_ is None:
+                # default / auto-selection
+                if self.algorithm_config.direct_multiclass_support():
+                    self.multi_class_ = "direct"
+                else:
+                    self.multi_class_ = "one_vs_rest"
+
+            if callable(self.multi_class_):
+                self.base_estimator_ = self.multi_class_(self.base_estimator_)
+            elif self.multi_class_ == "one_vs_rest":
                 self.base_estimator_.set_params(explicit_target_class=1)
                 self.base_estimator_ = OneVsRestClassifier(self.base_estimator_,
                                                            n_jobs=self.n_jobs)
-            elif self.multi_class == "one_vs_one":
-                # TODO: tell _BinarySeCoEstimator about classes, i.e. which is positive
+            elif self.multi_class_ == "one_vs_one":
                 self.base_estimator_ = OneVsOneClassifier(self.base_estimator_,
                                                           n_jobs=self.n_jobs)
+            elif self.multi_class_ == "direct":
+                pass
             else:
                 raise ValueError("Unknown multi-class mode %s"
-                                 % self.multi_class)
+                                 % self.multi_class_)
 
+        # TODO: maybe move explicit_target_class,categorical_features here from __init__, since they're data dependent
         self.base_estimator_.fit(X, y)
         return self
 

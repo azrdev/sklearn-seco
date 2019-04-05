@@ -12,6 +12,9 @@ import numpy as np
 
 TGT = TypeVar("TGT")
 
+Theory = List['Rule']
+RuleQueue = List['AugmentedRule']
+
 
 class Rule:
     """A rule mapping feature values to a target classification.
@@ -145,6 +148,10 @@ class AugmentedRule:
         Return only the lower/upper part of `self._conditions.body`. Always use
         `set_condition` for write access.
 
+    direct_multiclass_support : bool, default True
+        If any subclass does not support direct learning of multiclass
+        theories, it must set this to False.
+
     instance_no: int
         number of instance, to compare rules by creation order
 
@@ -161,6 +168,8 @@ class AugmentedRule:
     pn: Tuple[int, int]
         Positive and negative coverage of this rule, cached.
     """
+
+    direct_multiclass_support = True
     __rule_counter = 0  # TODO: shared across runs/instances
 
     @classmethod
@@ -265,6 +274,8 @@ class TheoryContext:
     * `complete_y`: All training classifications `y` *at start of training*.
     """
 
+    direct_multiclass_support = True
+
     def __init__(self, algorithm_config: 'SeCoAlgorithmConfiguration',
                  categorical_mask, n_features, classes, class_counts,
                  classes_by_size, target_class_idx, X, y):
@@ -312,6 +323,8 @@ class RuleContext:
         The count of positive and negative examples in X, for given
         target_class. Cached.
     """
+
+    direct_multiclass_support = True
 
     def __init__(self, theory_context: TheoryContext, X, y):
         self.theory_context = theory_context
@@ -429,6 +442,8 @@ class AbstractSecoImplementation(ABC):
     TODO: Instead of using this interface, you can also pass all the functions
     to SeCoEstimator separately, without an enclosing class.
     """
+
+    direct_multiclass_support = True
 
     @classmethod
     def abstract_seco_continue(cls, y: np.ndarray,
@@ -559,6 +574,19 @@ class SeCoAlgorithmConfiguration:
     RuleClass = AugmentedRule
     TheoryContextClass: Type[TheoryContext] = TheoryContext
     RuleContextClass: Type[RuleContext] = RuleContext
+
+    @classmethod
+    def direct_multiclass_support(cls) -> bool:
+        """
+        :return: True iff the algorithm supports direct learning of multiclass
+            theories, False otherwise.
+        """
+        return all(o.direct_multiclass_support
+                   for o in (cls.Implementation,
+                             cls.RuleClass,
+                             cls.TheoryContextClass,
+                             cls.RuleContextClass,
+                             ))
 
     def __init__(self):
         self.implementation = self.Implementation()
