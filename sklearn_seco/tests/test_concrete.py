@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from numpy import NINF, PINF
 from numpy.testing import assert_array_equal, assert_array_almost_equal
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_score
 from sklearn.utils import check_random_state
 from sklearn.utils.estimator_checks import check_estimator
 
@@ -227,6 +227,8 @@ def assert_multiclass_problem(estimator) -> List[_BinarySeCoEstimator]:
 def assert_prediction_performance(estimator, x_train, y_train, x_test, y_test):
     # check accuracy,precision on training data
     assert estimator.score(x_train, y_train) > 0.8
+    assert precision_score(y_train, estimator.predict(x_train),
+                           average='weighted') > 0.8
     if x_test is not None:
         # check accuracy on test data
         y_predicted = estimator.predict(x_test)

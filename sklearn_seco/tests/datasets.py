@@ -156,13 +156,15 @@ def binary_slight_overlap(
     return Dataset(X, y, X_test, y_test)
 
 
-def sklearn_make_classification(n_samples=1000, n_features=2, random=1,
+def sklearn_make_classification(n_samples=1000, n_features=2, n_classes=2,
+                                random=1,
                                 *, categorize=False, test_ratio=.3,
                                 **kwargs):
     n_informative = max(2, n_features // 3 * 2)
     x, y = make_classification(n_samples, n_features,
                                n_informative=n_informative,
                                n_redundant=0,
+                               n_classes=n_classes,
                                class_sep=1.5,
                                random_state=random,
                                **kwargs)
