@@ -21,6 +21,6 @@ Limitations / Assumptions (partly TODO)
 - classification only, no regression
 """
 
-from sklearn_seco import abstract, common, concrete, extra, tests
+from sklearn_seco import abstract, common, concrete, extra, tests, util
 
-__all__ = ['abstract', 'common', 'concrete', 'extra', 'tests']
+__all__ = ['abstract', 'common', 'concrete', 'extra', 'tests', 'util']
