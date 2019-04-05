@@ -19,12 +19,12 @@ RuleQueue = List['AugmentedRule']
 class Rule:
     """A rule mapping feature values to a target classification.
 
-    Fields
+    Attributes
     -----
-    - head: a single value
+    head : a single value
         The classification of a sample, if it matches the body.
 
-    - body: array of dtype float, shape `(2, n_features)`
+    body : array of dtype float, shape `(2, n_features)`
         Represents a conjunction of conditions.
 
         - first row "lower"
@@ -34,9 +34,10 @@ class Rule:
             - categorical features: invalid (TODO: unequal operator ?)
             - numerical features: contains upper bound (`rule[UPPER] >= X`)
 
-        To specify "no test", use appropriate infinity values for numerical features
-        (np.NINF and np.PINF for lower and upper), and for categorical features any
-        non-finite value (np.NaN, np.NINF, np.PINF).
+        To specify "no test", use appropriate infinity values for numerical
+        features (np.NINF and np.PINF for lower and upper, respectively), and
+        for categorical features any non-finite value (np.NaN, np.NINF,
+        np.PINF).
     """
     head: TGT
     body: np.ndarray
@@ -125,7 +126,7 @@ def match_rule(X: np.ndarray,
             ).all(axis=1)
 
 
-T = TypeVar('T', bound='AugmentedRule')
+T = TypeVar('T', bound='AugmentedRule')  # needed for type signature of `copy`
 
 
 @total_ordering
@@ -138,20 +139,14 @@ class AugmentedRule:
     `refine_rule`) until its `_conditions` are added to the theory in
     `abstract_seco`.
 
-    Attributes
+    Fields
     -----
-    raw: Rule
-        The actual antecedent / conjunction of conditions, and the target
-        class. Always use `set_condition` for write access to the rule body.
-
-    lower, upper: np.ndarray
-        Return only the lower/upper part of `self._conditions.body`. Always use
-        `set_condition` for write access.
-
     direct_multiclass_support : bool, default True
         If any subclass does not support direct learning of multiclass
         theories, it must set this to False.
 
+    Attributes
+    -----
     instance_no: int
         number of instance, to compare rules by creation order
 
@@ -164,9 +159,6 @@ class AugmentedRule:
         queue).
         Set by `AbstractSecoImplementation.evaluate_rule` and accessed
         implicitly through `__lt__`.
-
-    pn: Tuple[int, int]
-        Positive and negative coverage of this rule, cached.
     """
 
     direct_multiclass_support = True
@@ -216,37 +208,47 @@ class AugmentedRule:
 
     @property
     def body(self) -> np.ndarray:
-        """The rules' conditions, i.e. `rule.body`."""
+        """The rules' conditions, i.e. `rule.body`.
+        Always use `set_condition` for write access.
+        """
         return self._conditions.body
 
     @property
     def lower(self) -> np.ndarray:
-        """The "lower" part of the rules' conditions, i.e. `rule.lower <= X`.
+        """The "lower" part of the rule body, i.e. `rule.lower <= X`.
+        Always use `set_condition` for write access.
         """
         return self._conditions.body[Rule.LOWER]
 
     @property
     def upper(self) -> np.ndarray:
-        """The "upper" part of the rules' conditions, i.e. `rule.upper >= X`.
+        """The "upper" part of the rule body, i.e. `rule.upper >= X`.
+        Always use `set_condition` for write access.
         """
         return self._conditions.body[Rule.UPPER]
 
     @property
     def raw(self) -> Rule:
-        """:return: The rule conditions without augmentation, as needed for the
-        theory.
+        """
+        :return: The rule body without augmentation, as needed for the theory.
         """
         return self._conditions
 
-    def set_condition(self, boundary: int, index: int, value):
+    def set_condition(self, boundary: int, index: int, value) -> None:
+        """
+        Set `body[boundary, index] = value`.
+        Always use this for write access to the rule body.
+        """
         self._conditions.body[boundary, index] = value
 
     def __lt__(self, other):
+        """Sort `AugmentedRule` objects by their `_sort_key`."""
         if not hasattr(other, '_sort_key'):
             return NotImplemented
         return self._sort_key < other._sort_key
 
     def __eq__(self, other):
+        """Compare `AugmentedRule` objects by their `_sort_key`."""
         if not hasattr(other, '_sort_key'):
             return NotImplemented
         return self._sort_key == other._sort_key
@@ -262,29 +264,52 @@ class AugmentedRule:
 class TheoryContext:
     """State variables while `abstract_seco` builds a theory.
 
-    Members
-    -----
+    The static Parameters are the same as in :class:`_BinarySeCoEstimator`,
+    apart from the trailing "_" in their name:
+      - `algorithm_config`
+      - `categorical_mask`
+      - `n_features`
+      - `classes`
+      - `class_counts`
+      - `classes_by_size`
+      - `target_class_idx`
 
-    * `categorical_mask`: An array of shape `(n_features,)` and type bool,
-      indicating if a feature is categorical (`True`) or numerical (`False`).
-    * `n_features`: The number of features in the dataset, equivalent to
-      `X.shape[1]`.
-    * `algorithm_config`: A reference to the used `SeCoAlgorithmConfiguration`.
-    * `complete_X`: All training examples `X` *at start of training*.
-    * `complete_y`: All training classifications `y` *at start of training*.
+    Other Methods & Properties provided are:
+      - `implementation`
+      - `target_class`
+
+    Fields
+    -----
+    direct_multiclass_support : bool, default True
+        If any subclass does not support direct learning of multiclass
+        theories, it must set this to False *per class*.
+
+    Attributes
+    -----
+    complete_X :
+        All training examples `X` *at start of training*.
+
+    complete_y :
+        All training classifications `y` *at start of training*.
     """
 
     direct_multiclass_support = True
 
-    def __init__(self, algorithm_config: 'SeCoAlgorithmConfiguration',
-                 categorical_mask, n_features, classes, class_counts,
-                 classes_by_size, target_class_idx, X, y):
+    def __init__(self,
+                 algorithm_config: 'SeCoAlgorithmConfiguration',
+                 categorical_mask: np.ndarray,
+                 n_features: int,
+                 classes: np.ndarray,
+                 class_counts: np.ndarray,
+                 classes_by_size: np.ndarray,
+                 target_class_idx: Optional[int],
+                 X, y):
         self.categorical_mask = categorical_mask
         self.n_features = n_features
         self.classes = classes
         self.class_counts = class_counts
         self.classes_by_size = classes_by_size
-        self.target_class_idx: Optional[int] = target_class_idx
+        self.target_class_idx = target_class_idx
         self.algorithm_config = algorithm_config
         self.complete_X = X
         self.complete_y = y
@@ -309,11 +334,18 @@ class TheoryContext:
 class RuleContext:
     """State variables while `find_best_rule` builds a single rule.
 
-    Methods provided are:
+    Methods & Properties provided are:
+      - `PN`
+      - `X` and `y`
+      - `match_rule`
+      - `pn`
+      - `evaluate_rule`
 
-    - `match_rule`
-    - `pn`
-    - `evaluate_rule`
+    Fields
+    -----
+    direct_multiclass_support : bool, default True
+        If any subclass does not support direct learning of multiclass
+        theories, it must set this to False.
 
     Members
     -----
@@ -344,12 +376,13 @@ class RuleContext:
         """
         if force_complete_data not in self._PN_cache:
             y = self._y if force_complete_data else self.y
-            self._PN_cache[force_complete_data] = self.count_PN(y)
+            self._PN_cache[force_complete_data] = self._count_PN(y)
         return self._PN_cache[force_complete_data][target_class]
 
-    def count_PN(self, y) -> Dict[TGT, Tuple[int, int]]:
-        """:return: A mapping `target_class => (P, N)` for all classes in y.
-            Not Cached.
+    def _count_PN(self, y) -> Dict[TGT, Tuple[int, int]]:
+        """
+        :return: A mapping `target_class => (P, N)` for all classes in y.
+            Uncached, use `PN` instead.
         """
         counts = dict.fromkeys(self.theory_context.classes, (0, 0))
         for target_class, P in zip(*np.unique(y, return_counts=True)):
@@ -371,7 +404,7 @@ class RuleContext:
 
     def pn(self, rule: AugmentedRule, force_complete_data: bool = False
            ) -> Tuple[int, int]:
-        """Return (p, n) for `rule`. Cached.
+        """Return positive and negative coverage (p, n) for `rule`. Cached.
 
         :param force_complete_data:
           Iff True, always use complete dataset (e.g. if growing/pruning
@@ -390,18 +423,18 @@ class RuleContext:
         # rule._pn_cache maps force_complete_data:bool to tuple(p,n)
         if force_complete_data not in rule._pn_cache:
             rule._pn_cache[force_complete_data] = \
-                self.count_matches(rule, force_complete_data)
+                self._count_matches(rule, force_complete_data)
         return rule._pn_cache[force_complete_data]
 
     def match_rule(self, rule: AugmentedRule, force_complete_data: bool = False
                    ) -> np.ndarray:
-        """Wrap `SeCoAlgorithmConfiguration.match_rule`: Apply `rule` to the
-        current context.
+        """Apply `rule` to the current context (`self`), delegating to
+        `SeCoAlgorithmConfiguration.match_rule`.
 
         :param force_complete_data: bool. If True, always apply to the full
           training data, instead of the property `self.X` (which may be
           overridden, e.g. by GrowPruneSplit).
-        :return: A match array of type bool and length `len(X)`
+        :return: A match array of dtype bool and length `len(X)`.
         """
         tctx = self.theory_context
         X = self._X if force_complete_data else self.X
@@ -409,9 +442,9 @@ class RuleContext:
                                                 rule.raw,
                                                 tctx.categorical_mask)
 
-    def count_matches(self, rule: AugmentedRule,
-                      force_complete_data: bool = False) -> Tuple[int, int]:
-        """:return: Counts (p, n) for `rule`. Uncached."""
+    def _count_matches(self, rule: AugmentedRule,
+                       force_complete_data: bool = False) -> Tuple[int, int]:
+        """:return: Counts (p, n) for `rule`. Uncached, use `pn` instead."""
         covered = self.match_rule(rule, force_complete_data)
         y = self._y if force_complete_data else self.y
         positives = y == rule.head
@@ -434,13 +467,18 @@ class RuleContext:
 
 
 class AbstractSecoImplementation(ABC):
-    """The callbacks needed by _BinarySeCoEstimator, subclasses represent
-    concrete algorithms (together with the corresponding subclasses of
-    `RuleContext` etc).
+    """The callbacks needed by :class:`_BinarySeCoEstimator`; Subclasses
+    represent concrete algorithms (together with the corresponding subclasses
+    of `RuleContext` etc, see :class:`SeCoAlgorithmConfiguration`).
+
+    Fields
+    -----
+    direct_multiclass_support : bool, default True
+        If any subclass does not support direct learning of multiclass
+        theories, it must set this to False.
 
     TODO: maybe @classmethod → @staticmethod ? pro: callbacks as fun-refs w/o class, con: configurability via class-fields
-    TODO: Instead of using this interface, you can also pass all the functions
-    to SeCoEstimator separately, without an enclosing class.
+    TODO: Instead of using this interface, you can also pass all the functions to SeCoEstimator separately, without an enclosing class.
     """
 
     direct_multiclass_support = True
@@ -541,30 +579,41 @@ class AbstractSecoImplementation(ABC):
 class SeCoAlgorithmConfiguration:
     """A concrete SeCo algorithm, defined by code and associated state objects.
 
-    In `SeCoEstimator` an instance of this class is used, to allow wrapping the
-    methods `make_rule`, `make_theory_context`, and `make_rule_context` in e.g.
-    `functools.partialmethod`.
+    In `SeCoEstimator` an *instance* of this class is used, to allow wrapping
+    the methods `make_rule`, `make_theory_context`, and `make_rule_context` in
+    e.g. `functools.partialmethod`.
 
     The members `RuleClass`, `TheoryContextClass`, and `RuleContextClass`
     should only ever be overridden/subclassed, not wrapped in functions (like
     `functools.partial`), to enable other users (like `extra.trace_coverage`)
     to subclass them again.
 
-    Members
+    Methods provided are:
+      - classmethod `direct_multiclass_support`
+      - `make_rule`
+      - `make_theory_context`
+      - `make_rule_context`
+
+    Fields
     -----
-    - `match_rule`: Callable[[np.ndarray, Rule, np.ndarray], np.ndarray].
-      A method applying the Rule (2nd parameter) to the examples `X` (1st
-      parameter) given the categorical_mask (3rd parameter) and returning an
-      array of length `len(X)` and type bool.
-    - `Implementation`: A non-abstract subclass of `AbstractSecoImplementation`
-      defining all callback methods needed by `abstract_seco` and
-      `find_best_rule`.
-    - `RuleClass`: A subclass of `AugmentedRule` defining the attributes that
-      supplement the basic `Rule` object (which is the `_conditions` field).
-    - `TheoryContextClass`: A subclass of `TheoryContext` managing state of an
-      `abstract_seco` run.
-    - `RuleContextClass`: A subclass of `RuleContext` managing state of a
-      `find_best_rule` run.
+    `match_rule`: Callable[[np.ndarray, Rule, np.ndarray], np.ndarray].
+        A method applying the Rule (2nd parameter) to the examples `X` (1st
+        parameter) given the categorical_mask (3rd parameter) and returning an
+        array of length `len(X)` and type bool.
+
+    `Implementation`:
+        A non-abstract subclass of `AbstractSecoImplementation` defining all
+        callback methods needed by :class:`_BinarySeCoEstimator`.
+
+    `RuleClass`:
+        A subclass of `AugmentedRule` defining the attributes that supplement
+        the basic `Rule` object.
+
+    `TheoryContextClass`:
+        A subclass of `TheoryContext` managing state of an `abstract_seco` run.
+
+    `RuleContextClass`:
+        A subclass of `RuleContext` managing state of a `find_best_rule` run.
     """
 
     match_rule = staticmethod(match_rule)

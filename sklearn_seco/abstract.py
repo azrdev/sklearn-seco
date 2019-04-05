@@ -9,6 +9,7 @@ import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.multiclass import OneVsRestClassifier, OneVsOneClassifier
 from sklearn.utils import check_X_y, check_array
+from sklearn.utils.metaestimators import if_delegate_has_method
 from sklearn.utils.multiclass import check_classification_targets
 from sklearn.utils.validation import check_is_fitted
 
@@ -22,11 +23,12 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
     """Binary SeCo Classification, deferring to :var:`algorithm_config_`
     for concrete algorithm implementation.
 
-    :param algorithm_config_: SeCoAlgorithmConfiguration
-        Defines the SeCo variant to be run. Instance of `class
-        self.algorithm_config_class`.
+    Parameters
+    -----
+    algorithm_config_class : subclass of SeCoAlgorithmConfiguration
+        Defines the SeCo variant to be run. See `algorithm_config_`.
 
-    :param categorical_features: None or "all" or array of indices or mask.
+    categorical_features : None or "all" or array of indices or mask.
 
         Specify what features are treated as categorical, i.e. equality
         tests are used for these features, based on the set of values
@@ -36,20 +38,20 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         conditions of a rule, while multiple equality tests (for a
         categorical feature) would be useless.
 
-        -   None (default): All features are treated as numerical & ordinal.
-        -   'all': All features are treated as categorical.
-        -   array of indices: Array of categorical feature indices.
-        -   mask: Array of length n_features and with dtype=bool.
+        - None (default): All features are treated as numerical & ordinal.
+        - 'all': All features are treated as categorical.
+        - array of indices: Array of categorical feature indices.
+        - mask: Array of length n_features and with dtype=bool.
 
         You may instead transform your categorical features beforehand,
         using e.g. :class:`sklearn.preprocessing.OneHotEncoder` or
         :class:`sklearn.preprocessing.Binarizer`.
 
-    :param explicit_target_class:
+    explicit_target_class :
         Use as positive/target class for learning. If `None` (the default),
         use the most prevalent class. `fit` fails is this value is not in `y`.
 
-    :param ordered_matching: bool
+    ordered_matching : bool
         If True (the default), learn & use the theory as an ordered rule list,
         i.e. a match of one rule shadows any possible match of later rules.
         If False, learn & use it as an unordered rule set. Particularly for
@@ -57,11 +59,54 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         estimate will "win" among the ones covering a sample (ties are broken
         by favoring bigger classes).
 
-    :param remove_false_positives: bool or None
+    remove_false_positives : bool or None
         Relevant while rule learning in `abstract_seco`:
         If True, remove all examples covered by the just learned rule.
         If False, remove only the true positives.
         If None, set `remove_false_positives=ordered_matching`.
+
+    Attributes
+    -----
+    algorithm_config_ : SeCoAlgorithmConfiguration
+        Defines the SeCo variant to be run. Instance of `class
+        self.algorithm_config_class`, to allow wrapping its methods in e.g.
+        `functools.partialmethod`.
+
+    is_binary_ : bool
+        True iff the learned problem (the training data) was binary, False if
+        multiclass (`is_binary_ = len(self.classes_) == 2`).
+
+    classes_ : np.ndarray
+        A list of class labels known to the classifier, implicitly mapping each
+        label to a numerical index.
+
+    class_counts_ : np.ndarray of the same shape as classes_
+        A mapping from class index to count of examples in training data, i.e.
+        the class distribution.
+
+    classes_by_size_ : np.ndarray of the same shape as classes_
+        A list of indices into `classes_`, sorted by size.
+
+    target_class_idx_ : int, optional
+        Index into `classes_` specifying the target class. If a multiclass
+        problem is passed to `fit`, a multiclass theory is directly learned
+        (i.e. there is no target class), and this attribute is None.
+
+    n_features_ : int
+        The number of features in (training) data `X`.
+
+    categorical_mask_ : np.ndarray of shape (n_features_,) and dtype bool
+        A mask array calculated from `categorical_features`. True entries
+        denote categorical features, False entries numeric ones.
+
+    theory_ : Theory (i.e. List[Rule])
+        The learned list of `Rule`s. Interpreted according to
+        `categorical_mask_` and `ordered_matching`.
+
+    confidence_estimates_ : Sequence[float] of same length as theory_
+        Represent for each rule in theory_ a confidence in its predictions.
+        Used by `decision_function` as score, and therefore (if
+        `ordered_matching == False`) by `predict` for voting.
     """
 
     def __init__(self,
@@ -123,8 +168,8 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         self.n_features_ = X.shape[1]
         # categorical_features modeled like sklearn.preprocessing.OneHotEncoder
         self.categorical_mask_ = np.zeros(self.n_features_, dtype=bool)
-        if (self.categorical_features is None) or \
-                not len(self.categorical_features):
+        if (self.categorical_features is None
+                or not len(self.categorical_features)):
             pass  # keep default "all False"
         elif isinstance(self.categorical_features, np.ndarray):
             self.categorical_mask_[
@@ -217,10 +262,10 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         rule_context = make_rule_context(theory_context,
                                          theory_context.complete_X,
                                          theory_context.complete_y)
-        self.confidence_estimates_ = [
+        self.confidence_estimates_ = np.array([
             confidence_estimator(AugmentedRule(conditions=rule), rule_context)
             for rule in theory
-        ]
+        ])
         # TODO: ? for confidence_estimate use *uncovered by theory[i]* instead of whole X to match theory[i+1]
         # TODO: ? confidence_estimate for default rule (i.e. not any rule from theory matches). not compatible with current confidence_estimate(rule, RuleContext) interface
         return theory
@@ -235,15 +280,16 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         if self.is_binary_:
             cl: List = self.classes_.tolist()
             positive = cl.pop(self.target_class_idx_)
-            negative = cl.pop()
+            negative = cl.pop()  # default class
             return np.where(self.decision_function(X), positive, negative)
         else:
-            # multi-class case: break ties by size
-            # reorder classes by size reversed, argmax takes the first option
-            cidx_by_size_rev = self.classes_by_size_[::-1]
-            cs_by_size_rev = self.classes_[cidx_by_size_rev]
+            # multi-class case: break ties by size (default class = biggest)
+            classidx_by_size_rev = self.classes_by_size_[::-1]
+            classes_by_size_rev = self.classes_[classidx_by_size_rev]
             decisions = self.decision_function(X)
-            return cs_by_size_rev[decisions[:, cidx_by_size_rev].argmax(axis=1)]
+            return classes_by_size_rev[
+                # argmax uses first to break ties, thus order by size reversed
+                decisions[:, classidx_by_size_rev].argmax(axis=1)]
 
     def decision_function(self, X: np.ndarray) -> np.ndarray:
         """Predict a "soft" score for each sample.
@@ -322,7 +368,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                             - {self.target_class_idx_}).pop()
             default_class = self.classes_[negative_idx]
         else:
-            # in multiclass, fallback to the biggest
+            # in multiclass, fallback to the biggest class
             default_class = self.classes_[self.classes_by_size_[-1]]
         if class_names:
             default_class = class_names[default_class]
@@ -453,3 +499,13 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, ["classes_"])
         X = check_array(X)
         return self.base_estimator_.predict(X)
+
+    @if_delegate_has_method('base_estimator_')
+    def predict_proba(self, X):
+        # noinspection PyUnresolvedReferences
+        return self.base_estimator_.predict_proba(X)
+
+    @if_delegate_has_method('base_estimator_')
+    def decision_function(self, X):
+        # noinspection PyUnresolvedReferences
+        return self.base_estimator_.decision_function(X)

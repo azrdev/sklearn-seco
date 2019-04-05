@@ -135,7 +135,7 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
         def specialize(boundary: int, index: int, value):
             if len(context.theory_context.classes) == 2:
                 # in binary case, only emit rules for target_class,
-                # i.e. do concept learning  # FIXME: configure
+                # i.e. do concept learning. See `_BinarySeCoEstimator.fit`.
                 classes = [context.theory_context.target_class]
             else:
                 classes = context.all_classes()
@@ -389,7 +389,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
 
 
     This works by overriding the getters for the properties `X`, `y`, `PN`, and
-    the function `count_matches` (for `p, n`).
+    the function `_count_matches` (for `p, n`).
     By default this returns the growing set, i.e. at start of each
     `find_best_rule` invocation. Methods `pruning_heuristic` and
     As soon as the algorithm wants to switch to
@@ -436,8 +436,8 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         growing = None if force_complete_data else self.growing
         # TODO: maybe calculate from cache
         if growing not in rule._pn_cache:
-            rule._pn_cache[growing] = self.count_matches(rule,
-                                                         force_complete_data)
+            rule._pn_cache[growing] = self._count_matches(rule,
+                                                          force_complete_data)
         return rule._pn_cache[growing]
 
     def PN(self, target_class: TGT, force_complete_data: bool = False
@@ -454,7 +454,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
             y = self.y
         if growing not in self._PN_cache:
             # TODO: maybe calculate from cache
-            self._PN_cache[growing] = self.count_PN(y)
+            self._PN_cache[growing] = self._count_PN(y)
         return self._PN_cache[growing][target_class]
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:

@@ -19,7 +19,7 @@ from typing.io import IO
 
 from sklearn_seco.abstract import SeCoEstimator
 from sklearn_seco.common import \
-    AugmentedRule, Theory, rule_ancestors, \
+    AugmentedRule, Theory, \
     AbstractSecoImplementation, RuleContext, TheoryContext
 from sklearn_seco.concrete import GrowPruneSplitRuleContext
 
@@ -98,7 +98,7 @@ class Trace:
             step = Trace.Step.nonpruning_step(context, ancestors, [])
 
             context.growing = True
-            ancestors_counts_growing = np.array([context.count_matches(r)
+            ancestors_counts_growing = np.array([context._count_matches(r)
                                                  for r in ancestors])
             PN_growing = context.PN()
             step.growing = Trace.Step.Part(ancestors_counts_growing,
@@ -367,7 +367,7 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
         if tctx.trace_level == 'best_rules':
             ancestors = [rule]
         else:  # elif trace_level in ('ancestors', 'refinements'):
-            ancestors = rule_ancestors(rule)
+            ancestors = rule.ancestors()
 
         tctx.trace.append_step(context, ancestors, context.growing_refinements)
         tctx.trace.last_rule_stop = last_rule_stop
