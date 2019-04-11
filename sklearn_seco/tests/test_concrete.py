@@ -1,6 +1,5 @@
 """Tests for `sklearn_seco.concrete`."""
 
-from numbers import Real as RealNumber
 from typing import List
 
 import numpy as np
@@ -18,31 +17,69 @@ from .conftest import count_conditions
 from .datasets import perfectly_correlated_multiclass
 
 
-@pytest.mark.parametrize(
-    ['y', 'ratio', 'grow', 'prune'],
-    [pytest.param([10, 20], 0.5, [1], [0], id="2 samples, ratio 1/2, test indices"),
-     pytest.param([10, 20], 0, [0, 1], [], id="2 samples, ratio 0, test indices"),
-     pytest.param([10, 20], 1, [], [0, 1], id="2 samples, ratio 1, test indices"),
-     pytest.param([10, 20]*4, 0.5, 0.5, 0.5, id="8 samples, ratio 1/2 test"),
-     pytest.param([10, 20]*4, 0, 1, 0, id="8 samples, ratio 0 test"),
-     pytest.param([10, 20]*4, 1, 0, 1, id="8 samples, ratio 1 test"),
-     pytest.param([10, 20, 20, 50]*250, 1, 0, 1, id="1k samples, ratio 1/3 test"),
-     ])
-def test_grow_prune_split(y, ratio, grow, prune):
+@pytest.mark.parametrize(['y', 'ratio', 'grow', 'prune'], [
+    pytest.param([10, 20], 0, [0, 1], [], id="2 samples, ratio 0"),
+    pytest.param([10, 20], 1, [], [0, 1], id="2 samples, ratio 1"),
+    # below testcases expect all samples in the growing set, because the
+    # multiclass grow_prune_split doesn't know which class would be negative
+    # and could safely be omitted from the growing set
+    pytest.param([10, 20], 0.5, [0, 1], [], id="2 samples, ratio 1/2"),
+    pytest.param([10, 20], 1/3, [0, 1], [], id="2 samples, ratio 1/3"),
+])
+def test_grow_prune_split_concrete(y, ratio: float,
+                                   grow: List[int], prune: List[int]):
     grow_act, prune_act = grow_prune_split(y, ratio, check_random_state(1))
-    # cv, cc = np.unique(y[grow_act], return_counts=True)
     assert np.ndim(grow_act) == 1
     assert np.ndim(prune_act) == 1
-    if isinstance(grow, RealNumber):
-        # assert cc[0] > grow_act  # TODO: ratio of positive. TODO: non-binary
-        assert len(grow_act) / len(y) >= grow
-    else:
-        assert_array_equal(grow, sorted(grow_act))
-    if isinstance(prune, RealNumber):
-        assert len(prune_act) / len(y) <= prune
-        # assert cc[1] > prune_act  # TODO: ratio of negative. TODO: non-binary
-    else:
-        assert_array_equal(prune, sorted(prune_act))
+    assert_array_equal(grow, sorted(grow_act))
+    assert_array_equal(prune, sorted(prune_act))
+
+
+@pytest.mark.parametrize('ratio', [
+    pytest.param(0.5, id="ratio 1/2"),
+    pytest.param(0.0, id="ratio 0"),
+    pytest.param(0.1, id="ratio 0,1",
+                 marks=pytest.mark.xfail(reason="for small n_samples and/or "
+                                                "small classes, all samples "
+                                                "end up in growing set. "
+                                                "maybe a bug")),
+    pytest.param(1.0, id="ratio 1"),
+    pytest.param(1/3, id="ratio 1/3"),
+])
+@pytest.mark.parametrize('y', [
+    pytest.param([10, 20]*4, id="8 samples balanced binary"),
+    pytest.param([11, 12, 13]*7, id="21 samples 3 balanced classes"),
+    pytest.param([10, 20, 20, 50]*250, id="1k samples 4 little imbalanced classes"),
+    pytest.param([10, 20]*100 + [40]*5, id="3 imbalanced classes 1 minority class"),
+])
+def test_grow_prune_split_ratio(y, ratio: float):
+    grow_ratio_exp = 1 - ratio
+    prune_ratio_exp: float = ratio
+    y = np.asarray(y)
+    grow_act, prune_act = grow_prune_split(y, ratio, check_random_state(1))
+    assert np.ndim(grow_act) == 1, "grow not a list of indices"
+    assert np.ndim(prune_act) == 1, "prune not a list of indices"
+
+    # total ratios are obeyed (with grow_ratio rounded up)
+    assert len(grow_act) / len(y) >= grow_ratio_exp, "too few samples in growing set"
+    assert len(prune_act) / len(y) <= prune_ratio_exp, "too few samples in pruning set"
+
+    # per class ratios are obeyed
+    ycv, ycc = np.unique(y, return_counts=True)
+    gcv, gcc = np.unique(y[grow_act], return_counts=True)
+    pcv, pcc = np.unique(y[prune_act], return_counts=True)
+    # TODO ratio != {0, 1} can still yield 0 samples from very small class
+    if ratio < 1:
+        assert_array_equal(gcv, ycv, "not all classes in growing set")
+        for c, gcci, ycci in zip(ycv, gcc, ycc):
+            assert gcci / ycci >= grow_ratio_exp, f"too few samples of class {c} in growing set"
+    if ratio > 0:
+        assert_array_equal(pcv, ycv, "not all classes in pruning set")
+        for c, pcci, ycci in zip(ycv, gcc, ycc):
+            assert pcci / ycci >= prune_ratio_exp, f"too few samples of class {c} in pruning set"
+
+    if 0 < ratio < 1:
+        assert_array_equal(gcc + pcc, ycc, "not all samples from y in {growing + pruning}")
 
 
 def test_base_trivial(record_theory):

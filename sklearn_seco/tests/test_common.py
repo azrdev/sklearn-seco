@@ -12,12 +12,11 @@ def test_match_rule():
     categorical_mask = np.array([True, True, False, False])
     X = np.array([[1, 2, 3.0, 4.0]])
 
-    def am(rule, expected_result, X=X):
-        assert_array_equal(match_rule(X, Rule(100, np.asarray(rule)),
+    def am(body, expected_result, X=X):
+        assert_array_equal(match_rule(X, Rule(100, np.asarray(body)),
                                       categorical_mask),
                            expected_result)
 
-    am(Rule.make_empty(len(categorical_mask), 100), [True])
     am([[NINF, NINF, NINF, NINF], [PINF, PINF, PINF, PINF]], [True])
     # categorical: upper unused
     am([[NINF, NINF, NINF, NINF], [7,    7,    PINF, PINF]], [True])
