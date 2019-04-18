@@ -300,35 +300,24 @@ class TheoryContext:
                  categorical_mask: np.ndarray,
                  n_features: int,
                  classes: np.ndarray,
-                 class_counts: np.ndarray,
-                 classes_by_size: np.ndarray,
-                 target_class_idx: Optional[int],
                  X, y):
         self.categorical_mask = categorical_mask
         self.n_features = n_features
         self.classes = classes
-        self.class_counts = class_counts
-        self.classes_by_size = classes_by_size
-        self.target_class_idx = target_class_idx
         self.algorithm_config = algorithm_config
         self.complete_X = X
         self.complete_y = y
+
+        assert self.is_binary() or self.algorithm_config.direct_multiclass_support(), (
+            "Trying to learn non-binary problem directly, "
+            "but no direct multiclass support.")
 
     @property
     def implementation(self) -> 'AbstractSecoImplementation':
         return self.algorithm_config.implementation
 
-    @property
-    @lru_cache(maxsize=1)
-    def target_class(self):
-        """:return: The searched target class
-          `self.classes[self.target_class_idx_]` if it is specified, otherwise
-          the class with the most instances on all training data.
-          """
-        if self.target_class_idx is not None:
-            return self.classes[self.target_class_idx]
-        # if no target defined, use class with most instances on training data
-        return self.classes[self.classes_by_size[-1]]
+    def is_binary(self):
+        return len(self.classes) == 2
 
 
 class RuleContext:
@@ -413,10 +402,10 @@ class RuleContext:
         returns
         -------
         p : int
-            The count of positive examples (== target_class) covered by `rule`,
+            The count of positive examples (== rule.head) covered by `rule`,
             also called *true positives*.
         n : int
-            The count of negative examples (!= target_class) covered by `rule`,
+            The count of negative examples (!= rule.head) covered by `rule`,
             also called *false positives*.
         """
         # TODO: move to AugmentedRule.pn(), just here to avoid needing GrowPruneSplitRuleClass
@@ -486,10 +475,12 @@ class AbstractSecoImplementation(ABC):
     @classmethod
     def abstract_seco_continue(cls, y: np.ndarray,
                                theory_context: TheoryContext) -> bool:
-        # NOTE: for binary tasks, we stop on `any(y != target_class)` too, as
-        #   opposed to the papers `abstract_seco` which has only
-        #   `any(y == target_class)`. Hopefully this doesn't harm.
-        return len(np.unique(y)) > 1
+        if theory_context.is_binary():
+            positive = theory_context.classes[-1]
+            return np.any(y == positive)
+        else:
+            default_class = theory_context.classes[0]
+            return np.any(y != default_class)
 
     @classmethod
     @abstractmethod

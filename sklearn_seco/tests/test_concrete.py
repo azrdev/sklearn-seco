@@ -13,6 +13,7 @@ from sklearn.utils.estimator_checks import check_estimator
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.common import Rule
 from sklearn_seco.concrete import grow_prune_split, SimpleSeCoEstimator
+from sklearn_seco.util import TargetTransformingMetaEstimator
 from .conftest import count_conditions
 from .datasets import perfectly_correlated_multiclass
 
@@ -207,8 +208,7 @@ def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
 
     seco_estimator.fit(
         blackbox_test.x_train, blackbox_test.y_train,
-        categorical_features=blackbox_test.categorical_features,
-        explicit_target_class=blackbox_test.get_opt("target_class"))
+        categorical_features=blackbox_test.categorical_features)
 
     is_binary = (len(np.unique(blackbox_test.y_train)) == 2
                  or seco_estimator.multi_class_ == 'direct')

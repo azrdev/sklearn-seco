@@ -13,7 +13,7 @@ iris.target[iris.target != target_index] = target_index + 1
 iris.target_names = [iris.target_names[target_index], 'other']
 
 est = RipperEstimator()
-est.fit(iris.data, iris.target, explicit_target_class=target_index)
+est.fit(iris.data, iris.target)
 
 # print learning results
 print(flush=True)

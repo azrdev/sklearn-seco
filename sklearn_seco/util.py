@@ -72,7 +72,15 @@ class TargetTransformingMetaEstimator(BaseEstimator, MetaEstimatorMixin):
       sklearn assumes lexicographically ordered classes which
       `BySizeLabelEncoder` explicitly breaks.
 
-    # TODO: support get_params and stuff, maybe using `sklearn.utils.metaestimators._BaseComposition`
+    # TODO: support get_params etc, maybe using `sklearn.utils.metaestimators._BaseComposition`
+
+    Attributes
+    -----
+    estimator : estimator object
+        Used after `transform` on the transformed labels.
+
+    transform : transformer object
+        Used to transform the labels `y` before they're passed to `estimator`.
 
     See Also
     -----

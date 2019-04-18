@@ -116,9 +116,10 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
     @classmethod
     def init_rule(cls, context: RuleContext) -> AugmentedRule:
         tctx = context.theory_context
+        head = tctx.classes[-1] if tctx.is_binary() else tctx.classes[0]
         return tctx.algorithm_config.make_rule(
             n_features=tctx.n_features,
-            target_class=tctx.target_class)
+            target_class=head)
 
     @classmethod
     def refine_rule(cls, rule: AugmentedRule, context: 'TopDownSearchContext'
@@ -133,10 +134,10 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
         # TODO: maybe mark constant features (or with p < threshold) for exclusion in future specializations
 
         def specialize(boundary: int, index: int, value):
-            if len(context.theory_context.classes) == 2:
+            if context.theory_context.is_binary():
                 # in binary case, only emit rules for target_class,
                 # i.e. do concept learning. See `_BinarySeCoEstimator.fit`.
-                classes = [context.theory_context.target_class]
+                classes = [context.theory_context.classes[-1]]
             else:
                 classes = context.all_classes()
 
@@ -618,9 +619,9 @@ class RipperMdlRuleStopTheoryContext(TheoryContext):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        assert len(self.classes) == 2
+        assert self.is_binary()
 
-        positives = np.count_nonzero(self.complete_y == self.target_class)
+        positives = np.count_nonzero(self.complete_y == self.classes[-1])
         # set expected fp/(err = fp+fn) rate := proportion of the class
         self.expected_fp_over_err = positives / len(self.complete_y)
         # set default DL (only data, empty theory)

@@ -219,8 +219,7 @@ def artificial_disjunction(n_samples=2_000, n_random_features=10,
         feature_names[fi] = ft
     return Dataset(x[:test_start_idx], y[:test_start_idx],
                    x[test_start_idx:], y[test_start_idx:],
-                   categorical_features='all', feature_names=feature_names,
-                   target_class=True)
+                   categorical_features='all', feature_names=feature_names)
 
 
 def staged():
@@ -233,5 +232,4 @@ def staged():
     dec = arff.load(open(filename))
     data = np.array(dec['data'], dtype=float)
     return Dataset(data[:, :-1], data[:, -1],
-                   feature_names=[ft[0] for ft in dec['attributes'][:-1]],
-                   target_class=1)
+                   feature_names=[ft[0] for ft in dec['attributes'][:-1]])
