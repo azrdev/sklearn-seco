@@ -8,6 +8,7 @@ matrix:
       dist: xenial  # required for Python >= 3.7 (travis-ci/travis-ci#9069)
 install:
   - pip install -r requirements.txt
+  - pip install pytest-travis-fold  # for nicer output
 script:
   - pytest --durations=0
 

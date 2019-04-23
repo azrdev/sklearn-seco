@@ -4,8 +4,8 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 """
 
 from abc import ABC, abstractmethod
-from functools import total_ordering, lru_cache
-from typing import Iterable, List, Tuple, Type, TypeVar, Dict, Optional
+from functools import total_ordering
+from typing import Iterable, List, Tuple, Type, TypeVar, Dict
 
 import numpy as np
 

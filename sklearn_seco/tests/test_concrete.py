@@ -89,18 +89,17 @@ def test_base_trivial(record_theory):
     X_train = np.array([[100, 0.0],
                         [111, 1.0]])
     y_train = np.array([1, 2])
-    est = SimpleSeCoEstimator() \
-        .fit(X_train, y_train, categorical_features=categorical_mask) \
-        .base_estimator_
-    assert isinstance(est, _BinarySeCoEstimator)
-    record_theory(est.theory_)
+    est = SimpleSeCoEstimator().fit(X_train, y_train,
+                                    categorical_features=categorical_mask)
+    assert isinstance(est.base_estimator_, TargetTransformingMetaEstimator)
+    base = est.base_estimator_.estimator
+    assert isinstance(base, _BinarySeCoEstimator)
 
-    assert_array_equal(est.classes_,  y_train)
-    assert_array_equal(est.classes_by_size_,  [0, 1])
-    assert est.target_class_idx_ == 0
-    assert len(est.theory_) == 1
+    record_theory(base.theory_)
+    assert_array_equal(base.classes_,  [0, 1])  # indices
+    assert len(base.theory_) == 1
     # first refinement wins (tie breaking)
-    assert_array_equal(est.theory_[0].body, [[100, NINF], [PINF, PINF]])
+    assert_array_equal(base.theory_[0].body, [[100, NINF], [PINF, PINF]])
 
     assert_array_equal(est.predict(X_train), y_train)
 
@@ -133,18 +132,18 @@ def test_base_easyrules(record_theory):
                         [0,  1.0],
                         [1, -1.0]])
     y_train = np.array([1, 1, 2, 2])
-    est = SimpleSeCoEstimator() \
-        .fit(X_train, y_train, categorical_features=categorical_mask) \
-        .base_estimator_
-    assert isinstance(est, _BinarySeCoEstimator)
-    record_theory(est.theory_)
+    est = SimpleSeCoEstimator().fit(X_train, y_train,
+                                    categorical_features=categorical_mask)
+    assert isinstance(est.base_estimator_, TargetTransformingMetaEstimator)
+    base = est.base_estimator_.estimator
+    assert isinstance(base, _BinarySeCoEstimator)
 
-    assert_array_equal(est.classes_, [1, 2])
-    assert_array_equal(est.classes_by_size_, [0, 1])
-    assert est.target_class_idx_ == 0
-    assert len(est.theory_) == 2
-    assert_array_equal(est.theory_[0].body, np.array([[NINF, NINF], [PINF, -1.5]]))
-    assert_array_equal(est.theory_[1].body, np.array([[   0, NINF], [PINF,    0]]))
+    record_theory(base.theory_)
+
+    assert_array_equal(base.classes_, [0, 1])  # indices
+    assert len(base.theory_) == 2
+    assert_array_equal(base.theory_[0].body, np.array([[NINF, NINF], [PINF, -1.5]]))
+    assert_array_equal(base.theory_[1].body, np.array([[   0, NINF], [PINF,    0]]))
 
     assert_array_equal(est.predict(X_train), y_train)
 
@@ -164,10 +163,11 @@ def test_trivial_decision_border(seco_estimator, trivial_decision_border,
     seco_estimator.fit(trivial_decision_border.x_train,
                        trivial_decision_border.y_train)
     # check recognition of binary problem
-    base = seco_estimator.base_estimator_
+    assert isinstance(seco_estimator.base_estimator_,
+                      TargetTransformingMetaEstimator)
+    base = seco_estimator.base_estimator_.estimator
     assert isinstance(base, _BinarySeCoEstimator)
     record_theory(base.theory_)
-    assert base.target_class_ == 0
     # check expected rule
     assert len(base.theory_) == 1
     assert_array_almost_equal(base.theory_[0].body,
@@ -181,13 +181,18 @@ def test_perfectly_correlated_categories_multiclass(seco_estimator,
     dataset = perfectly_correlated_multiclass()
     seco_estimator.fit(dataset.x_train, dataset.y_train,
                        categorical_features=dataset.categorical_features)
-    bases = assert_multiclass_problem(seco_estimator)
-    record_theory([b.theory_ for b in bases])
+    record_theory([b.theory_ for b in seco_estimator.get_seco_estimators()])
     # check rules
-    for base in bases:
-        assert len(base.theory_) == 1
-        assert count_conditions(base.theory_) == 1
+    if seco_estimator.multi_class_ == 'direct':
+        assert len(seco_estimator.get_seco_estimators()) == 1
+        base = seco_estimator.get_seco_estimators()[0]
+        assert len(base.theory_) == 10
         assert count_conditions(base.theory_, limit=Rule.UPPER) == 0
+    else:
+        for base in seco_estimator.get_seco_estimators():
+            assert len(base.theory_) == 1
+            assert count_conditions(base.theory_) == 1
+            assert count_conditions(base.theory_, limit=Rule.UPPER) == 0
     assert_array_equal(dataset.y_train,
                        seco_estimator.predict(dataset.x_train))
 
@@ -210,21 +215,18 @@ def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
         blackbox_test.x_train, blackbox_test.y_train,
         categorical_features=blackbox_test.categorical_features)
 
-    is_binary = (len(np.unique(blackbox_test.y_train)) == 2
-                 or seco_estimator.multi_class_ == 'direct')
-    if is_binary:
-        base = assert_binary_problem(seco_estimator)
-        record_theory(base.theory_)
+    theories = [base.theory_ if hasattr(base, 'theory_') else None
+                for base in seco_estimator.get_seco_estimators()]
+    record_theory(theories)
+    print("{} theories:\n".format(len(theories)))
+    for base in seco_estimator.get_seco_estimators():
+        assert isinstance(base, _BinarySeCoEstimator)
+        assert len(base.theory_)
+        assert count_conditions(base.theory_, Rule.UPPER,
+                                base.categorical_mask_) == 0, \
+            "rule.UPPER set for categorical feature"
         print("{} rules:\n{}".format(len(base.theory_),
                                      base.export_text(feature_names)))
-    else:
-        bases = assert_multiclass_problem(seco_estimator)
-        record_theory([b.theory_ for b in bases])
-        print("{} theories:\n".format(len(bases)))
-        for base_ in bases:
-            print("{} rules:\n{}\n".format(len(base_.theory_),
-                                           base_.export_text(feature_names)))
-
     assert_prediction_performance(seco_estimator,
                                   blackbox_test.x_train, blackbox_test.y_train,
                                   blackbox_test.get_opt("x_test"),
@@ -232,33 +234,6 @@ def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
 
 
 # test helpers
-
-def assert_binary_problem(estimator) -> _BinarySeCoEstimator:
-    """Check recognition of binary problem by `estimator`.
-
-    :return: the "base_estimator_" `_BinarySeCoEstimator` instance
-    """
-    base = estimator.base_estimator_
-    assert isinstance(base, _BinarySeCoEstimator)
-    assert len(base.theory_)
-    assert count_conditions(base.theory_, Rule.UPPER,
-                            base.categorical_mask_) == 0
-    return base
-
-
-def assert_multiclass_problem(estimator) -> List[_BinarySeCoEstimator]:
-    """Check recognition of multi-class problem.
-
-    :return: the list of "base_estimator_" `_BinarySeCoEstimator` instances
-    """
-    assert not isinstance(estimator.base_estimator_, _BinarySeCoEstimator)
-    bases = estimator.base_estimator_.estimators_
-    for base_ in bases:
-        assert isinstance(base_, _BinarySeCoEstimator)
-        assert len(base_.theory_)
-        assert count_conditions(base_.theory_, Rule.UPPER,
-                                base_.categorical_mask_) == 0
-    return bases
 
 
 def assert_prediction_performance(estimator, x_train, y_train, x_test, y_test):

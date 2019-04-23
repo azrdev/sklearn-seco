@@ -2,7 +2,7 @@
 Implementation of SeCo / Covering algorithm: Abstract base algorithm.
 """
 
-from typing import Union, Type, List
+from typing import Union, Type, List, Sequence
 
 import numpy as np
 
@@ -369,8 +369,11 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
           `self.base_estimator_ = multi_class(_BinarySeCoEstimator())` and
           delegate to that estimator. Useful if you want to roll a different
           binarization strategy, e.g.
-          >>> multi_class=partial(sklearn.multiclass.OutputCodeClassifier,
-                                  code_size=0.7, random_state=42)
+          >>> import sklearn.multiclass, functools
+          >>> multi_class=functools.partial(
+          ...     sklearn.multiclass.OutputCodeClassifier,
+          ...     code_size=0.7, random_state=42)
+          If you use this, be aware of class order influence on tie-breaking.
         - 'direct': Directly learn a theory of rules with different heads
           (target classes). Uses :class:`BySizeLabelEncoder` internally.
         - 'one_vs_rest': Use `sklearn.multiclass.OneVsRestClassifier` for class
@@ -489,3 +492,25 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
     def decision_function(self, X):
         # noinspection PyUnresolvedReferences
         return self.base_estimator_.decision_function(X)
+
+    def get_seco_estimators(self) -> Sequence[_BinarySeCoEstimator]:
+        """
+        :return: The `_BinarySeCoEstimator` instances that were trained.
+            Depending on the multi-class strategy, the class labels they use
+            differ in order and value.
+        """
+        check_is_fitted(self, 'base_estimator_')
+        is_binary = len(self.classes_) == 2
+        if is_binary or self.multi_class_ == "direct":
+            assert isinstance(self.base_estimator_,
+                              TargetTransformingMetaEstimator)
+            return [self.base_estimator_.estimator]
+        elif self.multi_class_ == "one_vs_rest":
+            assert isinstance(self.base_estimator_, OneVsRestClassifier)
+            return self.base_estimator_.estimators_
+        elif self.multi_class_ == "one_vs_one":
+            assert isinstance(self.base_estimator_, OneVsOneClassifier)
+            return self.base_estimator_.estimators_
+        else:
+            assert False, "invalid state: unknown type of base_estimator_ " \
+                f"({str(self.base_estimator_)})"
