@@ -139,7 +139,7 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
                 # i.e. do concept learning. See `_BinarySeCoEstimator.fit`.
                 classes = [context.theory_context.classes[-1]]
             else:
-                classes = context.all_classes()
+                classes = context.theory_context.classes
 
             for target_class in classes:
                 P, N = context.PN(target_class)
@@ -192,13 +192,6 @@ class TopDownSearchContext(RuleContext):
         # use _X instead of self.X to get all possibilities, even if e.g.
         # grow/prune split is used
         return np.unique(self._X[:, feature_index])  # unique also sorts
-
-    @lru_cache(maxsize=None)
-    def all_classes(self):
-        """:return: All classes present in the current training data."""
-        # use _y instead of self.y to get all possibilities, even if e.g.
-        # grow/prune split is used
-        return np.unique(self._y)
 
 
 class PurityHeuristic(AbstractSecoImplementation):
