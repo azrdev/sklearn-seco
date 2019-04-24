@@ -161,23 +161,21 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
         # numeric features
         for feature_index in np.nonzero(~categorical_mask)[0]:
             old_lower = rule.lower[feature_index]
-            no_old_lower = ~np.isfinite(old_lower)  # TODO: no_old_ tests superfluous
             old_upper = rule.upper[feature_index]
-            no_old_upper = ~np.isfinite(old_upper)
             for value1, value2 in pairwise(all_feature_values(feature_index)):
                 new_threshold = (value1 + value2) / 2  # TODO: JRip uses left value1
                 # TODO: lower/upper coverage here are complementary: can use single match_rule invocation, like JRip?
                 # TODO: maybe only split if classes of value1,value2 differ
                 # override is collation of lower bounds
-                if no_old_lower or new_threshold > old_lower:
+                if new_threshold > old_lower:
                     # don't test contradiction (e.g. f < 4 && f > 6)
-                    if no_old_upper or new_threshold < old_upper:
+                    if new_threshold < old_upper:
                         yield from specialize(Rule.LOWER, feature_index,
                                               new_threshold)
                 # override is collation of upper bounds
-                if no_old_upper or new_threshold < old_upper:
+                if new_threshold < old_upper:
                     # don't test contradiction
-                    if no_old_lower or new_threshold > old_lower:
+                    if new_threshold > old_lower:
                         yield from specialize(Rule.UPPER, feature_index,
                                               new_threshold)
 
