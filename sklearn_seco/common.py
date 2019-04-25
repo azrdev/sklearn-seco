@@ -5,7 +5,7 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import Iterable, List, Tuple, Type, TypeVar, Dict
+from typing import Iterable, List, Tuple, Type, TypeVar, Dict, Any
 
 import numpy as np
 
@@ -45,6 +45,9 @@ class Rule:
     def __init__(self, head: TGT, body):
         self.head = head
         self.body = body
+
+    def copy(self) -> 'Rule':
+        return type(self)(self.head, self.body.copy())
 
     @staticmethod
     def make_empty(n_features: int, target_class: TGT) -> 'Rule':
@@ -165,11 +168,6 @@ class AugmentedRule:
     __rule_counter = 0  # TODO: shared across runs/instances
 
     @classmethod
-    def from_raw_rule(cls, raw_rule: Rule, original: 'AugmentedRule' = None,
-                      ) -> 'AugmentedRule':
-        return cls(raw_rule, original)
-
-    @classmethod
     def make_empty(cls, n_features: int, target_class: TGT) -> 'AugmentedRule':
         return cls(Rule.make_empty(n_features, target_class))
 
@@ -181,14 +179,31 @@ class AugmentedRule:
         AugmentedRule.__rule_counter += 1
         self.original = original
         self._conditions = conditions
-        # init fields
-        self._pn_cache: Dict[bool, Tuple[int, int]] = {}  # TODO: store [class -> p] instead
+        # _p_cache maps force_complete_data to covered counts per class
+        self._p_cache: Dict[bool, np.ndarray] = {}
         self._sort_key = None
 
-    def copy(self: T) -> T:
-        """:return: A new `AugmentedRule` with a copy of `self._conditions`."""
-        return type(self).from_raw_rule(Rule(self.head, self.body.copy()),
-                                        original=self)
+    def copy(self: T, *, head: TGT = None,
+             conditions: Tuple[int, int, Any] = None) -> T:
+        """Create a modified copy of a rule.
+
+        :param head: A new head (target_class), if not None.
+        :param conditions: A tuple(boundary: int, index: int, value) or None.
+            If not None, set `copy.body[boundary, index] = value`.
+        :return: A copy of self with different `head` and/or `body`, if not
+            None.
+        """
+        cls = type(self)
+        copy = cls(self._conditions.copy(), original=self)  # type: T
+        if head is not None:
+            copy._conditions.head = self.head
+        if conditions is None:
+            # share the coverage counts
+            copy._p_cache = self._p_cache
+        else:
+            boundary, index, value = conditions
+            copy._conditions.body[boundary, index] = value
+        return copy
 
     def ancestors(self: T) -> Iterable[T]:
         """:return: `self` and all its ancestors, see `copy`."""
@@ -208,22 +223,20 @@ class AugmentedRule:
 
     @property
     def body(self) -> np.ndarray:
-        """The rules' conditions, i.e. `rule.body`.
-        Always use `set_condition` for write access.
-        """
+        """The rules' conditions. To change it, use `copy`."""
         return self._conditions.body
 
     @property
     def lower(self) -> np.ndarray:
         """The "lower" part of the rule body, i.e. `rule.lower <= X`.
-        Always use `set_condition` for write access.
+        To change it, use `copy`.
         """
         return self._conditions.body[Rule.LOWER]
 
     @property
     def upper(self) -> np.ndarray:
         """The "upper" part of the rule body, i.e. `rule.upper >= X`.
-        Always use `set_condition` for write access.
+        To change it, use `copy`.
         """
         return self._conditions.body[Rule.UPPER]
 
@@ -233,13 +246,6 @@ class AugmentedRule:
         :return: The rule body without augmentation, as needed for the theory.
         """
         return self._conditions
-
-    def set_condition(self, boundary: int, index: int, value) -> None:
-        """
-        Set `body[boundary, index] = value`.
-        Always use this for write access to the rule body.
-        """
-        self._conditions.body[boundary, index] = value
 
     def __lt__(self, other):
         """Sort `AugmentedRule` objects by their `_sort_key`."""
@@ -255,6 +261,7 @@ class AugmentedRule:
 
     def pn(self, context: 'RuleContext', force_complete_data: bool = False):
         """:return: `context.pn(self, force_complete_data)`"""
+        # TODO: move code here from RuleContext.pn, just there to avoid needing GrowPruneSplitRuleClass
         return context.pn(self, force_complete_data)
 
 
@@ -351,8 +358,8 @@ class RuleContext:
         self.theory_context = theory_context
         self._X = X
         self._y = y
-        # _PN_cache maps force_complete_data:bool to the P,N counts per target
-        self._PN_cache: Dict[bool, Dict[TGT, Tuple[int, int]]] = {}
+        # _PN_cache maps force_complete_data:bool to the counts per target (P)
+        self._PN_cache: Dict[bool, np.ndarray] = {}
 
     def PN(self, target_class: TGT, force_complete_data: bool = False
            ) -> Tuple[int, int]:
@@ -366,20 +373,23 @@ class RuleContext:
         if force_complete_data not in self._PN_cache:
             y = self._y if force_complete_data else self.y
             self._PN_cache[force_complete_data] = self._count_PN(y)
-        return self._PN_cache[force_complete_data][target_class]
+        class_counts = self._PN_cache[force_complete_data].tolist()
+        target_idx = np.take(
+            np.argwhere(self.theory_context.classes == target_class), 0)
+        P = class_counts.pop(target_idx)
+        N = sum(class_counts)
+        return P, N
 
-    def _count_PN(self, y) -> Dict[TGT, Tuple[int, int]]:
+    def _count_PN(self, y) -> np.ndarray:
         """
-        :return: A mapping `target_class => (P, N)` for all classes in y.
+        :return: A mapping `target_class => P` for all classes.
             Uncached, use `PN` instead.
         """
-        counts = dict.fromkeys(self.theory_context.classes, (0, 0))
-        for target_class, P in zip(*np.unique(y, return_counts=True)):
-            N = len(y) - P
-            assert P == np.count_nonzero(y == target_class)
-            assert N == np.count_nonzero(y != target_class)
-            counts[target_class] = (P, N)
-        return counts
+        classes, class_counts = np.unique(y, return_counts=True)
+        class_idx = np.searchsorted(self.theory_context.classes, classes)
+        P = np.zeros_like(self.theory_context.classes)
+        P[class_idx] = class_counts
+        return P
 
     @property
     def X(self):
@@ -408,12 +418,15 @@ class RuleContext:
             The count of negative examples (!= rule.head) covered by `rule`,
             also called *false positives*.
         """
-        # TODO: move to AugmentedRule.pn(), just here to avoid needing GrowPruneSplitRuleClass
-        # rule._pn_cache maps force_complete_data:bool to tuple(p,n)
-        if force_complete_data not in rule._pn_cache:
-            rule._pn_cache[force_complete_data] = \
+        if force_complete_data not in rule._p_cache:
+            rule._p_cache[force_complete_data] = \
                 self._count_matches(rule, force_complete_data)
-        return rule._pn_cache[force_complete_data]
+        covered_counts = rule._p_cache[force_complete_data].tolist()
+        pos_index = np.take(
+            np.argwhere(rule.head == self.theory_context.classes), 0)
+        p = covered_counts.pop(pos_index)
+        n = sum(covered_counts)
+        return p, n
 
     def match_rule(self, rule: AugmentedRule, force_complete_data: bool = False
                    ) -> np.ndarray:
@@ -432,16 +445,18 @@ class RuleContext:
                                                 tctx.categorical_mask)
 
     def _count_matches(self, rule: AugmentedRule,
-                       force_complete_data: bool = False) -> Tuple[int, int]:
-        """:return: Counts (p, n) for `rule`. Uncached, use `pn` instead."""
+                       force_complete_data: bool = False) -> np.ndarray:
+        """:return: Example counts matched by `rule`, per class.
+            Uncached, use `pn` instead.
+        """
         covered = self.match_rule(rule, force_complete_data)
         y = self._y if force_complete_data else self.y
-        positives = y == rule.head
-        # NOTE: nonzero() is test for True
-        p = np.count_nonzero(covered & positives)
-        n = np.count_nonzero(covered & ~positives)
-        assert p + n == np.count_nonzero(covered)
-        return (p, n)
+        cov_classes, cov_counts = np.unique(y[covered], return_counts=True)
+        all_counts = np.zeros_like(self.theory_context.classes)
+        cov_class_idx = np.searchsorted(self.theory_context.classes,
+                                        cov_classes)
+        all_counts[cov_class_idx] = cov_counts
+        return all_counts
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Rate rule to allow comparison & finding the best refinement."""

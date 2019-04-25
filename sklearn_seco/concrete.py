@@ -12,7 +12,7 @@ import functools
 import math
 from abc import abstractmethod, ABC
 from functools import lru_cache
-from typing import Iterable, NamedTuple, Tuple
+from typing import Iterable, NamedTuple, Tuple, Any
 
 import numpy as np
 from scipy.special import xlogy
@@ -21,7 +21,7 @@ from sklearn.utils import check_random_state
 from sklearn_seco.abstract import \
     Theory, SeCoEstimator
 from sklearn_seco.common import \
-    Rule, RuleQueue, AugmentedRule, TGT, SeCoAlgorithmConfiguration, \
+    Rule, RuleQueue, AugmentedRule, T, TGT, SeCoAlgorithmConfiguration, \
     AbstractSecoImplementation, RuleContext, TheoryContext
 from sklearn_seco.ripper_mdl import \
     data_description_length, relative_description_length
@@ -145,10 +145,8 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
                 P, N = context.PN(target_class)
                 if not P:
                     continue
-                specialization = rule.copy()
-                specialization.head = target_class
-                specialization.set_condition(boundary, index, value)
-                yield specialization
+                yield rule.copy(head=target_class,
+                                conditions=(boundary, index, value))
 
         # categorical features
         for index in np.argwhere(categorical_mask
@@ -321,7 +319,7 @@ class SkipPostProcess(AbstractSecoImplementation):
 
 
 class ConditionTracingAugmentedRule(AugmentedRule):
-    """A subclass of AugmentedRule recording any value set in `self.condition`.
+    """A subclass of AugmentedRule recording any value set in `self.body`.
 
     This is needed e.g. by `RipperPostPruning` to revert back to previous
     threshold conditions, because `TopDownSearchImplementation` collapses
@@ -349,11 +347,15 @@ class ConditionTracingAugmentedRule(AugmentedRule):
             # copy trace, but into a new list
             self.condition_trace[:] = self.original.condition_trace
 
-    def set_condition(self, boundary: int, index: int, value):
-        self.condition_trace.append(
-            self.TraceEntry(boundary, index, value,
-                            self.body[boundary, index]))
-        super().set_condition(boundary, index, value)
+    def copy(self: T, *, head: TGT = None,
+             conditions: Tuple[int, int, Any] = None) -> T:
+        copy = super().copy(head=head, conditions=conditions)  # type: T
+        if conditions is not None:
+            boundary, index, value = conditions
+            copy.condition_trace.append(
+                ConditionTracingAugmentedRule.TraceEntry(
+                    boundary, index, value, self.body[boundary, index]))
+        return copy
 
 
 class GrowPruneSplitTheoryContext(TheoryContext):
@@ -425,12 +427,20 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
 
     def pn(self, rule: AugmentedRule, force_complete_data: bool = False):
         """Return (p, n) for `rule`, depending on `self.growing`. Cached."""
+
+        # the logic is the same in super(), but _p_cache keys are
+        # growing = True|False|None, where None means all samples
         growing = None if force_complete_data else self.growing
-        # TODO: maybe calculate from cache
-        if growing not in rule._pn_cache:
-            rule._pn_cache[growing] = self._count_matches(rule,
-                                                          force_complete_data)
-        return rule._pn_cache[growing]
+        # TODO: maybe calculate from cache, given total=grow+prune
+        if growing not in rule._p_cache:
+            rule._p_cache[growing] = self._count_matches(rule,
+                                                         force_complete_data)
+        covered_counts = rule._p_cache[growing].tolist()
+        pos_index = np.take(
+            np.argwhere(rule.head == self.theory_context.classes), 0)
+        p = covered_counts.pop(pos_index)
+        n = sum(covered_counts)
+        return p, n
 
     def PN(self, target_class: TGT, force_complete_data: bool = False
            ) -> Tuple[int, int]:
@@ -438,16 +448,18 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
 
         See superclass method.
         """
-        if force_complete_data:
-            growing = None
-            y = self._y
-        else:
-            growing = self.growing
-            y = self.y
+        growing = None if force_complete_data else self.growing
         if growing not in self._PN_cache:
+            y = self._y if force_complete_data else self.y
             # TODO: maybe calculate from cache
             self._PN_cache[growing] = self._count_PN(y)
-        return self._PN_cache[growing][target_class]
+
+        class_counts = self._PN_cache[growing].tolist()
+        target_idx = np.take(
+            np.argwhere(self.theory_context.classes == target_class), 0)
+        P = class_counts.pop(target_idx)
+        N = sum(class_counts)
+        return P, N
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Mimic `AbstractSecoImplementation.evaluate_rule` but use
@@ -509,8 +521,8 @@ class RipperPostPruning(AbstractSecoImplementation):
         # drop any final (i.e. last added) sequence of conditions
         generalization = rule
         for boundary, index, value, old_value in reversed(rule.condition_trace):
-            generalization = generalization.copy()
-            generalization.set_condition(boundary, index, old_value)
+            generalization = generalization.copy(
+                conditions=(boundary, index, old_value))
             evaluate_rule(generalization)
             candidates.append(generalization)
 
