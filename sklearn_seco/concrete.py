@@ -224,8 +224,9 @@ class InformationGainHeuristic(AbstractSecoImplementation):
     See (Quinlan, Cameron-Jones 1995) for the FOIL definition and
     (Witten,Frank,Hall 2011 fig 6.4) for its use in JRip/RIPPER.
 
-    Note that the papers all have `p * ( log(p/(p+n)) - log(P/(P+N)) )`, while
-    JRip implements `p * ( log((p+1) / (p+n+1)) - log((P+1) / (P+N+1)))`.
+    Note that the papers all have `p * ( log(p/(p+n)) - log(P/(P+N)) )`,
+    whereas JRip and ripper.c implement
+    `p * ( log((p+1) / (p+n+1)) - log((P+1) / (P+N+1)))`.
     """
 
     @classmethod
@@ -233,14 +234,14 @@ class InformationGainHeuristic(AbstractSecoImplementation):
                           ) -> float:
         p, n = rule.pn(context)
         if rule.original:
+            # NOTE: Frank,Hall,Witten fig 6.4 has always P,N
+            #   but ripper.c, JRip, and (Fürnkranz 1999) have rule.original.pn
             P, N = rule.original.pn(context)
         else:
             P, N = context.PN(rule.head)
-        # TODO: Frank,Hall,Witten fig 6.4 has P,N but JRip and (Fürnkranz 1999) have rule.original.pn
         if p == 0:
             return 0
-        # return p * (log2(p / (p + n)) - log2(P / (P + N)))  # info_gain
-        return p * (log2(p) - log2(p + n) - log2(P) + log2(P + N))  # info_gain
+        return p * (log2(p / (p + n)) - log2(P / (P + N)))  # info_gain
 
 
 class SignificanceStoppingCriterion(AbstractSecoImplementation):
