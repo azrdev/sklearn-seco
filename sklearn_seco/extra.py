@@ -543,7 +543,7 @@ def plot_coverage_log(
             rule_title_template = "%s: %s" % (title, rule_title_template)
         rule_axis.set_title(rule_title_template % rule_idx)
         # draw "random theory" reference marker
-        rule_axis.plot([0, grow_part.P], [0, grow_part.N], **rnd_style)
+        rule_axis.plot([0, grow_part.N], [0, grow_part.P], **rnd_style)
         # draw rule_trace
         rule_axis.plot(grow_part.ancestors[:, N], grow_part.ancestors[:, P],
                        'o-', color=rule_color)
