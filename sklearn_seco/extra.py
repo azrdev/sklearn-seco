@@ -549,8 +549,9 @@ def plot_coverage_log(
                        'o-', color=rule_color)
         if draw_refinements:
             # draw refinements as scattered dots
-            mask: slice = grow_part.refinements[:, P] != 0 \
-                if draw_refinements == 'nonzero' else slice(None)
+            mask: slice = (grow_part.refinements[:, P] != 0
+                           if draw_refinements == 'nonzero'
+                           else slice(None))
             rule_axis.plot(grow_part.refinements[mask, N],
                            grow_part.refinements[mask, P],
                            color='black', alpha=0.7, **refinements_style)

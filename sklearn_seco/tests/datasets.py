@@ -92,8 +92,6 @@ def xor_2d(n_samples=400, random=None):
     return Dataset(x_train, y_train, x_test, y_test)
 
 
-# TODO: IREP invalid theory
-# TODO: Ripper bad accuracy (0.49 < 0.8)
 def checkerboard_2d(n_samples=100_000, binary=True, categorical=True,
                     random=None):
     """

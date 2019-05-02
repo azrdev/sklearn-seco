@@ -186,6 +186,7 @@ def test_perfectly_correlated_categories_multiclass(seco_estimator,
     if seco_estimator.multi_class_ == 'direct':
         assert len(seco_estimator.get_seco_estimators()) == 1
         base = seco_estimator.get_seco_estimators()[0]
+        assert len(base.classes_) == 10
         assert len(base.theory_) == 10
         assert count_conditions(base.theory_, limit=Rule.UPPER) == 0
     else:

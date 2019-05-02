@@ -287,7 +287,8 @@ def delayed_inner_stop(inner_stop):
     def delaying_inner_stop(cls, rule: AugmentedRule, context: RuleContext):
         if not rule.original:
             return False
-        return inner_stop(cls, rule.original, context) and inner_stop(cls, rule, context)
+        return (inner_stop(cls, rule.original, context)
+                and inner_stop(cls, rule, context))
     return delaying_inner_stop
 
 
@@ -368,7 +369,7 @@ class GrowPruneSplitTheoryContext(TheoryContext):
       RNG to perform splitting. Passed to `sklearn.utils.check_random_state`.
     """
     def __init__(self, *args,
-                 grow_prune_random=1,  # JRip fixes its random state, too, if not given
+                 grow_prune_random=1,  # JRip fixes its random state, too, by default
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.grow_prune_random = check_random_state(grow_prune_random)
