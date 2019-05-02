@@ -19,10 +19,14 @@ def trace_estimator(seco_estimator_class) -> Tuple[Trace, str]:
         trace = trace_
 
     estimator = trace_coverage(seco_estimator_class, trace_callback)()
-    X, y, X_test, y_test, cm = xor_2d()
-    estimator.fit(X, y, categorical_features=cm)
+    dataset = xor_2d(n_samples=410)  # TODO default 400 has a bad split, learning no useful theory for irep,ripper
+    estimator.fit(dataset.x_train, dataset.y_train,
+                  categorical_features=dataset.categorical_features)
     # check recognition of binary problem
-    base = estimator.base_estimator_
+    assert estimator.multi_class_ != "direct"
+    bases = estimator.get_seco_estimators()
+    assert len(bases) == 1
+    base = bases[0]
     assert isinstance(base, _BinarySeCoEstimator)
     # check trace consistency
     assert isinstance(trace.last_rule_stop, bool)

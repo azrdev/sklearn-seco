@@ -53,7 +53,9 @@ class Trace:
         self.last_rule_stop = None
         self.use_pruning = use_pruning
 
-    def append_step(self, context: RuleContext, ancestors,
+    def append_step(self,
+                    context: RuleContext,
+                    ancestors: Iterable[AugmentedRule],
                     refinements: Sequence['Trace.Step.Part.Refinement']):
         if self.use_pruning:
             assert isinstance(context, GrowPruneSplitRuleContext)
@@ -81,7 +83,8 @@ class Trace:
                             ancestors: Iterable[AugmentedRule],
                             refinements: Sequence['Trace.Step.Part.Refinement']
                             ) -> 'Trace.Step':
-            PN = context.PN(force_complete_data=True)
+            ancestors = list(ancestors)
+            PN = context.PN(ancestors[0].head, force_complete_data=True)
             ancestors_counts = np.array(
                 [rule.pn(context, force_complete_data=True)
                  for rule in ancestors])
@@ -98,9 +101,9 @@ class Trace:
             step = Trace.Step.nonpruning_step(context, ancestors, [])
 
             context.growing = True
-            ancestors_counts_growing = np.array([context._count_matches(r)
-                                                 for r in ancestors])
-            PN_growing = context.PN()
+            ancestors_counts_growing = np.array([rule.pn(context)
+                                                 for rule in ancestors])
+            PN_growing = context.PN(ancestors[0].head)
             step.growing = Trace.Step.Part(ancestors_counts_growing,
                                            refinements, *PN_growing)
 
@@ -345,6 +348,8 @@ class TraceCoverageImplementation(AbstractSecoImplementation):
     because it overrides some methods not to be overridden. Use the
     `trace_coverage` decorator to ensure that.
     """
+
+    direct_multiclass_support = False
 
     @classmethod
     def inner_stopping_criterion(cls, refinement: AugmentedRule,
