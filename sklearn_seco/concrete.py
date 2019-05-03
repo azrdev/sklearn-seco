@@ -464,18 +464,25 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
         return P, N
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
-        """Mimic `AbstractSecoImplementation.evaluate_rule` but use
+        """Rate rule like `AbstractSecoImplementation.evaluate_rule` but use
         `pruning_heuristic` while pruning.
         """
-        pruning_heuristic = self.pruning_heuristic
         if self.growing:
             super().evaluate_rule(rule)
         else:
-            p, n = rule.pn(self)
-            # TODO: ensure rule._sort_key is not mixed. use incomparable types?
-            rule._sort_key = (pruning_heuristic(rule, self),
-                              p,
-                              -rule.instance_no)
+            rule._pruning_heuristic = self.pruning_heuristic(rule, self)
+
+    def sort_key(self, rule: 'AugmentedRule'):
+        if self.growing:
+            return super().sort_key(rule)
+
+        assert hasattr(rule, '_pruning_heuristic')
+        p, n = self.pn(rule)
+        return (rule._pruning_heuristic,
+                # tie-breaking: by positive coverage
+                p,
+                # and rule age
+                -rule.instance_no)
 
     @property
     def X(self):
@@ -507,10 +514,6 @@ class RipperPostPruning(AbstractSecoImplementation):
         """Find the best simplification of `rule` by dropping conditions and
         evaluating using `pruning_heuristic`.
 
-        NOTE: Overrides `AugmentedRule._sort_key` (i.e. the evaluation of
-          the rule under the growing heuristic) with the pruning heuristic
-          during the runtime of this method.
-
         :return: An improved version of `rule`.
         """
         assert isinstance(rule, ConditionTracingAugmentedRule)
@@ -528,7 +531,7 @@ class RipperPostPruning(AbstractSecoImplementation):
             evaluate_rule(generalization)
             candidates.append(generalization)
 
-        candidates.sort()
+        candidates.sort(key=context.sort_key)
         best_rule = candidates.pop()
 
         return best_rule

@@ -4,7 +4,6 @@ Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 """
 
 from abc import ABC, abstractmethod
-from functools import total_ordering
 from typing import Iterable, List, Tuple, Type, TypeVar, Dict, Any
 
 import numpy as np
@@ -132,14 +131,14 @@ def match_rule(X: np.ndarray,
 T = TypeVar('T', bound='AugmentedRule')  # needed for type signature of `copy`
 
 
-@total_ordering
 class AugmentedRule:
-    """A `Rule` and associated data, like coverage `pn` of current examples,
-    a `_sort_key` defining a total order between instances, and for rules
-    forked from others (with `copy()`) a reference to the original rule.
+    """A `Rule` and a cache for associated data, like coverage `pn` of current
+    examples, evaluation values defining a total order between instances (see
+    `RuleContext.sort_key`), and for rules forked from others (with `copy()`) a
+    reference to the original rule.
 
     Lifetime of an AugmentedRule is from its creation (in `init_rule` or
-    `refine_rule`) until its `_conditions` are added to the theory in
+    `refine_rule`) until the wrapped `raw` `Rule` is added to the theory in
     `abstract_seco`.
 
     Fields
@@ -155,13 +154,6 @@ class AugmentedRule:
 
     original: AugmentedRule or None
         Another rule this one has been forked from, using `copy()`.
-
-    _sort_key: tuple of floats
-        Defines an order of rules for `RuleQueue` and finding a `best_rule`,
-        using operator `<` (i.e. higher values == better rule == later in the
-        queue).
-        Set by `AbstractSecoImplementation.evaluate_rule` and accessed
-        implicitly through `__lt__`.
     """
 
     direct_multiclass_support = True
@@ -181,7 +173,6 @@ class AugmentedRule:
         self._conditions = conditions
         # _p_cache maps force_complete_data to covered counts per class
         self._p_cache: Dict[bool, np.ndarray] = {}
-        self._sort_key = None
 
     def copy(self: T, *, head: TGT = None,
              conditions: Tuple[int, int, Any] = None) -> T:
@@ -246,18 +237,6 @@ class AugmentedRule:
         :return: The rule body without augmentation, as needed for the theory.
         """
         return self._conditions
-
-    def __lt__(self, other):
-        """Sort `AugmentedRule` objects by their `_sort_key`."""
-        if not hasattr(other, '_sort_key'):
-            return NotImplemented
-        return self._sort_key < other._sort_key
-
-    def __eq__(self, other):
-        """Compare `AugmentedRule` objects by their `_sort_key`."""
-        if not hasattr(other, '_sort_key'):
-            return NotImplemented
-        return self._sort_key == other._sort_key
 
     def pn(self, context: 'RuleContext', force_complete_data: bool = False):
         """:return: `context.pn(self, force_complete_data)`"""
@@ -460,14 +439,21 @@ class RuleContext:
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
         """Rate rule to allow comparison & finding the best refinement."""
-        growing_heuristic = \
-            self.theory_context.implementation.growing_heuristic
+        rule._growing_heuristic = \
+            self.theory_context.implementation.growing_heuristic(rule, self)
+
+    def sort_key(self, rule: 'AugmentedRule'):
+        """
+        :return: an object used for ordering `rule` and other `AugmentedRule`
+            instances, based on `evaluate_rule`.
+        """
+        assert hasattr(rule, '_growing_heuristic')
         p, n = self.pn(rule)
-        rule._sort_key = (growing_heuristic(rule, self),
-                          # default tie-breaking: by positive coverage
-                          p,
-                          # and rule creation order (older = better)
-                          -rule.instance_no)
+        return (rule._growing_heuristic,
+                # default tie-breaking: by positive coverage
+                p,
+                # and rule creation order (older = better)
+                -rule.instance_no)
 
 
 class AbstractSecoImplementation(ABC):
@@ -510,10 +496,9 @@ class AbstractSecoImplementation(ABC):
         """Rate rule to allow comparison with other rules.
         Also used as confidence estimate for voting in multi-class cases.
 
-        Rules are compared using operator `<` on their `_sort_key`, which is
-        set by `evaluate_rule` to a tuple of values: First (most important) the
-        result of this `growing_heuristic`, later values are used for tie
-        breaking.
+        Rules are compared using operator `<` on `RuleContext.sort_key(rule)`,
+        which primarily uses the result of `growing_heuristic` (which was called
+        by `evaluate_rule`). Higher values signify better rules.
         """
         raise NotImplementedError
 

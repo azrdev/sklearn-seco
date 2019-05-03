@@ -176,6 +176,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         refine_rule = implementation.refine_rule
         inner_stopping_criterion = implementation.inner_stopping_criterion
         filter_rules = implementation.filter_rules
+        sort_key = context.sort_key
 
         # algorithm
         best_rule = init_rule(context)
@@ -187,9 +188,9 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                     context.evaluate_rule(refinement)
                     if not inner_stopping_criterion(refinement, context):
                         rules.append(refinement)
-                        if best_rule < refinement:
+                        if sort_key(best_rule) < sort_key(refinement):
                             best_rule = refinement
-            rules.sort()
+            rules.sort(key=sort_key)
             rules = filter_rules(rules, context)
         return best_rule
 
