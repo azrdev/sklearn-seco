@@ -193,10 +193,10 @@ class AugmentedRule:
         :return: A copy of self with different `head` and/or `body`, if not
             None.
         """
-        cls = type(self)
+        cls = type(self)  # use type in case we're a subclass of AugmentedRule
         copy = cls(self._conditions.copy(), original=self)  # type: T
         if head is not None:
-            copy._conditions.head = self.head
+            copy.head = head
         if conditions is None:
             # share the coverage counts
             copy._p_cache = self._p_cache
