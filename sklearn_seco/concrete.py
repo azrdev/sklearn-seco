@@ -16,7 +16,6 @@ from typing import Iterable, NamedTuple, Tuple, Any
 
 import numpy as np
 from scipy.special import xlogy
-from sklearn.utils import check_random_state
 
 from sklearn_seco.abstract import \
     Theory, SeCoEstimator
@@ -360,21 +359,6 @@ class ConditionTracingAugmentedRule(AugmentedRule):
         return copy
 
 
-class GrowPruneSplitTheoryContext(TheoryContext):
-    """`TheoryContext` needed for `GrowPruneSplitRuleContext`.
-
-    TODO: find a way to render this class obsolete
-
-    :param grow_prune_random: None | int | instance of RandomState
-      RNG to perform splitting. Passed to `sklearn.utils.check_random_state`.
-    """
-    def __init__(self, *args,
-                 grow_prune_random=1,  # JRip fixes its random state, too, by default
-                 **kwargs):
-        super().__init__(*args, **kwargs)
-        self.grow_prune_random = check_random_state(grow_prune_random)
-
-
 class GrowPruneSplitRuleContext(ABC, RuleContext):
     """Implement a split of the examples into growing and pruning set once per
     iteration (i.e. for each `find_best_rule` call).
@@ -404,16 +388,13 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
 
     pruning_split_ratio: float = 1 / 3
 
-    def __init__(self, theory_context: GrowPruneSplitTheoryContext, X, y):
+    def __init__(self, theory_context: TheoryContext, X, y):
         super().__init__(theory_context, X, y)
-        assert isinstance(theory_context, GrowPruneSplitTheoryContext)
         self.growing = True
 
         # split examples
-        grow_idx, prune_idx = grow_prune_split(
-            y,
-            self.pruning_split_ratio,
-            theory_context.grow_prune_random,)
+        grow_idx, prune_idx = grow_prune_split(y, self.pruning_split_ratio,
+                                               theory_context.rng)
         self._growing_X = X[grow_idx]
         self._growing_y = y[grow_idx]
         self._pruning_X = X[prune_idx]
@@ -686,6 +667,7 @@ class RipperEstimator(SeCoEstimator):
     """
     class algorithm_config(SeCoAlgorithmConfiguration):
         RuleClass = ConditionTracingAugmentedRule
+        TheoryContextClass = RipperMdlRuleStopTheoryContext
 
         class Implementation(BeamSearch,
                              TopDownSearchImplementation,
@@ -717,10 +699,6 @@ class RipperEstimator(SeCoEstimator):
                 """
                 p, n = rule.pn(context)
                 return (p + 1) / (p + n + 2)  # laplace
-
-        class TheoryContextClass(GrowPruneSplitTheoryContext,
-                                 RipperMdlRuleStopTheoryContext):
-            pass
 
 
 class IrepEstimator(SeCoEstimator):
@@ -758,8 +736,6 @@ class IrepEstimator(SeCoEstimator):
                     return 0
                 tn = N - n
                 return (p + tn) / (P + N)
-
-        TheoryContextClass = GrowPruneSplitTheoryContext
 
 
 # TODO: sklearn.get/set_param setting *Implementation fields?

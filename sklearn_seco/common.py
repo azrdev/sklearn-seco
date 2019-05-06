@@ -286,11 +286,13 @@ class TheoryContext:
                  categorical_mask: np.ndarray,
                  n_features: int,
                  classes: np.ndarray,
+                 rng: np.random.RandomState,
                  X, y):
+        self.algorithm_config = algorithm_config
         self.categorical_mask = categorical_mask
         self.n_features = n_features
         self.classes = classes
-        self.algorithm_config = algorithm_config
+        self.rng = rng
         self.complete_X = X
         self.complete_y = y
 

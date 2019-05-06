@@ -11,7 +11,7 @@ from sklearn.multiclass import OneVsRestClassifier, OneVsOneClassifier
 from sklearn.utils import check_X_y, check_array
 from sklearn.utils.metaestimators import if_delegate_has_method
 from sklearn.utils.multiclass import unique_labels
-from sklearn.utils.validation import check_is_fitted
+from sklearn.utils.validation import check_is_fitted, check_random_state
 
 from sklearn_seco.common import \
     AugmentedRule, RuleQueue, Theory, \
@@ -63,6 +63,11 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         If False, remove only the true positives.
         If None, set `remove_false_positives=ordered_matching`.
 
+    random_state : None | int | instance of np.random.RandomState
+        RNG, value passed through `sklearn.utils.check_random_state`. May not be
+        used by the concrete algorithm.
+        Used e.g. by `GrowPruneSplitRuleClass`.
+
     Attributes
     -----
     algorithm_config_ : SeCoAlgorithmConfiguration
@@ -111,12 +116,15 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                  algorithm_config_class: Type['SeCoAlgorithmConfiguration'],
                  categorical_features: Union[None, str, np.ndarray] = None,
                  ordered_matching: bool = True,
-                 remove_false_positives: bool = None):
+                 remove_false_positives: bool = None,
+                 random_state: int = 1,  # JRip fixes its random state, too, by default
+                 ):
         super().__init__()
         self.algorithm_config_class = algorithm_config_class
         self.categorical_features = categorical_features
         self.ordered_matching = ordered_matching
         self.remove_false_positives = remove_false_positives
+        self.random_state = random_state
 
     def fit(self, X, y):
         """Fit to data, i.e. learn theory
@@ -127,6 +135,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         """
         X, y = check_X_y(X, y, dtype=np.floating)
         self.algorithm_config_ = self.algorithm_config_class()
+        self.rng = check_random_state(self.random_state)
 
         # prepare  target / labels / y
         self.classes_ = unique_labels(y)
@@ -198,7 +207,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         """Main loop of abstract SeCo/Covering algorithm."""
 
         theory_context = self.algorithm_config_.make_theory_context(
-            self.categorical_mask_, self.n_features_, self.classes_,
+            self.categorical_mask_, self.n_features_, self.classes_, self.rng,
             X, y)
         remove_false_positives = (
             self.remove_false_positives

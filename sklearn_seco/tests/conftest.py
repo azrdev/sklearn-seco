@@ -1,16 +1,15 @@
 """pytest fixtures for the test cases in this directory."""
-from functools import partialmethod
 from typing import Optional, Type
 
 import numpy as np
 import pytest
 from sklearn.utils import check_random_state
+from sklearn.utils.testing import set_random_state
 
 from sklearn_seco.abstract import SeCoEstimator
 from sklearn_seco.common import Theory
 from sklearn_seco.concrete import \
-    SimpleSeCoEstimator, CN2Estimator, IrepEstimator, RipperEstimator, \
-    GrowPruneSplitTheoryContext
+    SimpleSeCoEstimator, CN2Estimator, IrepEstimator, RipperEstimator
 
 from .datasets import Dataset, \
     binary_slight_overlap, binary_categorical, \
@@ -62,16 +61,7 @@ def seco_estimator_class(request) -> Type[SeCoEstimator]:
 
     :return: An estimator class.
     """
-    est_cls: Type[SeCoEstimator] = request.param
-
-    if issubclass(est_cls.algorithm_config.TheoryContextClass,
-                  GrowPruneSplitTheoryContext):
-        # fix rng state
-        # TODO: maybe use a single random_state in SeCoEstimator instead
-        est_cls.algorithm_config.make_theory_context = \
-            partialmethod(est_cls.algorithm_config.make_theory_context,
-                          grow_prune_random=42)
-    return est_cls
+    return request.param
 
 
 @pytest.fixture
@@ -81,7 +71,9 @@ def seco_estimator(seco_estimator_class):
 
     :return: An estimator instance.
     """
-    return seco_estimator_class()
+    est = seco_estimator_class()
+    set_random_state(est)  # fix random state for tests
+    return est
 
 
 @pytest.fixture
