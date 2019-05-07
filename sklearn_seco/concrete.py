@@ -132,7 +132,8 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
         categorical_mask = context.theory_context.categorical_mask
         # TODO: maybe mark constant features (or with p < threshold) for exclusion in future specializations
 
-        def specialize(boundary: int, index: int, value):
+        def specialize(boundary: int, index: int, value
+                       ) -> Iterable[AugmentedRule]:
             if context.theory_context.is_binary():
                 # in binary case, only emit rules for target_class,
                 # i.e. do concept learning. See `_BinarySeCoEstimator.fit`.
@@ -145,7 +146,7 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
                 if not P:
                     continue
                 yield rule.copy(head=target_class,
-                                conditions=(boundary, index, value))
+                                condition=(boundary, index, value))
 
         # categorical features
         for index in np.argwhere(categorical_mask
@@ -349,10 +350,10 @@ class ConditionTracingAugmentedRule(AugmentedRule):
             self.condition_trace[:] = self.original.condition_trace
 
     def copy(self: T, *, head: TGT = None,
-             conditions: Tuple[int, int, Any] = None) -> T:
-        copy = super().copy(head=head, conditions=conditions)  # type: T
-        if conditions is not None:
-            boundary, index, value = conditions
+             condition: Tuple[int, int, Any] = None) -> T:
+        copy: T = super().copy(head=head, condition=condition)
+        if condition is not None:
+            boundary, index, value = condition
             copy.condition_trace.append(
                 ConditionTracingAugmentedRule.TraceEntry(
                     boundary, index, value, self.body[boundary, index]))
@@ -508,7 +509,7 @@ class RipperPostPruning(AbstractSecoImplementation):
         generalization = rule
         for boundary, index, value, old_value in reversed(rule.condition_trace):
             generalization = generalization.copy(
-                conditions=(boundary, index, old_value))
+                condition=(boundary, index, old_value))
             evaluate_rule(generalization)
             candidates.append(generalization)
 

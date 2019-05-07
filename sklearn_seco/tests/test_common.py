@@ -4,7 +4,8 @@ import numpy as np
 from numpy.core.umath import NINF, PINF
 from numpy.testing import assert_array_equal
 
-from sklearn_seco.common import match_rule, Rule
+from sklearn_seco.common import match_rule, Rule, AugmentedRule
+from .conftest import assert_array_unequal
 
 
 def test_match_rule():
@@ -39,3 +40,32 @@ def test_match_rule():
         [PINF, PINF,  3.0,  4.0]], [True, False, True, False], X=X4)
 
     # TODO: define & test NaN in X (missing values)
+
+
+def test_copy_rule():
+    rule = Rule.make_empty(17, 'positive')
+    copy = rule.copy()
+    assert rule.head == copy.head, "Rule.head modified head"
+    assert_array_equal(rule.body, copy.body, "Rule.copy modified body")
+    mod_copy = rule.copy()
+    mod_copy.head = 'negative'
+    mod_copy.body[Rule.LOWER, 11] = 42
+
+    assert_array_unequal(rule.body, mod_copy.body)
+    assert_array_equal(rule.body, copy.body,
+                       "modifying copied rule changed original")
+
+
+def test_copy_augmentedrule():
+    rule = AugmentedRule.make_empty(17, 'positive')
+    copy_unmod = rule.copy()
+    assert rule.head == copy_unmod.head
+    assert_array_equal(rule.body, copy_unmod.body)
+    copy_mod_head = rule.copy(head='negative')
+    assert rule.head != copy_mod_head.head
+    assert_array_equal(rule.body, copy_mod_head.body)
+    copy_mod_body = rule.copy(condition=(Rule.LOWER, 11, 42))
+    assert rule.head == copy_mod_body.head
+    assert_array_unequal(rule.body, copy_mod_body.body)
+    assert_array_equal(rule.body, copy_unmod.body,
+                       "modifying copied rule changed original")

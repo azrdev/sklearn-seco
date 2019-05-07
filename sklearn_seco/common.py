@@ -45,8 +45,14 @@ class Rule:
         self.head = head
         self.body = body
 
-    def copy(self) -> 'Rule':
-        return type(self)(self.head, self.body.copy())
+    def copy(self, _share_body: bool = False) -> 'Rule':
+        """
+        :return: a copy of self, i.e. another `Rule` sharing `body` and `head`.
+        :param _share_body: bool
+            If True, make use of the same `body` numpy array. Internal use only.
+        """
+        return type(self)(self.head,
+                          self.body if _share_body else np.copy(self.body))
 
     @staticmethod
     def make_empty(n_features: int, target_class: TGT) -> 'Rule':
@@ -92,6 +98,9 @@ class Rule:
             # ti has type: Tuple[int, int]
             # where ti[0] is LOWER or UPPER and ti[1] is the feature index
             for ti in zip(*np.isfinite(self.body).nonzero())) + classification
+
+    def __repr__(self):
+        return str('Rule({!r},\n {!r}'.format(self.head, self.body))
 
 
 def match_rule(X: np.ndarray,
@@ -175,24 +184,26 @@ class AugmentedRule:
         self._p_cache: Dict[bool, np.ndarray] = {}
 
     def copy(self: T, *, head: TGT = None,
-             conditions: Tuple[int, int, Any] = None) -> T:
+             condition: Tuple[int, int, Any] = None) -> T:
         """Create a modified copy of a rule.
 
         :param head: A new head (target_class), if not None.
-        :param conditions: A tuple(boundary: int, index: int, value) or None.
+        :param condition: A tuple(boundary: int, index: int, value) or None.
             If not None, set `copy.body[boundary, index] = value`.
         :return: A copy of self with different `head` and/or `body`, if not
             None.
         """
+        share_body: bool = condition is None
         cls = type(self)  # use type in case we're a subclass of AugmentedRule
-        copy = cls(self._conditions.copy(), original=self)  # type: T
+        copy: T = cls(self._conditions.copy(_share_body=share_body),
+                      original=self)
         if head is not None:
             copy.head = head
-        if conditions is None:
+        if share_body:
             # share the coverage counts
             copy._p_cache = self._p_cache
         else:
-            boundary, index, value = conditions
+            boundary, index, value = condition
             copy._conditions.body[boundary, index] = value
         return copy
 

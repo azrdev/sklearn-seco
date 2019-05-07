@@ -3,6 +3,7 @@ from typing import Optional, Type
 
 import numpy as np
 import pytest
+from numpy.testing import assert_array_equal, assert_raises
 from sklearn.utils import check_random_state
 from sklearn.utils.testing import set_random_state
 
@@ -16,6 +17,12 @@ from .datasets import Dataset, \
     binary_mixed, xor_2d, checkerboard_2d, perfectly_correlated_multiclass, \
     sklearn_make_classification, sklearn_make_moons, artificial_disjunction, \
     staged
+
+
+def assert_array_unequal(actual, expected, *args):
+    """Fail iff arrays are equal. Arguments like `assert_array_equal`."""
+    with assert_raises(AssertionError):
+        assert_array_equal(actual, expected, *args)
 
 
 # pytest plugin, to print theory on test failure
