@@ -64,8 +64,8 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
         If None, set `remove_false_positives=ordered_matching`.
 
     random_state : None | int | instance of np.random.RandomState
-        RNG, value passed through `sklearn.utils.check_random_state`. May not be
-        used by the concrete algorithm.
+        RNG, may be used by the concrete algorithm. Value passed through
+        `sklearn.utils.check_random_state`.
         Used e.g. by `GrowPruneSplitRuleClass`.
 
     Attributes
@@ -117,7 +117,7 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
                  categorical_features: Union[None, str, np.ndarray] = None,
                  ordered_matching: bool = True,
                  remove_false_positives: bool = None,
-                 random_state: int = 1,  # JRip fixes its random state, too, by default
+                 random_state=1,  # JRip fixes its random state, too, by default
                  ):
         super().__init__()
         self.algorithm_config_class = algorithm_config_class
@@ -391,6 +391,10 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         - 'one_vs_one': Use `sklearn.multiclass.OneVsOneClassifier` for class
           binarization and learn binary theories.
 
+    random_state : None | int | instance of np.random.RandomState
+        RNG, may be used by the algorithm. Value passed through
+        `sklearn.utils.check_random_state`.
+
     n_jobs : int, optional
         Passed to `OneVsRestClassifier` or `OneVsOneClassifier` if these are
         used.
@@ -418,8 +422,9 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
     algorithm_config: Type[SeCoAlgorithmConfiguration]
 
-    def __init__(self, multi_class=None, n_jobs=1):
+    def __init__(self, multi_class=None, random_state=1, n_jobs=1):
         self.multi_class = multi_class
+        self.random_state = random_state
         self.n_jobs = n_jobs
 
     def fit(self, X, y, **kwargs):
@@ -430,9 +435,12 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         """
         X, y = check_X_y(X, y, multi_output=False)
         self.multi_class_ = self.multi_class
-        self.base_estimator_ = _BinarySeCoEstimator(self.algorithm_config,
-                                                    **kwargs)
-        # FIXME: categorical_features contains class order, has to go through BySizeLabelEncoderm, too
+        self.base_estimator_ = _BinarySeCoEstimator(
+            self.algorithm_config, random_state=self.random_state, **kwargs)
+        # NOTE: if using multiprocessing (e.g. through OvO or OvR), all
+        #   sub-estimators share the same random seed/state.
+        #   I think this should not harm.
+        # FIXME: categorical_features contains class order, has to go through BySizeLabelEncoder, too
 
         def wrapper_ordering_classes_by_size(estimator):
             # BySizeLabelEncoder ensures:  first class = default = biggest
