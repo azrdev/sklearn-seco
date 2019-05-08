@@ -311,6 +311,10 @@ class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
             return confidence_by_class[:, 1].ravel()
         return confidence_by_class
 
+    def _more_tags(self):
+        # tell sklearn >= 0.21 that we can handle categorical data
+        return {'X_types': ['2darray', 'categorical']}
+
     def export_text(self, feature_names: List[str] = None,
                     class_names: List[str] = None) -> str:
         """Build a text report showing the rules in the learned theory.
@@ -422,6 +426,10 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
     algorithm_config: Type[SeCoAlgorithmConfiguration]
 
+    def _more_tags(self):
+        # tell sklearn >= 0.21 that we can handle categorical data
+        return {'X_types': ['2darray', 'categorical']}
+
     def __init__(self, multi_class=None, random_state=1, n_jobs=1):
         self.multi_class = multi_class
         self.random_state = random_state
@@ -481,7 +489,9 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
                 raise ValueError("Unknown multi-class mode %s"
                                  % self.multi_class_)
 
-        # TODO: param categorical_features is data dependent, but OvR/OvO don't pass **kwargs through fit(), so it has to be in _BinarySeCoEstimator.__init__
+        # NOTE: param categorical_features is data dependent, but OvR/OvO don't
+        #   pass extra parmeters through fit(), so it has to be in
+        #   `_BinarySeCoEstimator.__init__`.
         self.base_estimator_.fit(X, y)
         return self
 
