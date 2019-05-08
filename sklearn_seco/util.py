@@ -20,15 +20,24 @@ class BySizeLabelEncoder(BaseEstimator, TransformerMixin):
     """Encode labels with ints between 0 and n_classes-1, ordered descending by
     size.
 
+    Uses LabelEncoder to do the encoding, so there are two steps:
+
+    original labels => LabelEncoder-encoded labels => by-size assigned labels.
+
     Attributes
     -----
     le_ : LabelEncoder
-        Delegate doing the actual encoding
+        Delegate doing the actual encoding, we only reorder.
 
     cidx_by_size_ : array of shape (n_class,)
-        Holds the class labels (after translation by le_), ordered by size.
-        I.e. a mapping from
+        Holds the labels ordering by size, indexed by the `le_`-transformed
+        original class labels. I.e. constitutes a mapping from
         LabelEncoder-translated-index => size-ordered class index.
+
+    bsidx_lexsorted_ : array of shape (n_class,)
+        Holds the `le_`-transformed original class labels, ordered by size.
+        I.e. constitutes a mapping from
+        size-ordered class index => LabelEncoder-translated-index.
 
     See Also
     -----
@@ -39,7 +48,7 @@ class BySizeLabelEncoder(BaseEstimator, TransformerMixin):
     """
     def _fit(self, y):
         _, class_counts = np.unique(y, return_counts=True)
-        self.bsidx_lexsorted_ = np.argsort(class_counts)[::-1]
+        self.bsidx_lexsorted_ = np.argsort(- class_counts)
         self.cidx_by_size_ = np.argsort(self.bsidx_lexsorted_)
 
     def fit(self, y):
@@ -99,10 +108,6 @@ class TargetTransformingMetaEstimator(BaseEstimator, MetaEstimatorMixin):
         y_trans = self.transform.fit_transform(y)
         self.estimator.fit(X, y_trans)
         return self
-
-    def fit_transform(self, X, y):
-        y_trans = self.transform.fit_transform(y)
-        return self.estimator.fit_transform(X, y_trans)
 
     def predict(self, X):
         return self.transform.inverse_transform(self.estimator.predict(X))
