@@ -12,8 +12,10 @@ from sklearn.utils.estimator_checks import check_estimator
 
 from sklearn_seco.abstract import _BinarySeCoEstimator
 from sklearn_seco.common import Rule
-from sklearn_seco.concrete import grow_prune_split, SimpleSeCoEstimator
-from sklearn_seco.util import TargetTransformingMetaEstimator
+from sklearn_seco.concrete import grow_prune_split, SimpleSeCoEstimator, \
+    TopDownSearchImplementation
+from sklearn_seco.util import TargetTransformingMetaEstimator, \
+    BySizeLabelEncoder
 from .conftest import count_conditions
 from .datasets import perfectly_correlated_multiclass
 
@@ -81,6 +83,47 @@ def test_grow_prune_split_ratio(y, ratio: float):
 
     if 0 < ratio < 1:
         assert_array_equal(gcc + pcc, ycc, "not all samples from y in {growing + pruning}")
+
+
+def test_TopDownSearch():
+    # setup an estimator using TopDownSearch
+    X = np.array([[1., 1, 99], [2., 3, 99], [3., 4, 99]] * 4)
+    y = np.array([10, 20, 30] * 4)
+    try:
+        estimator = SimpleSeCoEstimator()
+        estimator.fit(X, y, categorical_features=np.array([False, True, True]))
+    except BaseException as e:
+        print(e)  # ignore, we're not here to test SimpleSeCo
+    assert estimator.multi_class_ == 'direct'
+    assert len(estimator.get_seco_estimators()) == 1
+    base = estimator.get_seco_estimators()[0]
+    transform: BySizeLabelEncoder = estimator.base_estimator_.transform
+    implementation = base.algorithm_config_.implementation
+    assert isinstance(implementation, TopDownSearchImplementation)
+    # setup TheoryContext and RuleContext
+    theory_context = base.algorithm_config_.make_theory_context(
+        base.categorical_mask_, base.n_features_, base.classes_, base.rng,
+        X, transform.transform(y))
+    rule_context = base.algorithm_config_.make_rule_context(
+        theory_context, X, transform.transform(y))
+    # check rule specialization
+    rule = base.algorithm_config_.make_rule(base.n_features_,
+                                            estimator.classes_[-1])
+    refinements = list(implementation.refine_rule(rule, rule_context))
+    assert_array_equal(
+        np.unique(transform.inverse_transform([r.head for r in refinements])),
+        [10, 20, 30])
+    assert_array_equal(np.unique([r.lower[1] for r in refinements]),
+                       [np.NINF, 1, 3, 4])
+    assert_array_equal(np.unique([r.upper[2] for r in refinements]), [np.PINF])
+    # 2 numeric splits +2 for +-inf; 3, 1 categorical matches; 3 target classes.
+    assert len(refinements) == ((2+2) + 3 + 1) * 3
+    # check that categorical test is not overridden
+    value2 = 4
+    rule2 = rule.copy(condition=(Rule.LOWER, 1, value2))
+    refinements2 = list(implementation.refine_rule(rule2, rule_context))
+    assert_array_equal(np.unique([r.lower[1] for r in refinements2]),
+                       [value2])
 
 
 def test_base_trivial(record_theory):

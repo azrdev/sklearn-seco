@@ -5,6 +5,7 @@ from numpy.core.umath import NINF, PINF
 from numpy.testing import assert_array_equal
 
 from sklearn_seco.common import match_rule, Rule, AugmentedRule
+from sklearn_seco.concrete import SimpleSeCoEstimator
 from .conftest import assert_array_unequal
 
 
@@ -69,3 +70,21 @@ def test_copy_augmentedrule():
     assert_array_unequal(rule.body, copy_mod_body.body)
     assert_array_equal(rule.body, copy_unmod.body,
                        "modifying copied rule changed original")
+
+
+def test_categorical_mask():
+    X = [[1, 2, 3]] * 10 + [[3, 2, 1]] * 10
+    y = [13] * 10 + [31] * 10
+    estimator = SimpleSeCoEstimator().fit(X, y, categorical_features=None)
+    assert_array_equal(estimator.get_seco_estimators()[0].categorical_mask_,
+                       [False, False, False])
+    estimator = SimpleSeCoEstimator().fit(X, y, categorical_features=[])
+    assert_array_equal(estimator.get_seco_estimators()[0].categorical_mask_,
+                       [False, False, False])
+    estimator = SimpleSeCoEstimator().fit(X, y, categorical_features='all')
+    assert_array_equal(estimator.get_seco_estimators()[0].categorical_mask_,
+                       [True, True, True])
+    estimator = SimpleSeCoEstimator() \
+        .fit(X, y, categorical_features=np.array([True, False, False]))
+    assert_array_equal(estimator.get_seco_estimators()[0].categorical_mask_,
+                       [True, False, False])

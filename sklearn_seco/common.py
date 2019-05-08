@@ -645,13 +645,14 @@ class SeCoAlgorithmConfiguration:
         self.implementation = self.Implementation()
 
     def make_rule(self, *args, **kwargs) -> 'RuleClass':
-        """:return: An instance of `RuleClass`."""
+        """:return: An instance of `RuleClass`, i.e. `AugmentedRule`."""
         return self.RuleClass.make_empty(*args, **kwargs)
 
     def make_theory_context(self, *args, **kwargs) -> 'TheoryContextClass':
-        """:return: An instance of `TheoryContextClass`."""
+        """:return: An instance of `TheoryContextClass`, i.e. `TheoryContext`.
+        """
         return self.TheoryContextClass(self, *args, **kwargs)
 
     def make_rule_context(self, *args, **kwargs) -> 'RuleContextClass':
-        """:return: An instance of `RuleContextClass`."""
+        """:return: An instance of `RuleContextClass`, i.e. `RuleContext`."""
         return self.RuleContextClass(*args, **kwargs)
