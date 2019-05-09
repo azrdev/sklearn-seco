@@ -95,8 +95,8 @@ def trivial_decision_border():
                         np.zeros(50)]).T
     X = samples[:, :-1]  # all but last column
     y = samples[:, -1]  # last column
-    samples[0:25, 1] += 1
-    y[0:25] = 1
+    samples[0:26, 1] += 1  # make class 1 bigger, so it's the positive class
+    y[0:26] = 1
     random.shuffle(samples)
     return Dataset(X, y)
 

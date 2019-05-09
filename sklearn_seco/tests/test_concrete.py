@@ -127,11 +127,12 @@ def test_TopDownSearch():
 
 
 def test_base_trivial(record_theory):
-    """Test SimpleSeCo with a trivial test set of 2 instances."""
+    """Test SimpleSeCo with a trivial test set of 3 instances."""
     categorical_mask = np.array([True, False])
     X_train = np.array([[100, 0.0],
+                        [111, 1.0],
                         [111, 1.0]])
-    y_train = np.array([1, 2])
+    y_train = np.array([1, 2, 2])
     est = SimpleSeCoEstimator().fit(X_train, y_train,
                                     categorical_features=categorical_mask)
     assert isinstance(est.base_estimator_, TargetTransformingMetaEstimator)
@@ -157,14 +158,14 @@ def test_base_trivial(record_theory):
 
 
 def test_base_easyrules(record_theory):
-    """Test SimpleSeCo with a linearly separable, 4 instance binary test set.
+    """Test SimpleSeCo with a linearly separable, 5 instance binary test set.
 
     B, numerical ordinal
       ^
       |
      1+ n
      0+
-    -1+ p     n
+    -1+ p     nn
     -2+ p
       +-+-----+-> A, categorical
         0     1
@@ -173,8 +174,10 @@ def test_base_easyrules(record_theory):
     X_train = np.array([[0, -1.0],
                         [0, -2.0],
                         [0,  1.0],
-                        [1, -1.0]])
-    y_train = np.array([1, 1, 2, 2])
+                        [1, -1.0],
+                        [1, -1.0],
+                        ])
+    y_train = np.array([1, 1, 2, 2, 2])
     est = SimpleSeCoEstimator().fit(X_train, y_train,
                                     categorical_features=categorical_mask)
     assert isinstance(est.base_estimator_, TargetTransformingMetaEstimator)

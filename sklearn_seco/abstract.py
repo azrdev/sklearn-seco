@@ -448,7 +448,6 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         # NOTE: if using multiprocessing (e.g. through OvO or OvR), all
         #   sub-estimators share the same random seed/state.
         #   I think this should not harm.
-        # FIXME: categorical_features contains class order, has to go through BySizeLabelEncoder, too
 
         def wrapper_ordering_classes_by_size(estimator):
             # BySizeLabelEncoder ensures:  first class = default = biggest
@@ -490,7 +489,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
                                  % self.multi_class_)
 
         # NOTE: param categorical_features is data dependent, but OvR/OvO don't
-        #   pass extra parmeters through fit(), so it has to be in
+        #   pass extra parameters through fit(), so it has to be in
         #   `_BinarySeCoEstimator.__init__`.
         self.base_estimator_.fit(X, y)
         return self
