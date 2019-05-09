@@ -83,6 +83,7 @@ def seco_estimator(seco_estimator_class):
     return est
 
 
+# TODO: CN2 fails, b/c it learns only one rule when it gets to x=[[… 2 0] [… 0 1]] y=[2 1]
 @pytest.fixture
 def trivial_decision_border():
     """Generate normal distributed, linearly separated binary problem.

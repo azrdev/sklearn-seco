@@ -259,7 +259,7 @@ class SignificanceStoppingCriterion(AbstractSecoImplementation):
         """
         p, n = rule.pn(context)
         P, N = context.PN(rule.head)
-        if 0 in (p, P, N):
+        if p == 0:
             return True
         # purity = p / (p + n)
         # impurity = n / (p + n)
@@ -269,7 +269,9 @@ class SignificanceStoppingCriterion(AbstractSecoImplementation):
         # LRS = 2 * (P + N) * J  # likelihood ratio statistics
         e_p = (p + n) * P / (P + N)
         e_n = (p + n) * N / (P + N)
-        LRS = 2 * (xlogy(p, p / e_p) + xlogy(n, n / e_n))
+        LRS_p = xlogy(p, p / e_p) if e_p != 0 else 0  # exclude if P == 0
+        LRS_n = xlogy(n, n / e_n) if e_n != 0 else 0  # exclude if N == 0
+        LRS = 2 * (LRS_p + LRS_n)
         return LRS <= cls.LRS_threshold
 
 
