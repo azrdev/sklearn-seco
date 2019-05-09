@@ -443,11 +443,10 @@ class RuleContext:
         """
         covered = self.match_rule(rule, force_complete_data)
         y = self._y if force_complete_data else self.y
-        cov_classes, cov_counts = np.unique(y[covered], return_counts=True)
         all_counts = np.zeros_like(self.theory_context.classes)
-        cov_class_idx = np.searchsorted(self.theory_context.classes,
-                                        cov_classes)
-        all_counts[cov_class_idx] = cov_counts
+        for i, target_class in enumerate(self.theory_context.classes):
+            # surprisingly this loop is faster than np.unique
+            all_counts[i] = np.count_nonzero(covered & (y == target_class))
         return all_counts
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
