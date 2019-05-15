@@ -1,7 +1,9 @@
 """Implementation of SeCo / Covering algorithm.
 
-Limitations / Assumptions (partly TODO)
+Limitations / Assumptions
 =====
+
+Could be considered as TODO.
 
 - at most two tests (see "operator set" below) per feature and rule
 - no sparse input

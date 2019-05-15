@@ -7,8 +7,11 @@
     - with sklearn.RandomForest, CART
     - with weka.JRip J48 PRISM CN2
 - optimization <http://www.scipy-lectures.org/advanced/optimizing/index.html>
+    - categorical features as bitvectors
+        - <https://stackoverflow.com/questions/5602155/numpy-boolean-array-with-1-bit-entries>
+        - problem: NaN == no rule test, need separate mask array
+    - (multiple?) rule matching as matrix operation/multiplication
 
-- regression?
 - assert & document possibility to change rule format in SeCoImplementation
     without changing sklearn_seco, i.e. it could be extended to other rule
     language → language bias
@@ -16,6 +19,3 @@
 - python3.5 compatibility, esp. type hints
 - submission to upstream: sklearn-contrib? future maintainer needed?
 
-- categorical features as bitvectors
-    - <https://stackoverflow.com/questions/5602155/numpy-boolean-array-with-1-bit-entries>
-    - problem: NaN == no rule test, need separate mask array

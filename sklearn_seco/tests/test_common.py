@@ -40,8 +40,6 @@ def test_match_rule():
     am([[   1, NINF, NINF, NINF],
         [PINF, PINF,  3.0,  4.0]], [True, False, True, False], X=X4)
 
-    # TODO: define & test NaN in X (missing values)
-
 
 def test_copy_rule():
     rule = Rule.make_empty(17, 'positive')
@@ -88,3 +86,7 @@ def test_categorical_mask():
         .fit(X, y, categorical_features=np.array([True, False, False]))
     assert_array_equal(estimator.get_seco_estimators()[0].categorical_mask_,
                        [True, False, False])
+
+
+# TODO: test _BinarySeCoEstimator.ordered_matching = True
+# TODO: test match_rule without numba

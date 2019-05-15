@@ -183,7 +183,7 @@ class AugmentedRule:
         # _p_cache maps force_complete_data to covered counts per class
         self._p_cache: Dict[bool, np.ndarray] = {}
 
-    def copy(self: T, *, head: TGT = None,
+    def copy(self, *, head: TGT = None,
              condition: Tuple[int, int, Any] = None) -> T:
         """Create a modified copy of a rule.
 
