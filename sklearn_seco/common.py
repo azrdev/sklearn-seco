@@ -3,11 +3,22 @@ Implementation of SeCo / Covering algorithm:
 Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
 """
 
+import warnings
 from abc import ABC, abstractmethod
+from functools import partial
 from typing import Iterable, List, Tuple, Type, TypeVar, Dict, Any
 
 import numpy as np
 
+try:
+    HAVE_NUMBA = True
+    from numba import jit
+    jit = partial(jit, cache=True, nopython=True)
+except ImportError as e:
+    warnings.warn("Could not import numba, plain python implementation will be "
+                  "slower. " + str(e))
+    jit = id
+    HAVE_NUMBA = False
 
 TGT = TypeVar("TGT")
 
@@ -129,12 +140,36 @@ def match_rule(X: np.ndarray,
 
     lower = rule.body[Rule.LOWER]
     upper = rule.body[Rule.UPPER]
-
+    if HAVE_NUMBA:
+        return __match_rule_numba(X, lower, upper, categorical_mask)
     return (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
             | (~categorical_mask
                & np.less_equal(lower, X)
                & np.greater_equal(upper, X))
             ).all(axis=1)
+
+
+@jit  # interestingly, using numba.prange and parallel=True seems to slow down
+def __match_rule_numba(X: np.ndarray, lower: np.ndarray, upper: np.ndarray,
+                       categorical_mask: np.ndarray) -> np.ndarray:
+    """Version of `match_rule` to be used optimized by `numba.njit`."""
+    n_samples = len(X)
+    antd_matches = np.zeros_like(X, dtype=np.bool_)  # default = False
+    rule_matches = np.empty(n_samples, dtype=np.bool_)
+    for i_sample in range(n_samples):
+        for i_feature in range(X.shape[1]):
+            X_i = X[i_sample, i_feature]
+            lower_i = lower[i_feature]
+            upper_i = upper[i_feature]
+            if (categorical_mask[i_feature]
+                    and not np.isfinite(lower_i)
+                    and np.equal(X_i, lower_i)):
+                antd_matches[i_sample, i_feature] = True
+            elif (np.less_equal(lower_i, X_i)
+                  and np.greater_equal(upper_i, X_i)):
+                antd_matches[i_sample, i_feature] = True
+        rule_matches[i_sample] = np.all(antd_matches[i_sample])
+    return rule_matches
 
 
 T = TypeVar('T', bound='AugmentedRule')  # needed for type signature of `copy`

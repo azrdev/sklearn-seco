@@ -1,10 +1,11 @@
 import warnings
 
 from line_profiler import LineProfiler
+from numba import NumbaWarning
 
 from sklearn_seco.tests.conftest import xor_2d
 from sklearn_seco.common import match_rule, RuleContext
-from sklearn_seco.concrete import CN2Estimator
+from sklearn_seco.concrete import SimpleSeCoEstimator
 
 
 def tcn2():
@@ -12,7 +13,7 @@ def tcn2():
         from _pytest.deprecated import RemovedInPytest4Warning
         warnings.simplefilter("ignore", RemovedInPytest4Warning)
         xor = xor_2d()
-    cn2 = CN2Estimator()
+    cn2 = SimpleSeCoEstimator()
     cn2.fit(xor.x_train, xor.y_train)
     ypred = cn2.predict(xor.x_test)
     from sklearn.metrics import classification_report, confusion_matrix
@@ -20,6 +21,7 @@ def tcn2():
     print(classification_report(xor.y_test, ypred))
 
 
+warnings.simplefilter("error", NumbaWarning)
 profile = LineProfiler()
 profile.add_function(match_rule)
 profile.add_function(RuleContext._count_matches)
