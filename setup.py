@@ -16,4 +16,12 @@ setuptools.setup(
                 '*Covering*-Algorithm for scikit-learn.',
     long_description=long_description,
     long_description_content_type="text/markdown",
+    install_requires=[
+        'scikit_learn >= 0.19.1',
+        'numpy',
+    ],
+    extras_require={
+        'tests': ['matplotlib', 'pytest >= 3.5'],
+        'numba': ['numba'],
+    },
 )
