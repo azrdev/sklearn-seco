@@ -296,7 +296,7 @@ class AugmentedRule:
 class TheoryContext:
     """State variables while `abstract_seco` builds a theory.
 
-    The static Parameters are the same as in :class:`_BinarySeCoEstimator`,
+    The static Parameters are the same as in :class:`_BaseSeCoEstimator`,
     apart from the trailing "_" in their name:
       - `algorithm_config`
       - `categorical_mask`
@@ -504,7 +504,7 @@ class RuleContext:
 
 
 class AbstractSecoImplementation(ABC):
-    """The callbacks needed by :class:`_BinarySeCoEstimator`; Subclasses
+    """The callbacks needed by :class:`_BaseSeCoEstimator`; Subclasses
     represent concrete algorithms (together with the corresponding subclasses
     of `RuleContext` etc, see :class:`SeCoAlgorithmConfiguration`).
 
@@ -641,7 +641,7 @@ class SeCoAlgorithmConfiguration:
 
     `Implementation`:
         A non-abstract subclass of `AbstractSecoImplementation` defining all
-        callback methods needed by :class:`_BinarySeCoEstimator`.
+        callback methods needed by :class:`_BaseSeCoEstimator`.
 
     `RuleClass`:
         A subclass of `AugmentedRule` defining the attributes that supplement

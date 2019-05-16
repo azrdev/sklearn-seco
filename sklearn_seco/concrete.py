@@ -136,7 +136,7 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
                        ) -> Iterable[AugmentedRule]:
             if context.theory_context.is_binary():
                 # in binary case, only emit rules for target_class,
-                # i.e. do concept learning. See `_BinarySeCoEstimator.fit`.
+                # i.e. do concept learning. See `_BaseSeCoEstimator.fit`.
                 classes = [context.theory_context.classes[-1]]
             else:
                 classes = context.theory_context.classes

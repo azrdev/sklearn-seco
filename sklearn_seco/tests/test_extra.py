@@ -3,7 +3,7 @@ from typing import Tuple
 
 import pytest
 
-from sklearn_seco.abstract import _BinarySeCoEstimator
+from sklearn_seco.abstract import _BaseSeCoEstimator
 from sklearn_seco.extra import trace_coverage, plot_coverage_log, Trace
 from sklearn_seco.tests.datasets import xor_2d
 
@@ -27,7 +27,7 @@ def trace_estimator(seco_estimator_class) -> Tuple[Trace, str]:
     bases = estimator.get_seco_estimators()
     assert len(bases) == 1
     base = bases[0]
-    assert isinstance(base, _BinarySeCoEstimator)
+    assert isinstance(base, _BaseSeCoEstimator)
     # check trace consistency
     assert isinstance(trace.last_rule_stop, bool)
     # subtract boolean, autocasts to integer 0/1

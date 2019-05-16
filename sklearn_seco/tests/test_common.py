@@ -88,5 +88,5 @@ def test_categorical_mask():
                        [True, False, False])
 
 
-# TODO: test _BinarySeCoEstimator.ordered_matching = True
+# TODO: test _BaseSeCoEstimator.ordered_matching = True
 # TODO: test match_rule without numba

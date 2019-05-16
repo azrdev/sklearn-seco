@@ -12,7 +12,7 @@ from sklearn_seco.concrete import RipperEstimator
 # prepare binary iris dataset (classes setosa, other)
 iris = load_iris()  # type: Bunch
 target_index = 0  # setosa
-# ensure target has biggest index, see `_BinarySeCoEstimator.classes_`
+# ensure target has biggest index, see `_BaseSeCoEstimator.classes_`
 iris.target[iris.target == target_index] = target_index
 iris.target[iris.target != target_index] = target_index - 1
 iris.target_names = ['other', iris.target_names[target_index]]

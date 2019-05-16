@@ -21,7 +21,7 @@ from sklearn_seco.util import \
 
 
 # noinspection PyAttributeOutsideInit
-class _BinarySeCoEstimator(BaseEstimator, ClassifierMixin):
+class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
     """Binary SeCo Classification, deferring to :var:`algorithm_config_`
     for concrete algorithm implementation.
 
@@ -357,8 +357,8 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
     """A classifier using rules learned with the *Separate-and-Conquer* (SeCo)
     algorithm, also known as *Covering* algorithm.
 
-    Wraps `_BinarySeCoEstimator` to handle multi-class problems, selecting a
-    multi-class strategy and making sure that _BinarySeCoEstimator always sees
+    Wraps `_BaseSeCoEstimator` to handle multi-class problems, selecting a
+    multi-class strategy and making sure that _BaseSeCoEstimator always sees
     class labels where the lexicographically smallest/first is the intended
     fallback class; i.e. the biggest class in multi-class problems, or the
     negative class when learning a binary concept.
@@ -380,7 +380,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
           (`algorithm_config.direct_multiclass_support()` returns True),
           'one_vs_rest' otherwise.
         - A callable: Construct
-          `self.base_estimator_ = multi_class(_BinarySeCoEstimator())` and
+          `self.base_estimator_ = multi_class(_BaseSeCoEstimator())` and
           delegate to that estimator. Useful if you want to roll a different
           binarization strategy, e.g.
           >>> import sklearn.multiclass, functools
@@ -410,7 +410,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         `sklearn.multiclass.OneVsRestClassifier`,
         `sklearn.multiclass.OneVsOneClassifier` or
         `sklearn_seco.util.TargetTransformingMetaEstimator` if demanded by the
-        `multi_class_` strategy, a `_BinarySeCoEstimator` otherwise.
+        `multi_class_` strategy, a `_BaseSeCoEstimator` otherwise.
 
     multi_class_ : callable or str
         The actual strategy used on a non-binary problem. Relevant if
@@ -421,7 +421,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
     See Also
     -----
-    `_BinarySeCoEstimator`
+    `_BaseSeCoEstimator`
     """
 
     algorithm_config: Type[SeCoAlgorithmConfiguration]
@@ -439,11 +439,11 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         """Learn SeCo theory/theories on training data `X, y`.
 
         For possible parameters (`**kwargs`), refer to
-        :class:`_BinarySeCoEstimator`.
+        :class:`_BaseSeCoEstimator`.
         """
         X, y = check_X_y(X, y, multi_output=False)
         self.multi_class_ = self.multi_class
-        self.base_estimator_ = _BinarySeCoEstimator(
+        self.base_estimator_ = _BaseSeCoEstimator(
             self.algorithm_config, random_state=self.random_state, **kwargs)
         # NOTE: if using multiprocessing (e.g. through OvO or OvR), all
         #   sub-estimators share the same random seed/state.
@@ -490,7 +490,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # NOTE: param categorical_features is data dependent, but OvR/OvO don't
         #   pass extra parameters through fit(), so it has to be in
-        #   `_BinarySeCoEstimator.__init__`.
+        #   `_BaseSeCoEstimator.__init__`.
         self.base_estimator_.fit(X, y)
         return self
 
@@ -520,9 +520,9 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         # noinspection PyUnresolvedReferences
         return self.base_estimator_.decision_function(X)
 
-    def get_seco_estimators(self) -> Sequence[_BinarySeCoEstimator]:
+    def get_seco_estimators(self) -> Sequence[_BaseSeCoEstimator]:
         """
-        :return: The `_BinarySeCoEstimator` instances that were trained.
+        :return: The `_BaseSeCoEstimator` instances that were trained.
             Depending on the multi-class strategy, the class labels they use
             differ in order and value.
         """

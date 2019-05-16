@@ -10,7 +10,7 @@ from sklearn.metrics import accuracy_score, precision_score
 from sklearn.utils import check_random_state
 from sklearn.utils.estimator_checks import check_estimator
 
-from sklearn_seco.abstract import _BinarySeCoEstimator
+from sklearn_seco.abstract import _BaseSeCoEstimator
 from sklearn_seco.common import Rule
 from sklearn_seco.concrete import grow_prune_split, SimpleSeCoEstimator, \
     TopDownSearchImplementation
@@ -137,7 +137,7 @@ def test_base_trivial(record_theory):
                                     categorical_features=categorical_mask)
     assert isinstance(est.base_estimator_, TargetTransformingMetaEstimator)
     base = est.base_estimator_.estimator
-    assert isinstance(base, _BinarySeCoEstimator)
+    assert isinstance(base, _BaseSeCoEstimator)
 
     record_theory(base.theory_)
     assert_array_equal(base.classes_,  [0, 1])  # indices
@@ -182,7 +182,7 @@ def test_base_easyrules(record_theory):
                                     categorical_features=categorical_mask)
     assert isinstance(est.base_estimator_, TargetTransformingMetaEstimator)
     base = est.base_estimator_.estimator
-    assert isinstance(base, _BinarySeCoEstimator)
+    assert isinstance(base, _BaseSeCoEstimator)
 
     record_theory(base.theory_)
 
@@ -212,7 +212,7 @@ def test_trivial_decision_border(seco_estimator, trivial_decision_border,
     assert isinstance(seco_estimator.base_estimator_,
                       TargetTransformingMetaEstimator)
     base = seco_estimator.base_estimator_.estimator
-    assert isinstance(base, _BinarySeCoEstimator)
+    assert isinstance(base, _BaseSeCoEstimator)
     record_theory(base.theory_)
     # check expected rule
     assert len(base.theory_) == 1
@@ -267,7 +267,7 @@ def test_blackbox_accuracy(seco_estimator, blackbox_test, record_theory):
     record_theory(theories)
     print("{} theories:\n".format(len(theories)))
     for base in seco_estimator.get_seco_estimators():
-        assert isinstance(base, _BinarySeCoEstimator)
+        assert isinstance(base, _BaseSeCoEstimator)
         assert len(base.theory_)
         assert count_conditions(base.theory_, Rule.UPPER,
                                 base.categorical_mask_) == 0, \

@@ -252,7 +252,7 @@ def trace_coverage(est_cls: Type[SeCoEstimator],
     `post_process` hook), the collected trace is submitted to the
     `log_coverage_trace_callback` function.
     For non-binary problems, a `SeCoEstimator` spawns more than one
-    `_BinarySeCoEstimator`, each of which collects the trace & submits it
+    `_BaseSeCoEstimator`, each of which collects the trace & submits it
     separately. Parallel execution of these has to be synchronized manually,
     this has not been tested.
 
