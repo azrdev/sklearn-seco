@@ -161,10 +161,9 @@ def __match_rule_numba(X: np.ndarray, lower: np.ndarray, upper: np.ndarray,
             X_i = X[i_sample, i_feature]
             lower_i = lower[i_feature]
             upper_i = upper[i_feature]
-            if categorical_mask[i_feature] and (
-                    np.isfinite(lower_i)
-                    or np.equal(X_i, lower_i)):
-                antd_matches[i_sample, i_feature] = True
+            if categorical_mask[i_feature]:
+                if not np.isfinite(lower_i) or np.equal(X_i, lower_i):
+                    antd_matches[i_sample, i_feature] = True
             elif (np.less_equal(lower_i, X_i)
                   and np.greater_equal(upper_i, X_i)):
                 antd_matches[i_sample, i_feature] = True
