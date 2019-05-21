@@ -301,14 +301,10 @@ class TheoryContext:
       - `algorithm_config`
       - `categorical_mask`
       - `n_features`
-      - `classes`
-      - `class_counts`
-      - `classes_by_size`
-      - `target_class_idx`
+      - `n_classes`
 
     Other Methods & Properties provided are:
       - `implementation`
-      - `target_class`
 
     Fields
     -----
@@ -331,27 +327,28 @@ class TheoryContext:
                  algorithm_config: 'SeCoAlgorithmConfiguration',
                  categorical_mask: np.ndarray,
                  n_features: int,
-                 classes: np.ndarray,
+                 n_classes: int,
                  rng: np.random.RandomState,
                  X, y):
         self.algorithm_config = algorithm_config
         self.categorical_mask = categorical_mask
         self.n_features = n_features
-        self.classes = classes
+        self.n_classes = n_classes
         self.rng = rng
         self.complete_X = X
         self.complete_y = y
 
-        assert self.is_binary() or self.algorithm_config.direct_multiclass_support(), (
-            "Trying to learn non-binary problem directly, "
-            "but no direct multiclass support.")
+        assert self.is_binary() \
+            or self.algorithm_config.direct_multiclass_support(), \
+            "Trying to learn non-binary problem directly, " \
+            "but no direct multiclass support."
 
     @property
     def implementation(self) -> 'AbstractSecoImplementation':
         return self.algorithm_config.implementation
 
     def is_binary(self):
-        return len(self.classes) == 2
+        return self.n_classes == 2
 
 
 class RuleContext:
@@ -401,9 +398,7 @@ class RuleContext:
             y = self._y if force_complete_data else self.y
             self._PN_cache[force_complete_data] = self._count_PN(y)
         class_counts = self._PN_cache[force_complete_data].tolist()
-        target_idx = np.take(
-            np.argwhere(self.theory_context.classes == target_class), 0)
-        P = class_counts.pop(target_idx)
+        P = class_counts.pop(target_class)
         N = sum(class_counts)
         return P, N
 
@@ -413,9 +408,8 @@ class RuleContext:
             Uncached, use `PN` instead.
         """
         classes, class_counts = np.unique(y, return_counts=True)
-        class_idx = np.searchsorted(self.theory_context.classes, classes)
-        P = np.zeros_like(self.theory_context.classes)
-        P[class_idx] = class_counts
+        P = np.zeros(shape=self.theory_context.n_classes)
+        P[classes] = class_counts
         return P
 
     @property
@@ -449,9 +443,7 @@ class RuleContext:
             rule._p_cache[force_complete_data] = \
                 self._count_matches(rule, force_complete_data)
         covered_counts = rule._p_cache[force_complete_data].tolist()
-        pos_index = np.take(
-            np.argwhere(rule.head == self.theory_context.classes), 0)
-        p = covered_counts.pop(pos_index)
+        p = covered_counts.pop(rule.head)
         n = sum(covered_counts)
         return p, n
 
@@ -478,10 +470,10 @@ class RuleContext:
         """
         covered = self.match_rule(rule, force_complete_data)
         y = self._y if force_complete_data else self.y
-        all_counts = np.zeros_like(self.theory_context.classes)
-        for i, target_class in enumerate(self.theory_context.classes):
+        all_counts = np.zeros(self.theory_context.n_classes)
+        for target_class in range(self.theory_context.n_classes):
             # surprisingly this loop is faster than np.unique
-            all_counts[i] = np.count_nonzero(covered & (y == target_class))
+            all_counts[target_class] = np.count_nonzero(covered & (y == target_class))
         return all_counts
 
     def evaluate_rule(self, rule: AugmentedRule) -> None:
@@ -524,11 +516,10 @@ class AbstractSecoImplementation(ABC):
     def abstract_seco_continue(cls, y: np.ndarray,
                                theory_context: TheoryContext) -> bool:
         if theory_context.is_binary():
-            positive = theory_context.classes[-1]
+            positive = theory_context.n_classes - 1
             return np.any(y == positive)
         else:
-            default_class = theory_context.classes[0]
-            return np.any(y != default_class)
+            return np.any(y != 0)
 
     @classmethod
     @abstractmethod

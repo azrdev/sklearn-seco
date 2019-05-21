@@ -115,7 +115,7 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
     @classmethod
     def init_rule(cls, context: RuleContext) -> AugmentedRule:
         tctx = context.theory_context
-        head = tctx.classes[-1] if tctx.is_binary() else tctx.classes[0]
+        head = tctx.n_classes - 1 if tctx.is_binary() else 0
         return tctx.algorithm_config.make_rule(
             n_features=tctx.n_features,
             target_class=head)
@@ -137,9 +137,9 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
             if context.theory_context.is_binary():
                 # in binary case, only emit rules for target_class,
                 # i.e. do concept learning. See `_BaseSeCoEstimator.fit`.
-                classes = [context.theory_context.classes[-1]]
+                classes = [context.theory_context.n_classes - 1]
             else:
-                classes = context.theory_context.classes
+                classes = range(context.theory_context.n_classes)
 
             for target_class in classes:
                 P, N = context.PN(target_class)
@@ -422,9 +422,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
             rule._p_cache[growing] = self._count_matches(rule,
                                                          force_complete_data)
         covered_counts = rule._p_cache[growing].tolist()
-        pos_index = np.take(
-            np.argwhere(rule.head == self.theory_context.classes), 0)
-        p = covered_counts.pop(pos_index)
+        p = covered_counts.pop(rule.head)
         n = sum(covered_counts)
         return p, n
 
@@ -441,9 +439,7 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
             self._PN_cache[growing] = self._count_PN(y)
 
         class_counts = self._PN_cache[growing].tolist()
-        target_idx = np.take(
-            np.argwhere(self.theory_context.classes == target_class), 0)
-        P = class_counts.pop(target_idx)
+        P = class_counts.pop(target_class)
         N = sum(class_counts)
         return P, N
 
@@ -613,7 +609,7 @@ class RipperMdlRuleStopTheoryContext(TheoryContext):
         super().__init__(*args, **kwargs)
         assert self.is_binary()
 
-        positives = np.count_nonzero(self.complete_y == self.classes[-1])
+        positives = np.count_nonzero(self.complete_y == self.n_classes - 1)
         # set expected fp/(err = fp+fn) rate := proportion of the class
         self.expected_fp_over_err = positives / len(self.complete_y)
         # set default DL (only data, empty theory)

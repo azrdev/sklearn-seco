@@ -76,16 +76,18 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         `functools.partialmethod`.
 
     classes_ : np.ndarray
-        A list of class labels known to the classifier, sorted
-        lexicographically. The last class (`classes_[-1]`) is the positive
+        Class labels used by the classifier. Always an integer range
+        `[0..n_classes_)`. The last class (`classes_[-1]`) is the positive
         class for binary problems. The first class is the default (for
         multiclass problems) resp. negative (for binary problems) class.
 
         To conform with sklearn assumptions, `predict` and `decision_function`
-        break ties by preferring lower values in classes_, thus to prefer more
-        common (in the training data) classes, make sure that class order by
-        size always matches lexicographic class order. `SeCoEstimator`
-        does so.
+        break ties by preferring lower indices in classes_. Thus to prefer more
+        common (in the training data) classes, caller has to make sure that
+        classes are indexed by increasing size; `SeCoEstimator` does so.
+
+    n_classes_ : int
+        Number of classes.
 
     n_features_ : int
         The number of features in (training) data `X`.
@@ -130,8 +132,8 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         """Fit to data, i.e. learn theory
 
         :param X: Not yet covered examples.
-        :param y: Classification labels for `X`. They are assumed to be ordered
-            by size.
+        :param y: Classification labels for `X`. Have to be from an integer
+            range `[0..n_classes_)`.
         """
         X, y = check_X_y(X, y, dtype=np.floating)
         self.algorithm_config_ = self.algorithm_config_class()
@@ -139,6 +141,10 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # prepare  target / labels / y
         self.classes_ = unique_labels(y)
+        self.n_classes_ = len(self.classes_)
+        if not np.equal(self.classes_, np.arange(self.n_classes_)).all():
+            raise ValueError("classes (np.unique(y)) are not an integer range "
+                             "[0..n_classes_), but {!s}".format(self.classes_))
 
         # prepare  attributes / features / X
         self.n_features_ = X.shape[1]
@@ -207,7 +213,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         """Main loop of abstract SeCo/Covering algorithm."""
 
         theory_context = self.algorithm_config_.make_theory_context(
-            self.categorical_mask_, self.n_features_, self.classes_, self.rng,
+            self.categorical_mask_, self.n_features_, self.n_classes_, self.rng,
             X, y)
         remove_false_positives = (
             self.remove_false_positives
@@ -254,18 +260,18 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         return theory
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        """Make a prediction for each sample in `X`.
+        """
+        Make a prediction for each sample in `X`, based on `decision_function`.
 
         See <https://scikit-learn.org/dev/glossary.html#term-predict>
         """
         check_is_fitted(self, ['classes_'])
         if self.is_binary():
-            return np.where(self.decision_function(X),
-                            self.classes_[1],  # positive
-                            self.classes_[0])  # negative
+            # two classes: 0 (negative), 1 (positive)
+            return self.decision_function(X) > 0
         else:
-            return self.classes_[np.argmax(self.decision_function(X),
-                                           axis=1)]
+            # classes are indexes in second dimension
+            return np.argmax(self.decision_function(X), axis=1)
 
     def decision_function(self, X: np.ndarray) -> np.ndarray:
         """Predict a "soft" score for each sample.
@@ -277,7 +283,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
           If binary, shape is `(n_samples,)` and values strictly greater than
           zero indicate the positive class.
 
-          If multi-class, shape is `(n_samples, n_classes)`.
+          If multi-class, shape is `(n_samples, n_classes_)`.
 
         Used by `sklearn.multiclass.OneVsRestClassifier` through
         `sklearn.utils.multiclass._ovr_decision_function`.
@@ -289,13 +295,13 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         X: np.ndarray = check_array(X)
         match_rule = self.algorithm_config_.match_rule
         # TODO: valid if any(confidence_estimates_ < 0) ?
-        confidence_by_class = np.zeros((len(X), len(self.classes_)))
+        confidence_by_class = np.zeros((len(X), self.n_classes_))
         for rule, rule_confidence in zip(
                 # backwards so earlier rules overwrite later ones.
                 # needed if ordered theory
                 reversed(self.theory_),
                 reversed(self.confidence_estimates_)):
-            class_index = np.take(np.argwhere(rule.head == self.classes_), 0)
+            class_index = rule.head
             matches = match_rule(X, rule, self.categorical_mask_)
             if self.ordered_matching:
                 # if ordered, get leftmost match; i.e. overwrite if match
@@ -328,7 +334,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
             If None, generic names will be generated.
 
         class_names: list, optional
-            A list of length n_classes containing the class names, ordered like
+            A list of length n_classes_ containing the class names, ordered like
             `self.classes_`. If None, indices will be used.
         """
 
@@ -358,8 +364,8 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
     algorithm, also known as *Covering* algorithm.
 
     Wraps `_BaseSeCoEstimator` to handle multi-class problems, selecting a
-    multi-class strategy and making sure that _BaseSeCoEstimator always sees
-    class labels where the lexicographically smallest/first is the intended
+    multi-class strategy and making sure that `_BaseSeCoEstimator` always sees
+    an integer range [0..n_classes_) of class labels, where 0 is the intended
     fallback class; i.e. the biggest class in multi-class problems, or the
     negative class when learning a binary concept.
 
@@ -383,17 +389,22 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
           `self.base_estimator_ = multi_class(_BaseSeCoEstimator())` and
           delegate to that estimator. Useful if you want to roll a different
           binarization strategy, e.g.
+
           >>> import sklearn.multiclass, functools
           >>> multi_class=functools.partial(
           ...     sklearn.multiclass.OutputCodeClassifier,
           ...     code_size=0.7, random_state=42)
-          If you use this, be aware of class order influence on tie-breaking.
+
+          If you use this, make sure to pass to `_BaseSeCoEstimator` classes `y`
+          from an integer range [0..n_classes_), e.g. using `LabelEncoder`.
+          Also be aware of class order influence on tie-breaking.
         - 'direct': Directly learn a theory of rules with different heads
           (target classes). Uses :class:`BySizeLabelEncoder` internally.
         - 'one_vs_rest': Use `sklearn.multiclass.OneVsRestClassifier` for class
           binarization and learn binary theories.
         - 'one_vs_one': Use `sklearn.multiclass.OneVsOneClassifier` for class
           binarization and learn binary theories.
+        - TODO: multi_class strategy of ripper: OneVsRest, remove C_i after learning rules for it
 
     random_state : None | int | instance of np.random.RandomState
         RNG, may be used by the algorithm. Value passed through
@@ -451,6 +462,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
         def wrapper_ordering_classes_by_size(estimator):
             # BySizeLabelEncoder ensures:  first class = default = biggest
+            # and that classes form an integer range [0..n_classes_)
             return TargetTransformingMetaEstimator(BySizeLabelEncoder(),
                                                    estimator)
 
@@ -461,11 +473,9 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
                              "classes. Only 1 class (%s) present."
                              % self.classes_[0])
         elif n_classes_ == 2:
-            # BySizeLabelEncoder ensures:  first class = default = biggest
             self.base_estimator_ = wrapper_ordering_classes_by_size(
                 self.base_estimator_)
         else:  # n_classes_ > 2
-            # TODO: multi_class strategy of ripper: OneVsRest, remove C_i after learning rules for it
             if self.multi_class_ is None:
                 # default / auto-selection
                 if self.algorithm_config.direct_multiclass_support():
@@ -525,6 +535,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         :return: The `_BaseSeCoEstimator` instances that were trained.
             Depending on the multi-class strategy, the class labels they use
             differ in order and value.
+            Cannot be used when self.multi_class_ is a callable.
         """
         check_is_fitted(self, 'base_estimator_')
         is_binary = len(self.classes_) == 2

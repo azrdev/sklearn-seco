@@ -70,7 +70,9 @@ class BySizeLabelEncoder(BaseEstimator, TransformerMixin):
 
     def inverse_transform(self, y_enc):
         """Transform labels back to original encoding."""
-        return self.le_.inverse_transform(self.bsidx_lexsorted_[y_enc])
+        return self.le_.inverse_transform(
+            self.bsidx_lexsorted_[
+                y_enc.astype(np.int8)])
 
 
 class TargetTransformingMetaEstimator(BaseEstimator, MetaEstimatorMixin):
