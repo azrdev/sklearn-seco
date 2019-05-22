@@ -272,7 +272,9 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, ['classes_'])
         if self.is_binary():
             # two classes: 0 (negative), 1 (positive)
-            return self.decision_function(X) > 0
+            return np.where(self.decision_function(X),
+                            self.classes_[1],  # positive class
+                            self.classes_[0])  # negative class
         else:
             # classes are indexes in second dimension
             return np.argmax(self.decision_function(X), axis=1)
