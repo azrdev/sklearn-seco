@@ -270,6 +270,12 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         See <https://scikit-learn.org/dev/glossary.html#term-predict>
         """
         check_is_fitted(self, ['classes_'])
+        n_features = X.shape[1]
+        if self.n_features_ != n_features:
+            raise ValueError("Number of features of the model must "
+                             "match the input. Model n_features is %s and "
+                             "input n_features is %s "
+                             % (self.n_features_, n_features))
         if self.is_binary():
             # two classes: 0 (negative), 1 (positive)
             return np.where(self.decision_function(X),

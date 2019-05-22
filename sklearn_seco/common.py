@@ -472,6 +472,9 @@ class RuleContext:
         all_counts = np.zeros(self.theory_context.n_classes)
         for target_class in range(self.theory_context.n_classes):
             # surprisingly this loop is faster than np.unique
+            # or a broadcasted version:
+            # classes = np.arange(self.theory_context.n_classes).reshape(-1, 1)
+            # return np.count_nonzero(covered & (y == classes), axis=1)
             all_counts[target_class] = np.count_nonzero(covered & (y == target_class))
         return all_counts
 
