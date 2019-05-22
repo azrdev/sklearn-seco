@@ -101,9 +101,7 @@ def test_TopDownSearch():
     implementation = base.algorithm_config_.implementation
     assert isinstance(implementation, TopDownSearchImplementation)
     # setup TheoryContext and RuleContext
-    theory_context = base.algorithm_config_.make_theory_context(
-        base.categorical_mask_, base.n_features_, base.classes_, base.rng,
-        X, transform.transform(y))
+    theory_context = base._make_theory_context(X, transform.transform(y))
     rule_context = base.algorithm_config_.make_rule_context(
         theory_context, X, transform.transform(y))
     # check rule specialization

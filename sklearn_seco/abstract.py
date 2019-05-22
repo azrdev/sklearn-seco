@@ -212,9 +212,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
     def abstract_seco(self, X: np.ndarray, y: np.ndarray) -> 'Theory':
         """Main loop of abstract SeCo/Covering algorithm."""
 
-        theory_context = self.algorithm_config_.make_theory_context(
-            self.categorical_mask_, self.n_features_, self.n_classes_, self.rng,
-            X, y)
+        theory_context = self._make_theory_context(X, y)
         remove_false_positives = (
             self.remove_false_positives
             if self.remove_false_positives is not None
@@ -258,6 +256,12 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         # TODO: ? for confidence_estimate use *uncovered by theory[i]* instead of whole X to match theory[i+1]
         # TODO: ? confidence_estimate for default rule (i.e. not any rule from theory matches). not compatible with current confidence_estimate(rule, RuleContext) interface
         return theory
+
+    def _make_theory_context(self, X, y):
+        """:return: a `TheoryContext` created with field values of `self`."""
+        return self.algorithm_config_.make_theory_context(
+            self.categorical_mask_, self.n_features_, self.n_classes_, self.rng,
+            X, y)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
