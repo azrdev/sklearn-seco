@@ -9,5 +9,6 @@ install:
   - pip install .[tests,numba]
   - pip install pytest-travis-fold  # for nicer output
 script:
-  - pip freeze  # since we use the non-versioned dependencies in setup.py
-  - pytest --durations=0 -v
+  - pip freeze  # log output since we use non-versioned dependencies in setup.py
+  - travis_wait  pytest --durations=0 -v
+
