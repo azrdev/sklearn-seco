@@ -11,5 +11,5 @@ install:
 script:
   - pip freeze  # since we use the non-versioned dependencies in setup.py
   # run pytest. the bash code makes sure to output a blank line when no output has been received for 5*60=300 seconds
-  - "pytest --durations=0 -v | tee /dev/tty | while true; do read -t300 ; rv=$?; if [[ $rv > 128 ]] ; then echo -e '\n'; elif [[ $rv > 0 ]] ; then break ; fi ; done"
+  - "pytest --durations=0 -v --color yes  | tee /dev/tty | while true; do read -t300 ; rv=$?; if [[ $rv > 128 ]] ; then echo -e '\n'; elif [[ $rv > 0 ]] ; then break ; fi ; done"
 
