@@ -58,12 +58,15 @@ def test_copy_rule():
 def test_copy_augmentedrule():
     rule = AugmentedRule.make_empty(17, 'positive')
     copy_unmod = rule.copy()
+    assert copy_unmod.original is rule
     assert rule.head == copy_unmod.head
     assert_array_equal(rule.body, copy_unmod.body)
     copy_mod_head = rule.copy(head='negative')
+    assert copy_mod_head.original is rule
     assert rule.head != copy_mod_head.head
     assert_array_equal(rule.body, copy_mod_head.body)
     copy_mod_body = rule.copy(condition=(Rule.LOWER, 11, 42))
+    assert copy_mod_body.original is rule
     assert rule.head == copy_mod_body.head
     assert_array_unequal(rule.body, copy_mod_body.body)
     assert_array_equal(rule.body, copy_unmod.body,

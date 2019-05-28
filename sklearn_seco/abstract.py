@@ -170,7 +170,8 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
             # good (i.e. the target class has very high a priori probability)
             if all(rule.body_empty() for rule in self.theory_):
                 # therefore only the case of only empty rules is an error
-                raise ValueError("Invalid theory learned")
+                raise ValueError("Invalid theory learned: {!s}"
+                                 .format(self.theory_))
         return self
 
     def is_binary(self):
@@ -314,6 +315,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
                 reversed(self.theory_),
                 reversed(self.confidence_estimates_)):
             class_index = rule.head
+            # TODO: if ordered, only pass previously unmatched X
             matches = match_rule(X, rule, self.categorical_mask_)
             if self.ordered_matching:
                 # if ordered, get leftmost match; i.e. overwrite if match
