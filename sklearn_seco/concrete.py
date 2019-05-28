@@ -189,8 +189,8 @@ class TopDownSearchContext(RuleContext):
         # grow/prune split is used
 
         # unique also sorts
-        # np.nditer needed because for pypy the ndarray is not an iterator
-        return np.nditer(np.unique(self._X[:, feature_index]))
+        # tolist needed because for pypy3 7.1 the ndarray is not an iterator
+        return np.unique(self._X[:, feature_index]).tolist()
 
 
 class PurityHeuristic(AbstractSecoImplementation):
