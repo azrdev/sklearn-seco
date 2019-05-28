@@ -23,6 +23,4 @@ Could be considered as TODO.
 - classification only, no regression
 """
 
-from sklearn_seco import abstract, common, concrete, extra, tests, util
-
 __all__ = ['abstract', 'common', 'concrete', 'extra', 'tests', 'util']

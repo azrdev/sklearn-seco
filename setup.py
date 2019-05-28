@@ -6,8 +6,7 @@ with open("README.md", "r") as fh:
 setuptools.setup(
     name='sklearn_seco',
     version='0.0',
-    packages=setuptools.find_packages('sklearn_seco'),
-    package_dir={'': 'sklearn_seco'},
+    packages=setuptools.find_packages(),
     url='https://github.com/azrdev/sklearn-seco',
     license='BSD',
     author='Jonathan Biegert',
