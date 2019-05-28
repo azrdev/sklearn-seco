@@ -30,8 +30,9 @@ def trace_estimator(seco_estimator_class) -> Tuple[Trace, str]:
     assert isinstance(base, _BaseSeCoEstimator)
     # check trace consistency
     assert isinstance(trace.last_rule_stop, bool)
-    # subtract boolean, autocasts to integer 0/1
-    assert len(base.theory_) == len(trace.steps) - trace.last_rule_stop
+    assert len(base.theory_) == len(trace.steps) - int(trace.last_rule_stop)
+
+    print(base.export_text(dataset.get_opt('feature_names')))
 
     # TODO trace levels
     return trace, seco_estimator_class.__name__

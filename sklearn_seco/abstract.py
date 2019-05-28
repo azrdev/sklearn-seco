@@ -350,6 +350,8 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         class_names: list, optional
             A list of length n_classes_ containing the class names, ordered like
             `self.classes_`. If None, indices will be used.
+
+            # TODO: wrapper in SeCoEstimator doing the inverse transform of class labels
         """
 
         if feature_names:
