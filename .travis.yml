@@ -5,6 +5,7 @@ matrix:
     - python: "3.6"
     - python: "3.7"
       dist: xenial  # required for Python >= 3.7 (travis-ci/travis-ci#9069)
+    - python: "pypy3"
 install:
   - pip install .[tests,numba]
   - pip install pytest-travis-fold  # for nicer output

@@ -180,14 +180,17 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
 
 class TopDownSearchContext(RuleContext):
     @lru_cache(maxsize=None)
-    def all_feature_values(self, feature_index: int):
+    def all_feature_values(self, feature_index: int) -> Iterable:
         """
         :return: All distinct values of feature (in examples) with given index,
              sorted.
         """
         # use _X instead of self.X to get all possibilities, even if e.g.
         # grow/prune split is used
-        return np.unique(self._X[:, feature_index])  # unique also sorts
+
+        # unique also sorts
+        # np.nditer needed because for pypy the ndarray is not an iterator
+        return np.nditer(np.unique(self._X[:, feature_index]))
 
 
 class PurityHeuristic(AbstractSecoImplementation):
