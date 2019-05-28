@@ -3,7 +3,7 @@
 
 import itertools
 from os.path import dirname
-from typing import Union
+from typing import Union, List, Tuple
 
 import numpy as np
 import pytest
@@ -31,6 +31,37 @@ class Dataset(Bunch):
     def get_opt(self, key):
         """:return: `self.get(key, default=None)`"""
         return self.get(key, None)
+
+    def to_arff(self,
+                name: str,
+                add_test_data: bool = False,
+                description: str = None) -> str:
+        n_features = self.x_train.shape[1]
+        categorical = np.zeros(n_features) #self.categorical_features  # xxx calculate mask
+        feature_names = self.get_opt('feature_names') or \
+                        ['ft_{i}_{cat}'
+                         .format(i=i, cat='cat' if categorical[i] else 'num')
+                         for i in range(n_features)]
+        data = self.x_train
+        classes = self.y_train
+        if add_test_data:
+            data = np.vstack((data, self.x_test))
+            classes = np.vstack((classes, self.y_test))
+
+        def distinct_values(values):
+            return [str(v) for v in np.unique(values)]
+        value_sets = {i: distinct_values(data[:, i])
+                      for i in range(n_features)
+                      if categorical[i]}
+        obj = {'relation': name,
+               'description': description,
+               'attributes': [(feature_names[i],
+                               value_sets[i] if categorical[i] else 'NUMERIC')
+                              for i in range(n_features)] +
+                             [('class', distinct_values(classes))],
+               'data': [data_line.tolist() + [str(class_)]
+                        for data_line, class_ in zip(data, classes)]}
+        return arff.dumps(obj)
 
 
 # datasets
