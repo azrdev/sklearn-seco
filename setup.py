@@ -22,5 +22,6 @@ setuptools.setup(
     extras_require={
         'tests': ['matplotlib', 'pytest >= 3.5'],
         'numba': ['numba'],
+        'numexpr': ['numexpr'],
     },
 )

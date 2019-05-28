@@ -27,3 +27,7 @@ wcwidth==0.1.7
 # numba
 llvmlite>=0.28.0
 numba==0.43.1
+
+# numexpr
+numexpr==2.6.9
+

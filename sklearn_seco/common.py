@@ -15,10 +15,16 @@ try:
     from numba import jit
     jit = partial(jit, cache=True, nopython=True)
 except ImportError as e:
-    warnings.warn("Could not import numba, plain python implementation will be "
-                  "slower. " + str(e))
+    warnings.warn("Could not import numba for optimization: " + str(e))
     jit = id
     HAVE_NUMBA = False
+
+try:
+    HAVE_NUMEXPR = True
+    import numexpr
+except ImportError as e:
+    warnings.warn("Could not import numexpr for optimization: " + str(e))
+    HAVE_NUMEXPR = False
 
 TGT = TypeVar("TGT")
 
@@ -142,6 +148,14 @@ def match_rule(X: np.ndarray,
     upper = rule.body[Rule.UPPER]
     if HAVE_NUMBA:
         return __match_rule_numba(X, lower, upper, categorical_mask)
+    elif HAVE_NUMEXPR:
+        return numexpr.evaluate("""
+        (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
+            | (~categorical_mask
+               & np.less_equal(lower, X)
+               & np.greater_equal(upper, X))
+            ).all(axis=1)
+        """)
     return (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
             | (~categorical_mask
                & np.less_equal(lower, X)
