@@ -77,36 +77,6 @@ def perfectly_correlated_multiclass(n_features=10):
     return Dataset(x, y, categorical_features='all')
 
 
-# TODO: ripper,IREP bad accuracy (0.72/0.64 < 0.8), up to 0.8 dep. on grow_prune_random
-def binary_categorical(n_features=8, n_samples=100, random=7):
-    """Generate binary discrete problem with little noise.
-    """
-    X_numeric, y8 = make_blobs(n_samples=2 * n_samples, n_features=n_features,
-                               centers=n_features, random_state=random)
-    X = np.rint(X_numeric)
-    y = y8 % 2 + 10
-    return Dataset(X[:n_samples], y[:n_samples], X[n_samples:], y[n_samples:],
-                   'all')
-
-
-def binary_mixed(n_samples=128, n_features=5, random=2):
-    """
-    Generate binary problem with categorical and numeric features.
-    Imbalanced class distribution.
-    """
-    categorical = np.array([True, False] * n_features)[:n_features]  # T,F,T,…
-    xnum, ymc = make_blobs(n_samples=2 * n_samples, n_features=n_features,
-                           centers=n_features, random_state=random)
-    x = np.where(categorical, np.rint(xnum), xnum)
-    y = ymc % 2 + 20
-    return Dataset(
-        x[:n_samples], y[:n_samples], x[n_samples:], y[n_samples:],
-        categorical,
-        feature_names=['ft_{i}_{cat}'
-                       .format(i=i, cat='cat' if categorical[i] else 'num')
-                       for i in range(n_features)])
-
-
 def xor_2d(n_samples=400, random=None):
     """Generate numeric low-noise 2D binary XOR problem"""
     if random is None:

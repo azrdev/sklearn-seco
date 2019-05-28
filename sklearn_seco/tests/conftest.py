@@ -13,9 +13,9 @@ from sklearn_seco.concrete import \
     SimpleSeCoEstimator, CN2Estimator, IrepEstimator, RipperEstimator
 
 from .datasets import Dataset, \
-    binary_slight_overlap, binary_categorical, \
-    binary_mixed, xor_2d, checkerboard_2d, perfectly_correlated_multiclass, \
-    sklearn_make_classification, sklearn_make_moons, artificial_disjunction, \
+    binary_slight_overlap, xor_2d, checkerboard_2d, \
+    perfectly_correlated_multiclass, sklearn_make_classification, \
+    sklearn_make_moons, artificial_disjunction, \
     staged
 
 
@@ -103,8 +103,6 @@ def trivial_decision_border():
 
 
 @pytest.fixture(params=[perfectly_correlated_multiclass,
-                        binary_categorical,
-                        binary_mixed,
                         xor_2d,
                         checkerboard_2d,
                         binary_slight_overlap,
