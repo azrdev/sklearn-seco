@@ -659,7 +659,7 @@ class CN2Estimator(SeCoEstimator):
                              PositiveThresholdRuleStop,
                              SkipPostProcess):
             positive_coverage_stop_threshold = 1  # → PositiveThresholdRuleStop
-            # FIXME: CN2 has?  beam_width = 3  # → BeamSearch
+            beam_width = 3  # → BeamSearch
 
 
 class RipperEstimator(SeCoEstimator):
