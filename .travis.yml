@@ -1,17 +1,21 @@
 language: python
-matrix:
-  include:
-    # - python: "3.5"
-    - python: "3.6"
-    - python: "3.7"
-      dist: xenial  # required for Python >= 3.7 (travis-ci/travis-ci#9069)
-    - python: "pypy3"
+dist: xenial  # required for Python >= 3.7 <https://github.com/travis-ci/travis-ci/issues/9069> and PyPy3 >5.8 <https://travis-ci.community/t/add-pypy-7-support/2228/6>
+
+python:
+  # - "3.5"
+  - "3.6"
+  - "3.7"
+  - "pypy3"
+
+# dependencies
+
 addons:
   apt:
-    update: yes
+    update: true
     packages:
       - pypy-dev
       - liblapack-dev
+cache: pip
 install:
   - |
       if [[ "${TRAVIS_PYTHON_VERSION}" = 'pypy'* ]]; then
@@ -19,8 +23,13 @@ install:
       fi
   - pip install .[tests,numba]
   - pip install pytest-travis-fold  # for nicer output
+
+# tests
+
+env:
+  matrix:
+    - SUITE="not check_estimator"  # own tests
+    - SUITE="check_estimator"  # only sklearn compatibility testsuite
 script:
-  - pip freeze  # since we use the non-versioned dependencies in setup.py
-  # run pytest. run check_estimator separately: if it times out, we still get output from the rest
-  - "pytest --durations=0 -v --color yes -k 'not check_estimator'"
-  - "pytest --durations=0 -v --color yes -k 'check_estimator'"
+  - pip freeze  # since we use the non-pinned dependencies in setup.py, log which versions we got
+  - 'pytest --durations=0 -v --color yes -k "$SUITE"'
