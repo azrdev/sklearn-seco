@@ -14,14 +14,20 @@ addons:
     update: true
     packages:
       - pypy-dev
+      - gfortran-5
+      - libatlas-base-dev
+      - libatlas-dev
       - liblapack-dev
+      - libopenblas-dev
 cache: pip
 install:
   - |
       if [[ "${TRAVIS_PYTHON_VERSION}" = 'pypy'* ]]; then
-        pip install cython numpy
+        pip install cython "numpy!=1.16.3" # <https://bitbucket.org/pypy/pypy/issues/3008/importerror-numpy-with-pypy36-711>
+      else
+        pip install .[numba]
       fi
-  - pip install .[tests,numba]
+  - pip install .[tests]
   - pip install pytest-travis-fold  # for nicer output
 
 # tests

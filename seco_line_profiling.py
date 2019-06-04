@@ -1,7 +1,6 @@
 import warnings
 
 from line_profiler import LineProfiler
-from numba import NumbaWarning
 
 from sklearn_seco.tests.conftest import xor_2d
 from sklearn_seco.common import match_rule, RuleContext
@@ -20,8 +19,11 @@ def tcn2():
     print(confusion_matrix(xor.y_test, ypred))
     print(classification_report(xor.y_test, ypred))
 
-
-warnings.simplefilter("error", NumbaWarning)
+try:
+    from numba import NumbaWarning
+    warnings.simplefilter("error", NumbaWarning)
+except ImportError:
+    pass
 profile = LineProfiler()
 profile.add_function(match_rule)
 profile.add_function(RuleContext._count_matches)
