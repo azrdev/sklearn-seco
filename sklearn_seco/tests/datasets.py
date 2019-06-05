@@ -3,13 +3,15 @@
 
 import itertools
 from os.path import dirname
-from typing import Union, List, Tuple
+from typing import Union
 
 import numpy as np
 import pytest
 from sklearn.datasets import make_blobs, make_classification, make_moons
 from sklearn.externals import _arff as arff
 from sklearn.utils import check_random_state, Bunch
+
+from sklearn_seco.util import build_categorical_mask
 
 
 class Dataset(Bunch):
@@ -37,7 +39,8 @@ class Dataset(Bunch):
                 add_test_data: bool = False,
                 description: str = None) -> str:
         n_features = self.x_train.shape[1]
-        categorical = np.zeros(n_features) #self.categorical_features  # xxx calculate mask
+        categorical = build_categorical_mask(self.categorical_features,
+                                             n_features)
         feature_names = self.get_opt('feature_names') or \
                         ['ft_{i}_{cat}'
                          .format(i=i, cat='cat' if categorical[i] else 'num')

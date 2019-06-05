@@ -17,7 +17,7 @@ from sklearn_seco.common import \
     AugmentedRule, RuleQueue, Theory, \
     RuleContext, SeCoAlgorithmConfiguration
 from sklearn_seco.util import \
-    BySizeLabelEncoder, TargetTransformingMetaEstimator
+    BySizeLabelEncoder, TargetTransformingMetaEstimator, build_categorical_mask
 
 
 # noinspection PyAttributeOutsideInit
@@ -148,17 +148,9 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # prepare  attributes / features / X
         self.n_features_ = X.shape[1]
-        # categorical_features modeled like sklearn.preprocessing.OneHotEncoder
-        self.categorical_mask_ = np.zeros(self.n_features_, dtype=bool)
-        if (self.categorical_features is None
-                or not len(self.categorical_features)):
-            pass  # keep default "all False"
-        elif isinstance(self.categorical_features, np.ndarray):
-            self.categorical_mask_[
-                np.asarray(self.categorical_features)] = True
-        elif self.categorical_features == 'all':
-            self.categorical_mask_ = np.ones(self.n_features_, dtype=bool)
-        else:
+        self.categorical_mask_ = \
+            build_categorical_mask(self.categorical_features, self.n_features_)
+        if self.categorical_mask_ is None:
             raise ValueError("categorical_features must be one of: None,"
                              " 'all', np.ndarray of dtype bool or integer,"
                              " but got {}.".format(self.categorical_features))

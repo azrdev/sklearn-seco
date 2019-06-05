@@ -15,6 +15,25 @@ def log2(x: float) -> float:
     return math.log2(x) if x > 0 else 0
 
 
+def build_categorical_mask(which_features, n_features: int
+                           ) -> np.ndarray or None:
+    """:return: A mask array of length `n_features` based on `which_features`.
+        For its contents, see `_BaseSeCoEstimator` docs.
+        Returns None if `which_features` cannot be recognized.
+    """
+    # which_features modeled like sklearn.preprocessing.OneHotEncoder
+    categorical_mask_ = np.zeros(n_features, dtype=bool)  # default "all False"
+    if which_features is None or not len(which_features):
+        pass  # keep default
+    elif isinstance(which_features, np.ndarray):
+        categorical_mask_[np.asarray(which_features)] = True
+    elif which_features == 'all':
+        return np.ones(n_features, dtype=bool)
+    else:
+        return None
+    return categorical_mask_
+
+
 # noinspection PyAttributeOutsideInit
 class BySizeLabelEncoder(BaseEstimator, TransformerMixin):
     """Encode labels with ints between 0 and n_classes-1, ordered descending by

@@ -1,4 +1,5 @@
 """Tests for `sklearn_seco.util`."""
+import functools
 
 import numpy as np
 from numpy.testing import assert_array_equal
@@ -24,3 +25,14 @@ def test_BySizeLabelEncoder():
     assert_array_equal(enc.fit(y_full).transform(y_full),
                        enc.fit_transform(y_full),
                        "fit_transform() != fit().transform()")
+
+
+def test_categorical_mask():
+    X = [[1, 2, 3]] * 10 + [[3, 2, 1]] * 10
+    y = [13] * 10 + [31] * 10
+    build_mask = functools.partial(util.build_categorical_mask, n_features=3)
+    assert_array_equal(build_mask(None), [False, False, False])
+    assert_array_equal(build_mask([]), [False, False, False])
+    assert_array_equal(build_mask('all'), [True, True, True])
+    assert_array_equal(build_mask(np.array([True, False, False])),
+                       [True, False, False])
