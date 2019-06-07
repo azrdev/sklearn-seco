@@ -375,10 +375,9 @@ class GrowPruneSplitRuleContext(ABC, RuleContext):
 
 
     This works by overriding the getters for the properties `X`, `y`, `PN`, and
-    the function `_count_matches` (for `p, n`).
-    By default this returns the growing set, i.e. at start of each
-    `find_best_rule` invocation. Methods `pruning_heuristic` and
-    As soon as the algorithm wants to switch to
+    the function `pn`.
+    By default, i.e. at start of each `find_best_rule` invocation, this uses the
+    growing set. As soon as the algorithm wants to switch to
     the pruning set (e.g. at the head of `simplify_rule`) it has to set
     `self.growing = False`.
 

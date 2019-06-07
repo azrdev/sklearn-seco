@@ -38,6 +38,18 @@ class Dataset(Bunch):
                 name: str,
                 add_test_data: bool = False,
                 description: str = None) -> str:
+        """Convert the dataset to wekas ARFF format
+
+        :param name: str.
+            The relation name
+        :param add_test_data: bool.
+            Iff true, include `x_test` and `y_test` in addition to `x_train`
+            and `y_train`.
+        :param description: str, optional.
+            The description, inserted as comment into the file.
+        :return: str.
+            The ARFF file contents, usable with `open(...).write()`.
+        """
         n_features = self.x_train.shape[1]
         categorical = build_categorical_mask(self.categorical_features,
                                              n_features)

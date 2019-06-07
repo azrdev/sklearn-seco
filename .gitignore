@@ -71,3 +71,4 @@ benchmarks/bench_covertype_data/
 _configtest.o.d
 
 .mypy_cache/
+__pycache__/

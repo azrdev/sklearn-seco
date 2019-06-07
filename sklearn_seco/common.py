@@ -149,6 +149,7 @@ def match_rule(X: np.ndarray,
             ).all(axis=1)
 
 
+# speedup on 6d95b0c-dirty: moons 3/60/.6/.6 to 1/20/.3/.3
 @jit  # interestingly, using numba.prange and parallel=True seems to slow down
 def __match_rule_numba(X: np.ndarray, lower: np.ndarray, upper: np.ndarray,
                        categorical_mask: np.ndarray) -> np.ndarray:
@@ -207,9 +208,7 @@ class AugmentedRule:
         return cls(Rule.make_empty(n_features, target_class))
 
     def __init__(self, conditions: Rule, original: 'AugmentedRule' = None):
-        """Construct an `AugmentedRule`, use `from_raw_rule` or `make_empty`
-        instead.
-        """
+        """Constructor internal, use `copy` or `make_empty` instead."""
         self.instance_no = AugmentedRule.__rule_counter
         AugmentedRule.__rule_counter += 1
         self.original = original
