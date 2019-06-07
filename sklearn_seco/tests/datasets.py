@@ -62,6 +62,13 @@ class Dataset(Bunch):
         if add_test_data:
             data = np.vstack((data, self.x_test))
             classes = np.vstack((classes, self.y_test))
+        # convert -0.0 to 0.0 to avoid having -0.0 samples but not @attribute
+        if np.issubdtype(data.dtype, np.floating):
+            data += 0
+        if np.issubdtype(classes.dtype, np.floating):
+            classes += 0
+
+        # TODO: general transformers for each column, to convert floats to e.g. ints for categorical
 
         def distinct_values(values):
             return [str(v) for v in np.unique(values)]
