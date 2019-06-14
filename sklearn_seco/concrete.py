@@ -45,6 +45,7 @@ def grow_prune_split(y,
     Make sure that every class is included in the growing set, even if it has
     little instances.
     # TODO: split undefined if too few examples => pruning set will be empty
+    # TODO: if is_binary() <==> concept learning, then round #negative down
 
     Partially adapted from `sklearn.model_selection.StratifiedShuffleSplit`.
 

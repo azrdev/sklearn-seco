@@ -266,9 +266,8 @@ def trace_coverage(est_cls: Type[SeCoEstimator],
     =====
     Define the callback function to receive the trace & display it:
 
-    >>> def callback(coverage_log, last_rule_stop):
-    ...     theory_figure, rules_figure = plot_coverage_log(
-    ...         coverage_log, last_rule_stop)
+    >>> def callback(trace):
+    ...     theory_figure, rules_figure = plot_coverage_log(trace)
     ...     theory_figure.show()
     ...     rules_figure.show()
 
