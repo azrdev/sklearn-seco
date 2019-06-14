@@ -12,7 +12,7 @@ import functools
 import math
 from abc import abstractmethod, ABC
 from functools import lru_cache
-from typing import Iterable, NamedTuple, Tuple, Any
+from typing import Iterable, NamedTuple, Tuple, Any, Callable
 
 import numpy as np
 from scipy.special import xlogy
@@ -222,6 +222,31 @@ class LaplaceHeuristic(AbstractSecoImplementation):
         return (p + 1) / (p + n + 2)  # laplace
 
 
+def gain_heuristic(heuristic: Callable) -> Callable:
+    """Decorator for `AbstractSecoImplementation.growing_heuristic` if that is a
+    *gain heuristic*, i.e. computes the gain of a rule compared to
+    `rule.original`.
+
+    Since `find_best_rule` compares rules across the whole search tree, using a
+    gain heuristic as-is leads to errors (e.g. a rule A with high gain is chosen
+    over its refinements R even if those improve upon it a bit, when their gain
+    upon A is less than the gain of A upon its base).
+
+    As a remedy, we sum the gain along the refinement path.
+
+    Note: Should also be usable with
+      `GrowPruneSplitRuleContext.pruning_heuristic`, but that was not tested.
+    """
+    @functools.wraps(heuristic)
+    def as_gain_heuristic(cls, rule: AugmentedRule, context: RuleContext
+                          ) -> float:
+        value = heuristic(cls, rule, context)
+        if rule.original:
+            return value + heuristic(cls, rule.original, context)
+        return value
+    return as_gain_heuristic
+
+
 class InformationGainHeuristic(AbstractSecoImplementation):
     """Information Gain heuristic as used in RIPPER (and FOIL).
 
@@ -229,17 +254,20 @@ class InformationGainHeuristic(AbstractSecoImplementation):
     (Witten,Frank,Hall 2011 fig 6.4) for its use in JRip/RIPPER.
 
     Note that the papers all have `p * ( log(p/(p+n)) - log(P/(P+N)) )`,
-    whereas JRip and ripper.c implement
-    `p * ( log((p+1) / (p+n+1)) - log((P+1) / (P+N+1)))`.
+      whereas JRip and ripper.c implement
+      `p * ( log((p+1) / (p+n+1)) - log((P+1) / (P+N+1)))`.
+
+    Note also what is used for P,N: (Frank,Hall,Witten 2011) fig 6.4 has always
+      P,N (i.e. of current X,y),
+      but ripper.c, JRip, and (Fürnkranz 1999) have rule.original.pn
     """
 
     @classmethod
+    @gain_heuristic
     def growing_heuristic(cls, rule: AugmentedRule, context: RuleContext
                           ) -> float:
         p, n = rule.pn(context)
         if rule.original:
-            # NOTE: Frank,Hall,Witten fig 6.4 has always P,N
-            #   but ripper.c, JRip, and (Fürnkranz 1999) have rule.original.pn
             P, N = rule.original.pn(context)
         else:
             P, N = context.PN(rule.head)
@@ -280,7 +308,7 @@ class SignificanceStoppingCriterion(AbstractSecoImplementation):
 
 
 def delayed_inner_stop(inner_stop):
-    """Decorator for `AbstractSecoImplementation.c`,
+    """Decorator for `AbstractSecoImplementation.inner_stopping_criterion`,
     letting it stop only when the condition meets for a rule and its
     predecessor (`rule.original`).
 
