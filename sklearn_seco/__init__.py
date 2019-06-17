@@ -11,8 +11,8 @@ Could be considered as TODO.
 - binary problems are always solved as concept learning, i.e. all rules are
   learned to identify a "positive class" and only the default rule classifies
   as "negative class".
-- implicit default rule, classifies no rule from the theory matched. I.e. the
-  classifier cannot abstain from making a prediction.
+- implicit default rule, classifies when no rule from the theory matched. I.e.
+  the classifier cannot abstain from making a prediction.
 - limited operator set:
     - for categorical only ==
     - for numerical only <= and >=
