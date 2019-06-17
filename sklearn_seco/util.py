@@ -8,6 +8,7 @@ import numpy as np
 
 from sklearn.base import BaseEstimator, TransformerMixin, MetaEstimatorMixin
 from sklearn.preprocessing import LabelEncoder
+from sklearn.utils.multiclass import type_of_target
 
 
 def log2(x: float) -> float:
@@ -66,6 +67,10 @@ class BySizeLabelEncoder(BaseEstimator, TransformerMixin):
         Feature Request to have LabelEncoder handle that case, too.
     """
     def _fit(self, y):
+        target_type = type_of_target(y)
+        if target_type not in {'binary', 'multiclass'}:
+            raise ValueError("Unknown label type: %s not supported (of y=%s)"
+                             % (target_type, y))
         _, class_counts = np.unique(y, return_counts=True)
         self.bsidx_lexsorted_ = np.argsort(- class_counts)
         self.cidx_by_size_ = np.argsort(self.bsidx_lexsorted_)

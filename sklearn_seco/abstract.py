@@ -10,7 +10,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.multiclass import OneVsRestClassifier, OneVsOneClassifier
 from sklearn.utils import check_X_y, check_array
 from sklearn.utils.metaestimators import if_delegate_has_method
-from sklearn.utils.multiclass import unique_labels
+from sklearn.utils.multiclass import unique_labels, check_classification_targets
 from sklearn.utils.validation import check_is_fitted, check_random_state
 
 from sklearn_seco.common import \
@@ -136,6 +136,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
             range `[0..n_classes_)`.
         """
         X, y = check_X_y(X, y, dtype=np.floating)
+        check_classification_targets(y)
         self.algorithm_config_ = self.algorithm_config_class()
         self.rng = check_random_state(self.random_state)
 
