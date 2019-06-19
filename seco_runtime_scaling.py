@@ -12,12 +12,12 @@ from typing import Iterable
 import matplotlib.pyplot as plt
 import numpy as np
 
-from sklearn_seco.concrete import CN2Estimator  # , SimpleSeCoEstimator
+import sklearn_seco.concrete
 
 
 def time_seco(estimator: str, dataset_args: str):
     setup = ';\n'.join((
-        "import sklearn_seco",
+        "import sklearn_seco; from sklearn_seco.tests import datasets",
         "dataset = sklearn_seco.tests.datasets.sklearn_make_classification(%s)"
             % dataset_args,
         "estimator = sklearn_seco.concrete.%s()" % estimator))
@@ -42,11 +42,11 @@ def n_sample_gen(max=np.inf):
 
 def timing_for_param(estimator: str, categorical: bool,
                      max_samples: int = np.inf) -> Iterable:
-    extra_args = ', categorize=True' if categorical else ''
+    extra_args = ['categorize=True'] if categorical else []
     for n_samples in n_sample_gen(max_samples):
         for n_features in chain(range(2, 16), range(20, 70, 16)):
             argstr = "n_samples=%d, n_features=%d, %s" \
-                     % (n_samples, n_features, extra_args)
+                     % (n_samples, n_features, ','.join(extra_args))
             timings = time_seco(estimator, argstr)
             if timings:
                 yield n_samples, n_features, timings
@@ -67,6 +67,7 @@ def plot_timings(timings, title=None, figure=None):
         axes.loglog(n_features[mask], tm_min[mask], '.-', label=str(n))
     axes.legend(title='n_samples')
     axes.grid(True)
+    figure.tight_layout()
     # show more ticks
     axes.xaxis.set_major_locator(LogLocator(subs='all'))
     axes.xaxis.set_major_formatter(LogFormatter(minor_thresholds=(100, 99)))
@@ -82,7 +83,7 @@ def log(message):
 if __name__ == "__main__":
     categorical = 'c' in sys.argv[1:]
 
-    estimator = CN2Estimator.__name__
+    estimator = sklearn_seco.concrete.RipperEstimator.__name__
     log("start timing of %s" % estimator)
     print("n_samples, n_features, timings...")
     all_timings = []
@@ -91,10 +92,12 @@ if __name__ == "__main__":
                                                                categorical):
             onelist = [n_samples, n_features] + timings
             all_timings.append(onelist)
-            print(",".join([str(x) for x in onelist]))
+            print('[' + ",".join([str(x) for x in onelist]) + '],')
     except KeyboardInterrupt:
         pass
     log("stop timing of %s, got %d timings" % (estimator, len(all_timings)))
     if all_timings:
         log("plotting")
         plot_timings(np.array(all_timings), 'runtime of %s' % estimator).show()
+
+    input('Press any key to exit.')
