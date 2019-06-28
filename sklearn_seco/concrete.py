@@ -140,6 +140,7 @@ class TopDownSearchImplementation(AbstractSecoImplementation):
                 # i.e. do concept learning. See `_BaseSeCoEstimator.fit`.
                 classes = [context.theory_context.n_classes - 1]
             else:
+                # TODO: maybe yield only rule for class with maximum p
                 classes = range(context.theory_context.n_classes)
 
             for target_class in classes:

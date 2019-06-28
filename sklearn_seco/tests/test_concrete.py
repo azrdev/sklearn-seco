@@ -242,13 +242,13 @@ def test_perfectly_correlated_categories_multiclass(seco_estimator,
                        seco_estimator.predict(dataset.x_train))
 
 
+# TODO: IREP fails check_estimators_nan_inf,  Ripper fails check_classifiers_train due to <https://github.com/scikit-learn/scikit-learn/issues/14124>
 def test_sklearn_check_estimator(seco_estimator_class):
     """Run check_estimator from `sklearn.utils.estimator_checks`.
 
     # TODO: Unwrap :func:`sklearn.utils.estimator_checks.check_estimator`, so
     our report shows which ones actually failed. Waiting for <https://github.com/scikit-learn/scikit-learn/issues/11622>
     """
-    # TODO: check_classifiers_predictions sometimes fails for Irep/Ripper: due to bad grow-prune-splits & small n_samples we only recognize 1/3 classes
     check_estimator(seco_estimator_class)
 
 

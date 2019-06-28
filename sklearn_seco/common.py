@@ -147,7 +147,7 @@ def __match_rule_numba(X: np.ndarray, lower: np.ndarray, upper: np.ndarray,
             elif (np.less_equal(lower_i, X_i)
                   and np.greater_equal(upper_i, X_i)):
                 antd_matches[i_sample, i_feature] = True
-        rule_matches[i_sample] = np.all(antd_matches[i_sample])
+        rule_matches[i_sample] = np.all(antd_matches[i_sample])  # TODO: maybe use for...break...else instead of antd_matches and np.all
     return rule_matches
 
 
