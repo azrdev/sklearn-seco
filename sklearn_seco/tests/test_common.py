@@ -1,22 +1,27 @@
 """Tests for `sklearn_seco.common`."""
 
 import numpy as np
+import pytest
 from numpy.core.umath import NINF, PINF
 from numpy.testing import assert_array_equal
 
-from sklearn_seco.common import match_rule, Rule, AugmentedRule
+from sklearn_seco.common import __match_rule_numpy, __match_rule_numba, Rule, \
+    AugmentedRule, match_rule
 from .conftest import assert_array_unequal
 
 
-def test_match_rule():
+@pytest.mark.parametrize('match_rule_implementation', [
+    pytest.param(__match_rule_numpy, id="numpy"),
+    pytest.param(__match_rule_numba, id="numba")])
+def test_match_rule(match_rule_implementation):
     """Test basic rule matching (:func:`match_rule`)."""
     categorical_mask = np.array([True, True, False, False])
     X = np.array([[1, 2, 3.0, 4.0]])
 
     def am(body, expected_result, X=X):
-        assert_array_equal(match_rule(X, Rule(100, np.asarray(body)),
-                                      categorical_mask),
-                           expected_result)
+        matches = match_rule(X, Rule(100, np.asarray(body)), categorical_mask,
+                             match_rule_implementation)
+        assert_array_equal(matches, expected_result)
 
     am([[NINF, NINF, NINF, NINF], [PINF, PINF, PINF, PINF]], [True])
     # categorical: upper unused

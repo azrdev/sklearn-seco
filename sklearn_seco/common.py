@@ -1,12 +1,12 @@
 """
 Implementation of SeCo / Covering algorithm:
-Common `Rule` allowing == (categorical) or <= and >= (numerical) test.
+Common `Rule` object allowing tests == (categorical) or <= and >= (numerical).
 """
 
 import warnings
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Iterable, List, Tuple, Type, TypeVar, Dict, Any
+from typing import Iterable, List, Tuple, Type, TypeVar, Dict, Any, Callable
 
 import numpy as np
 
@@ -114,34 +114,11 @@ class Rule:
         return str('Rule({!r},\n {!r}'.format(self.head, self.body))
 
 
-def match_rule(X: np.ndarray,
-               rule: Rule,
-               categorical_mask: np.ndarray) -> np.ndarray:
-    """Apply `rule` to all samples in `X`.
+def __match_rule_numpy(X: np.ndarray,
+                       lower: np.ndarray, upper: np.ndarray,
+                       categorical_mask: np.ndarray) -> np.ndarray:
+    """implementation of `match_rule` based on numpy broadcasting."""
 
-    :param X: An array of shape `(n_samples, n_features)`.
-    :param rule: An array of shape `(2, n_features)`,
-        holding thresholds (for numerical features),
-        or categories (for categorical features),
-        or `np.NaN` (to not test this feature).
-    :param categorical_mask: An array of shape `(n_features,)` and type bool,
-        specifying which features are categorical (True) and numerical (False)
-    :return: An array of shape `(n_samples,)` and type bool, telling for each
-        sample whether it matched `rule`.
-
-    pseudocode::
-        conjugate for all features:
-            if feature is categorical:
-                return rule[LOWER] is NaN  or  rule[LOWER] == X
-            else:
-                return  rule[LOWER] is NaN  or  rule[LOWER] <= X
-                     && rule[UPPER] is NaN  or  rule[UPPER] >= X
-    """
-
-    lower = rule.body[Rule.LOWER]
-    upper = rule.body[Rule.UPPER]
-    if HAVE_NUMBA:
-        return __match_rule_numba(X, lower, upper, categorical_mask)
     return (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
             | (~categorical_mask
                & np.less_equal(lower, X)
@@ -153,7 +130,8 @@ def match_rule(X: np.ndarray,
 @jit  # interestingly, using numba.prange and parallel=True seems to slow down
 def __match_rule_numba(X: np.ndarray, lower: np.ndarray, upper: np.ndarray,
                        categorical_mask: np.ndarray) -> np.ndarray:
-    """Version of `match_rule` to be used optimized by `numba.njit`."""
+    """Implementation of `match_rule` based on `numba.njit` optimization."""
+
     n_samples = len(X)
     antd_matches = np.zeros_like(X, dtype=np.bool_)  # default = False
     rule_matches = np.empty(n_samples, dtype=np.bool_)
@@ -170,6 +148,40 @@ def __match_rule_numba(X: np.ndarray, lower: np.ndarray, upper: np.ndarray,
                 antd_matches[i_sample, i_feature] = True
         rule_matches[i_sample] = np.all(antd_matches[i_sample])
     return rule_matches
+
+
+def match_rule(X: np.ndarray,
+               rule: Rule,
+               categorical_mask: np.ndarray,
+               match_rule_implementation: Callable = None) -> np.ndarray:
+    """Apply `rule` to all samples in `X`.
+
+    :param X: An array of shape `(n_samples, n_features)`.
+    :param rule: A Rule object, needed is its `body`, an array of shape
+        `(2, n_features)`, holding thresholds (for numerical features),
+        or categories (for categorical features),
+        or `np.NaN` (to not test this feature).
+    :param categorical_mask: An array of shape `(n_features,)` and dtype bool,
+        specifying which features are categorical (True) and numerical (False).
+    :return: An array of shape `(n_samples,)` and dtype bool, telling for each
+        sample whether it matched `rule`.
+
+    pseudocode::
+        conjugate for all features:
+            if feature is categorical:
+                return rule[LOWER] is NaN  or  rule[LOWER] == X
+            else:
+                return  rule[LOWER] is NaN  or  rule[LOWER] <= X
+                     && rule[UPPER] is NaN  or  rule[UPPER] >= X
+    """
+    lower = rule.body[Rule.LOWER]
+    upper = rule.body[Rule.UPPER]
+    if match_rule_implementation is None:
+        if HAVE_NUMBA:
+            match_rule_implementation = __match_rule_numba
+        else:
+            match_rule_implementation = __match_rule_numpy
+    return match_rule_implementation(X, lower, upper, categorical_mask)
 
 
 T = TypeVar('T', bound='AugmentedRule')  # needed for type signature of `copy`
