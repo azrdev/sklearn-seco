@@ -133,9 +133,10 @@ def __match_rule_numba(X: np.ndarray, lower: np.ndarray, upper: np.ndarray,
     """Implementation of `match_rule` based on `numba.njit` optimization."""
 
     n_samples = len(X)
-    antd_matches = np.zeros_like(X, dtype=np.bool_)  # default = False
+    antd_matches = np.empty_like(X, dtype=np.bool_)
     rule_matches = np.empty(n_samples, dtype=np.bool_)
     for i_sample in range(n_samples):
+        antd_matches.fill(False)  # default = False
         for i_feature in range(X.shape[1]):
             X_i = X[i_sample, i_feature]
             lower_i = lower[i_feature]
