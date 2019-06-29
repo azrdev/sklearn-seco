@@ -1,4 +1,18 @@
-"""Artificial dataset (generator functions) for the sklearn_seco unittests."""
+"""Artificial dataset (generator functions) for the sklearn_seco unittests.
+
+
+dataset                 n_samples   dimensions (cat-num)    noise   debugging   slow (>10s)
+----------------------|-----------|-----------------------|-------|-----------|------------
+perfectly_correlated    10          10 (10-0)               no      yes         no
+binary_slight_overlap   160         8 (0-8)                 yes     no          CN2
+staged                  200         2 (0-2)                 yes     yes         CN2
+sklearn_make_moons      400         2 (0-2)                 no      yes         CN2
+xor_2d                  400         2 (0-2)                 yes     yes         CN2
+s_m_classification      1000        2 (0-2)                 yes     no          yes
+artificial_disjunction  2000        15 (15-0)               yes     yes?        CN2
+checkerboard_2d         100_000     2 (2-0)                 yes     no          yes
+----------------------|-----------|-----------------------|-------|-----------|------------
+"""
 # TODO: maybe replace these with fixtures used with indirect=True
 
 import itertools

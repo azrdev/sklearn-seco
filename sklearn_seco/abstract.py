@@ -163,6 +163,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
             # good (i.e. the target class has very high a priori probability)
             if all(rule.body_empty() for rule in self.theory_):
                 # therefore only the case of only empty rules is an error
+                # TODO: if default rule is better than any refinement and survives rule_stopping_criterion, we get as theory [init_rule]. how to filter that?
                 raise ValueError("Invalid theory learned: {!s}"
                                  .format(self.theory_))
         return self
@@ -247,7 +248,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
             confidence_estimator(AugmentedRule(conditions=rule), rule_context)
             for rule in theory
         ])
-        # TODO: ? for confidence_estimate use *uncovered by theory[i]* instead of whole X to match theory[i+1]
+        # TODO: ? for confidence_estimate use *X=uncovered by theory[i-1]* instead of whole X to match theory[i]
         # TODO: ? confidence_estimate for default rule (i.e. not any rule from theory matches). not compatible with current confidence_estimate(rule, RuleContext) interface
         return theory
 

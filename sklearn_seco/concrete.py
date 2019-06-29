@@ -550,8 +550,8 @@ class RipperPostPruning(AbstractSecoImplementation):
 
 
 class CoverageRuleStop(AbstractSecoImplementation):
-    """Rule stopping criterion. Stop if best rule doesn't cover more positive
-    than negative examples (`p < n`).
+    """Rule stopping criterion. Stop if best rule covers more negative than
+    positive examples (`p < n`).
 
     NOTE: The IREP-2 criterion `p/(p+n) <= 0.5` as defined in (Fürnkranz 1994)
       and used in RIPPER (Cohen 1995) is equivalent to `p <= n`.
