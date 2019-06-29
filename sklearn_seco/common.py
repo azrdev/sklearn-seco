@@ -133,21 +133,22 @@ def __match_rule_numba(X: np.ndarray, lower: np.ndarray, upper: np.ndarray,
     """Implementation of `match_rule` based on `numba.njit` optimization."""
 
     n_samples = len(X)
-    antd_matches = np.empty_like(X, dtype=np.bool_)
     rule_matches = np.empty(n_samples, dtype=np.bool_)
     for i_sample in range(n_samples):
-        antd_matches.fill(False)  # default = False
         for i_feature in range(X.shape[1]):
             X_i = X[i_sample, i_feature]
             lower_i = lower[i_feature]
             upper_i = upper[i_feature]
             if categorical_mask[i_feature]:
-                if not np.isfinite(lower_i) or np.equal(X_i, lower_i):
-                    antd_matches[i_sample, i_feature] = True
-            elif (np.less_equal(lower_i, X_i)
-                  and np.greater_equal(upper_i, X_i)):
-                antd_matches[i_sample, i_feature] = True
-        rule_matches[i_sample] = np.all(antd_matches[i_sample])  # TODO: maybe use for...break...else instead of antd_matches and np.all
+                if np.isfinite(lower_i) and not np.equal(X_i, lower_i):
+                    rule_matches[i_sample] = False
+                    break
+            elif (not np.less_equal(lower_i, X_i)
+                  or not np.greater_equal(upper_i, X_i)):
+                rule_matches[i_sample] = False
+                break
+        else:  # default if none of the features did `break`
+            rule_matches[i_sample] = True
     return rule_matches
 
 
