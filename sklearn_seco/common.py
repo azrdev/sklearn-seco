@@ -117,7 +117,7 @@ class Rule:
 def __match_rule_numpy(X: np.ndarray,
                        lower: np.ndarray, upper: np.ndarray,
                        categorical_mask: np.ndarray) -> np.ndarray:
-    """implementation of `match_rule` based on numpy broadcasting."""
+    """Implementation of `match_rule` based on numpy broadcasting."""
 
     return (categorical_mask & (~np.isfinite(lower) | np.equal(X, lower))
             | (~categorical_mask
@@ -133,21 +133,22 @@ def __match_rule_numba(X: np.ndarray, lower: np.ndarray, upper: np.ndarray,
     """Implementation of `match_rule` based on `numba.njit` optimization."""
 
     n_samples = len(X)
-    rule_matches = np.empty(n_samples, dtype=np.bool_)
+    rule_matches = np.zeros(n_samples, dtype=np.bool_)  # default: False
+    has_test = np.isfinite(lower)
     for i_sample in range(n_samples):
         for i_feature in range(X.shape[1]):
             X_i = X[i_sample, i_feature]
             lower_i = lower[i_feature]
             upper_i = upper[i_feature]
             if categorical_mask[i_feature]:
-                if np.isfinite(lower_i) and not np.equal(X_i, lower_i):
-                    rule_matches[i_sample] = False
+                if has_test[i_feature] and not np.equal(X_i, lower_i):
                     break
-            elif (not np.less_equal(lower_i, X_i)
-                  or not np.greater_equal(upper_i, X_i)):
-                rule_matches[i_sample] = False
-                break
-        else:  # default if none of the features did `break`
+            else:  # numeric
+                if not np.less_equal(lower_i, X_i):
+                    break
+                if not np.greater_equal(upper_i, X_i):
+                    break
+        else:  # all tests succeeded, no `break`: match
             rule_matches[i_sample] = True
     return rule_matches
 
