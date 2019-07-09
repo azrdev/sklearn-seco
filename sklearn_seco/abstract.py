@@ -135,7 +135,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         :param y: Classification labels for `X`. Have to be from an integer
             range `[0..n_classes_)`.
         """
-        X, y = check_X_y(X, y, dtype=np.floating)
+        X, y = check_X_y(X, y, dtype=np.floating, force_all_finite='allow-nan')
         check_classification_targets(y)
         self.algorithm_config_ = self.algorithm_config_class()
         self.rng = check_random_state(self.random_state)
@@ -293,7 +293,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
         """
         check_is_fitted(self, ['theory_', 'categorical_mask_',
                                'confidence_estimates_'])
-        X: np.ndarray = check_array(X)
+        X: np.ndarray = check_array(X, force_all_finite='allow-nan')
         n_features = X.shape[1]
         if self.n_features_ != n_features:
             raise ValueError("Number of features of the model must "
@@ -328,7 +328,8 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
 
     def _more_tags(self):
         # tell sklearn >= 0.21 that we can handle categorical data
-        return {'X_types': ['2darray', 'categorical']}
+        return {'X_types': ['2darray', 'categorical'],
+                'allow_nan': True}
 
     def export_text(self, feature_names: List[str] = None,
                     class_names: List[str] = None) -> str:
@@ -450,7 +451,8 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
     def _more_tags(self):
         # tell sklearn >= 0.21 that we can handle categorical data
-        return {'X_types': ['2darray', 'categorical']}
+        return {'X_types': ['2darray', 'categorical'],
+                'allow_nan': True}
 
     def __init__(self, multi_class=None, random_state=1, n_jobs=1):
         self.multi_class = multi_class
@@ -463,7 +465,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
         For possible parameters (`**kwargs`), refer to
         :class:`_BaseSeCoEstimator`.
         """
-        X, y = check_X_y(X, y, multi_output=False)
+        X, y = check_X_y(X, y, force_all_finite='allow-nan')
         self.multi_class_ = self.multi_class
         self.base_estimator_ = _BaseSeCoEstimator(
             self.algorithm_config, random_state=self.random_state, **kwargs)
@@ -528,7 +530,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
             Predicted target values for X, values are from ``classes_``
         """
         check_is_fitted(self, ["classes_"])
-        X = check_array(X)
+        X = check_array(X, force_all_finite='allow-nan')
         return self.base_estimator_.predict(X)
 
     @if_delegate_has_method('base_estimator_')

@@ -191,8 +191,11 @@ class TopDownSearchContext(RuleContext):
         # grow/prune split is used
 
         # unique also sorts
+        distinct_features = np.unique(self._X[:, feature_index])
+        # filter missing values.  TODO: "== missing" test on nominal features
+        distinct_features = distinct_features[~np.isnan(distinct_features)]
         # tolist needed because for pypy3 7.1 the ndarray is not an iterator
-        return np.unique(self._X[:, feature_index]).tolist()
+        return distinct_features.tolist()
 
 
 class PurityHeuristic(AbstractSecoImplementation):
@@ -650,11 +653,23 @@ class RipperMdlRuleStopTheoryContext(TheoryContext):
                 expected_fp_over_err=self.expected_fp_over_err,
                 covered=0, uncovered=len(self.complete_y), fp=0, fn=positives)
         self.max_n_conditions = sum(
-            len(np.unique(self.complete_X[:, feature]))
+            self._num_unique_values(feature)
             * (1 if self.categorical_mask[feature] else 2)
             for feature in range(self.n_features)
         )
         self.theory_pn = []
+
+    def _num_unique_values(self, feature: int):
+        """
+        :return: The count of distinct values for the given feature, excluding
+            missing values.
+
+        For weka.JRip, this is implemented in `Instances.numDistinctValues()`
+        and `Attribute.numValues()`.
+        """
+        unique_values = np.unique(self.complete_X[:, feature])
+        unique_values = unique_values[~np.isnan(unique_values)]
+        return len(unique_values)
 
 
 # Example Algorithm configurations

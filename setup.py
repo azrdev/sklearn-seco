@@ -16,7 +16,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=[
-        'scikit_learn >= 0.19.1',
+        'scikit_learn >= 0.20',
         'numpy',
     ],
     extras_require={

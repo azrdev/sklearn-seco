@@ -7,7 +7,6 @@ Could be considered as TODO.
 
 - at most two tests (see "operator set" below) per feature and rule
 - no sparse input
-- no missing values
 - binary problems are always solved as concept learning, i.e. all rules are
   learned to identify a "positive class" and only the default rule classifies
   as "negative class".
