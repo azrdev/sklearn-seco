@@ -59,86 +59,92 @@ class WEKA_REGEX(SimpleNamespace):
         r'^Weighted Avg.\s*(?P<values>[?\s,0-9]*[,0-9])\s*$', re.MULTILINE)
 
 
-UCI_DATASETS = [  # tuples (name, id)
-    ('anneal', 2),
-    ('arrhythmia', 5),
-    ('audiology', 7),
-    ('autos', 9),
-    ('balance-scale', 11),
-    ('breast-cancer', 13),
-    ('breast-w', 15),
-    # bridges
-    # car
-    ('cmc', 23),
-    ('colic', 27),
-    ('credit-a', 29),
-    ('credit-g', 31),
-    # cylinder-bands
-    ('dermatology', 35),
-    ('diabetes', 37),
-    ('ecoli', 39),
-    # flags
-    ('glass', 41),
-    ('haberman', 43),
-    # hayes-roth
-    ('heart-c', 49),
-    ('heart-h', 51),
-    ('heart-statlog', 53),
-    ('hepatitis', 55),
-    ('hypothyroid', 57),
-    ('ionosphere', 59),
-    ('iris', 61),
-    # kdd_JapaneseVowels
-    # kdd_SyskillWebert
-    # kdd_UNIX_user_data
-    # kdd_internet_usage
-    # kdd_ipums_la
-    # kdd_synthetic_control
-    ('kr-vs-kp', 3),
-    ('labor', 4),
-    ('letter', 6),
-    ('liver-disorders', 8),
-    # lung-cancer
-    ('lymph', 10),
-    ('mfeat-factors', 12),
-    ('mfeat-fourier', 14),
-    ('mfeat-karhunen', 16),
-    # mfeat-morphological
-    ('mfeat-pixel', 20),
-    ('mfeat-zernike', 22),
-    ('molecular-biology_promoters', 164),
+UCI_DATASETS = [  # tuples (name, id), ordered by n_features. # comment: n_samples,n_features
+    ('haberman', 43),  # 306,4
+    # ('hayes-roth', 329),  # 160,5
+    ('balance-scale', 11),  # 625,5
+    ('iris', 61),  # 150,5
+    ('tae', 48),
     ('monks-problems-1', 333),
     ('monks-problems-2', 334),
     ('monks-problems-3', 335),
-    ('mushroom', 24),
+    ('liver-disorders', 8),  # 345,7
+    # ('car', 40975),  # 1728,7
+    # ('mfeat-morphological', 962),  # 2000,7
+    # ('shuttle-landing-control', 172),  # 15,7
+    ('ecoli', 39),
+    ('diabetes', 37),
     ('nursery', 26),
-    ('optdigits', 28),
-    ('page-blocks', 30),
-    ('pendigits', 32),
     ('postoperative-patient-data', 34),
-    # primary-tumor
-    ('segment', 36),
-    # shuttle-landing-control
-    ('sick', 38),
-    # solar-flare_1
-    # solar-flare_2
-    ('sonar', 40),
-    ('soybean', 42),
-    ('spambase', 44),
-    # spect
-    # spectf
-    # spectrometer
-    ('splice', 46),
-    # sponge
-    ('tae', 48),
-    ('tic-tac-toe', 50),
-    ('trains', 52),
-    ('vehicle', 54),
+    ('breast-cancer', 13),
+    ('breast-w', 15),
+    ('cmc', 23),  # 1473,10
+    ('glass', 41),  # 214,10
+    ('tic-tac-toe', 50),  # 958,10
+    ('page-blocks', 30),  # 5073,11
+    # ('bridges', 327),  # 105,13
+    # ('solar-flare_1', 40686),  # 315,13
+    # ('solar-flare_2', 40687),  # 1066,13
+    # ('vowel', 307),  # 990,13
+    ('heart-c', 49),  # 303,14
+    # ('wine', 187),  # 178,14
+    ('heart-h', 51),
+    ('heart-statlog', 53),
+    ('credit-a', 29),
+    ('labor', 4),  # 57,17
+    ('letter', 6),
+    ('pendigits', 32),  # 10992,17
     ('vote', 56),
-    # vowel', 0),
-    ('waveform-5000', 60),
-    # wine
-    ('zoo', 62),
+    ('zoo', 62),  # 101,17
+    # ('primary-tumor', 171),  # 339,18
+    ('lymph', 10),  # 148,19
+    ('vehicle', 54),
+    ('hepatitis', 55),  # 155,20
+    ('segment', 36),
+    ('credit-g', 31),
+    ('colic', 27),  # 368,23
+    ('mushroom', 24),  # 8124,23
+    # ('spect', 336),  # 267,23
+    ('autos', 9),  # 205,26
+    # ('flags', 285),  # 194,30
+    ('hypothyroid', 57),  # 3772,30
+    ('sick', 38),
+    ('trains', 52),  # 10,33
+    ('dermatology', 35),
+    ('ionosphere', 59),
+    ('soybean', 42),
+    ('kr-vs-kp', 3),
+    ('anneal', 2),  # 898,39
+    # ('cylinder-bands', 6332),  # 540,40
+    ('waveform-5000', 60),  # 5000,41
+    # ('spectf', 1600),  # 267,45
+    # ('sponge', 1001),  # 76,46
+    ('mfeat-zernike', 22),  # 2000,48
+    # ('lung-cancer', 163),  # 32,57
+    ('spambase', 44),  # 4601,58
+    ('molecular-biology_promoters', 164),  # 106,59
+    ('sonar', 40),  # 208,61
+    ('splice', 46),  # 3190,61
+    ('mfeat-karhunen', 16),
+    ('optdigits', 28),  # 5620,65
+    ('audiology', 7),  # 226,70
+    ('mfeat-fourier', 14),  # 2000,77
+    # ('spectrometer', 313),  # 531,103
+    ('mfeat-factors', 12),  # 2000,217
+    ('mfeat-pixel', 20),  # 2000,241
+    ('arrhythmia', 5),  # 452,280
+
+    # ('kdd_JapaneseVowels', 375),
+    # ('kdd_SyskillWebert-Bands', 380),
+    # ('kdd_SyskillWebert-BioMedical', 374),
+    # ('kdd_SyskillWebert-Goats', 379),
+    # ('kdd_SyskillWebert-Sheep', 376),
+    # ('kdd_UNIX_user_data', 373),
+    # ('kdd_internet_usage', 372),
+    # ('kdd_ipums_la_97-small', 382),  # 7019,61
+    # ('kdd_ipums_la_98-small', 381),  # 7485,61
+    # ('kdd_ipums_la_99-small', 378),  # 8844,61
+    # ('kdd_synthetic_control', 377),
 ]
 
 
