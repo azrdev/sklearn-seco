@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from datetime import datetime
 from time import perf_counter_ns
@@ -344,6 +345,11 @@ def _log_results(algorithm: str,
     :param metrics: todo split parameter
     """
     n_samples, n_features = dataset.data.shape
+    def formatfloat(f):
+        if isinstance(f, float):
+            return  '{:.3f}'.format(f)
+        return f
+
     result_logger.info(','.join(map(
         lambda v: '' if v is None else str(v),
         [str(dataset.details['id']) + '_' + dataset.details['name'],
@@ -352,12 +358,12 @@ def _log_results(algorithm: str,
          len(dataset.categories),
          algorithm,
          n_rules,
-         runtime_single,
-         runtime_cv,
-         ] + metrics)))
+         formatfloat(runtime_single),
+         formatfloat(runtime_cv),
+         ] + [formatfloat(m) for m in metrics])))
 
 
-def main():
+def main(args: List[str]):
     result_logger.info(','.join(["dataset",
                                  "n_samples",
                                  "n_features",
@@ -369,14 +375,23 @@ def main():
                                  "precision",
                                  "recall",
                                  "f1"]))
+    skip_until = None
+    if args[1:]:
+        skip_until = int(args[1])
+        logger.info('got command line args, skipping datasets up to #{}'
+                    .format(skip_until))
     cache_dir = os.path.realpath(CACHE_DIR)
     for ds_name, ds_id in UCI_DATASETS:
+        if skip_until is not None:
+            if ds_id == skip_until:
+                skip_until = None
+            continue
 
         try:
             dataset = fetch_openml(data_id=ds_id, data_home=cache_dir)
             logger.info('dataset #{}: {}'.format(dataset.details['id'],
                                                  dataset.details['name']))
-        except ValueError as e:
+        except Exception as e:
             logger.error('dataset #{} {} not found: {!r}'
                          .format(ds_id, ds_name, e))
             continue
@@ -409,4 +424,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv)
