@@ -502,6 +502,8 @@ class RuleContext:
         :return: an object used for ordering `rule` and other `AugmentedRule`
             instances, based on `evaluate_rule`.
         """
+        # TODO: maybe caching sort_key gains speed
+
         assert hasattr(rule, '_growing_heuristic')
         p, n = self.pn(rule)
         return (rule._growing_heuristic,

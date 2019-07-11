@@ -449,6 +449,8 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
 
     algorithm_config: Type[SeCoAlgorithmConfiguration]
 
+    # TODO: _BaseSeCoEstimator.export_text equivalent inverting binarization & target transformation for display
+
     def _more_tags(self):
         # tell sklearn >= 0.21 that we can handle categorical data
         return {'X_types': ['2darray', 'categorical'],

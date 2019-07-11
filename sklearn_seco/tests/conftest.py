@@ -1,4 +1,5 @@
 """pytest fixtures for the test cases in this directory."""
+
 from typing import Optional, Type
 
 import numpy as np

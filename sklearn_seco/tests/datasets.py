@@ -8,9 +8,9 @@ binary_slight_overlap   160         8 (0-8)                 yes     no          
 staged                  200         2 (0-2)                 yes     yes         CN2
 sklearn_make_moons      400         2 (0-2)                 no      yes         CN2
 xor_2d                  400         2 (0-2)                 yes     yes         CN2
-s_m_classification      1000        2 (0-2)                 yes     no          yes
+s_m_classification      1000        2 (0-2)                 yes     no          CN2
 artificial_disjunction  2000        15 (15-0)               yes     yes?        CN2
-checkerboard_2d         100_000     2 (2-0)                 yes     no          yes
+checkerboard_2d         100_000     2 (2-0)                 yes     no          CN2,Ripper
 ----------------------|-----------|-----------------------|-------|-----------|------------
 """
 # TODO: maybe replace these with fixtures used with indirect=True
