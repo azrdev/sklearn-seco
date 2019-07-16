@@ -235,6 +235,9 @@ def run_sklearn_seco_ripper(dataset: Bunch, log_results: Callable):
         fit_params=dict(categorical_features=categorical))
     # runtime_cv = perf_counter_ns() - start_time
     logger.debug(cv_result)
+    for est in cv_result['estimator']:
+        sksrip_theory_logger.debug([base.export_text(dataset.feature_names)
+                                   for base in est.get_seco_estimators()])
 
     log_results(algorithm='sklearn_seco.Ripper',
                 runtime_single=runtime_single,
