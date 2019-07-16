@@ -92,13 +92,13 @@ class Rule:
         """:return: a string representation of `self`."""
 
         n_features = self.body.shape[1]
-        if feature_names:
+        if feature_names is not None:
             assert n_features == len(feature_names)
         else:
             feature_names = ['feature_{}'.format(i + 1)
                              for i in range(n_features)]
         classification = ' => ' + str(class_names[self.head]
-                                      if class_names
+                                      if class_names is not None
                                       else self.head)
         return ' and '.join(
             '({ft} {op} {thresh:.3})'.format(

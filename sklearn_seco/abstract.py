@@ -350,7 +350,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
             # TODO: wrapper in SeCoEstimator doing the inverse transform of class labels
         """
 
-        if feature_names:
+        if feature_names is not None:
             if len(feature_names) != self.n_features_:
                 raise ValueError(
                     "feature_names must contain %d elements, got %d"
@@ -361,7 +361,7 @@ class _BaseSeCoEstimator(BaseEstimator, ClassifierMixin):
 
         # fallback to the negative (binary) resp. biggest (multi-class) class
         default_class = self.classes_[0]
-        if class_names:
+        if class_names is not None:
             default_class = class_names[default_class]
         default_rule = '(true) => ' + str(default_class)
 
