@@ -426,5 +426,117 @@ def main(args: List[str]):
                            'with {!r}'.format(ds_id, ds_name, e))
 
 
+# import only: plotting
+# NOTE: don't forget seaborn style: `sns.set(); sns.set_style('talk')`
+
+def _load_results_log(results_log_file: str):
+    import pandas as pd
+    all_eval = np.genfromtxt(results_log_file, delimiter=',', names=True, encoding='utf8', dtype=None)
+    # if loading multiple files, use numpy.lib.recfunctions.stack_arrays()
+    aedf = pd.DataFrame(all_eval)
+    aedfp = aedf.pivot_table(index=['dataset', 'n_samples', 'n_features'],
+                             columns='algorithm',
+                             values=['f1', 'precision', 'recall', 'runtime_cv'],
+                             aggfunc=np.nanmean)
+    t1 = aedfp.reset_index().sort_values(('runtime_cv', 'sklearn_seco.Ripper'))
+    return aedf, aedfp, t1
+
+
+def plot_performance(results_log_file: str):
+    """Plot for each (f1,precision,recall): x=sklearn_seco, y=other algorithms
+    """
+    import matplotlib.pyplot as plt
+    aedf, aedfp, t1 = _load_results_log(results_log_file)
+    lim = [-0.01, 1.01]
+    figures = []
+    for metric in ('f1', 'precision', 'recall'):
+        fig = plt.figure()
+        figures.append(fig)
+        ax = fig.gca(aspect='equal')
+        t2m = t1[metric].set_index('sklearn_seco.Ripper')
+        t2m.plot.line(marker='.', linestyle='',
+                      xlim=lim, ylim=lim,
+                      title=metric.capitalize(), ax=ax)
+        ax.set_ylabel('other')
+        ax.plot([0,1], [0,1], '-', color='black', alpha=0.3, zorder=-100)
+        fig.set_tight_layout(True)
+    return figures
+
+
+# var1: unused
+def plot_runtime1(results_log_file: str):
+    """Loglog plot of runtime_cv: x=sklearn_seco, y=other algorithms
+    """
+    import matplotlib.ticker, matplotlib.pyplot as plt
+    from datetime import timedelta
+    def format_seconds(x, pos=None):
+        return str(timedelta(seconds=x))
+    aedf, aedfp, t1 = _load_results_log(results_log_file)
+    tt = t1['runtime_cv'].set_index('sklearn_seco.Ripper')
+
+    fig = plt.figure()
+    ax = fig.gca()
+    ax.plot([0, 100_000], [0, 100_000], color='black', alpha=0.3)
+    tt.plot.line(marker='.', linestyle='', logy=True, logx=True, ax=ax)
+    ax.grid(True, which='both', axis='both')
+    ax.set_ylim(top=tt.max().max() * 1.1)
+    ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(format_seconds))
+    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(format_seconds))
+
+
+# var2: used
+def plot_runtime2(results_log_file: str):
+    """Log plot of runtime_cv:
+    x=index sorted by sklearn_seco runtime,
+    y=runtime of 4 algorithms
+    """
+    import matplotlib.pyplot as plt
+    aedf, aedfp, t1 = _load_results_log(results_log_file)
+    tf = t1[['runtime_cv', 'n_features', 'n_samples']] \
+        .sort_values(('runtime_cv', 'sklearn_seco.Ripper')) \
+        .reset_index(drop=True)
+
+    fig, axs = plt.subplots(nrows=3, sharex=True,
+                            gridspec_kw={'height_ratios': [5, 1, 1]})
+    tf['runtime_cv'].plot(linestyle='', marker='.', sharex=True, ax=axs[0],
+                          title='cross-validation runtime', logy=True, )
+    tf['n_features'].plot(linestyle='', marker='.', sharex=True, ax=axs[1],
+                          color='black', ylim=0 )
+    tf['n_samples'].plot(linestyle='', marker='.', sharex=True, ax=axs[2],
+                         color='black', ylim=0 )
+    axs[0].grid(True, which='both', axis='both')
+    axs[0].set_ylabel('seconds')
+    axs[1].set_ylabel('n_features')
+    axs[2].set_ylabel('n_samples')
+    axs[0].set_xlim(-1, len(tf) + 1)
+    axs[2].set_xlabel('dataset index')
+    fig.set_tight_layout(True)
+    return fig, axs
+
+
+# var3
+def plot_speedup(results_log_file: str):
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    aedf, aedfp, t1 = _load_results_log(results_log_file)
+    t3 = t1[['dataset', 'n_samples', 'n_features', 'f1', 'runtime_cv']]
+    t3_runtime_mux = t3.loc[:, ('runtime_cv', slice(None))]
+    speedup = (1 / t3_runtime_mux).mul(t3['runtime_cv']['sklearn_seco.Ripper'],
+                                       axis=0) \
+        .rename({'runtime_cv': 'speedup'}, axis=1)
+    t4 = pd.concat((t3, speedup), axis=1).reset_index(drop=True)
+    # ax = plt.figure().gca()
+    # for algo in ['sklearn.dtree', 'weka.J48', 'weka.JRip']:
+    #     # TODO: (more) useful plot
+    #     t4.plot.line(('f1', algo), ('speedup', algo),
+    #                  linestyle='', marker='.', ax=ax)
+    ax = t4.plot.line(('runtime_cv', 'sklearn_seco.Ripper'), 'speedup',
+                      linestyle='', marker='.',
+                      logx=True, logy=True,
+                      title='speedup w.r.t. sklearn_seco.Ripper')
+    ax.set_xlabel('sklearn_seco.Ripper runtime_cv [seconds]')
+    ax.grid(True, which='both', axis='both')
+
+
 if __name__ == '__main__':
     main(sys.argv)
