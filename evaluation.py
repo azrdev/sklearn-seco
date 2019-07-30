@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime
-from time import perf_counter_ns
+from time import perf_counter
 from types import SimpleNamespace
 from typing import Callable, List
 
@@ -27,7 +27,7 @@ from sklearn_seco.concrete import RipperEstimator
 
 CACHE_DIR = 'openml_cache/'
 RESULT_DIR = 'evaluation/'
-WEKA_CMD = ['java', '-cp', '/usr/share/java/weka/weka.jar', 'weka.Run']
+WEKA_CMD = ['java', '-cp', 'weka.jar', 'weka.Run']
 
 _logfile_prefix = RESULT_DIR + datetime.now().isoformat()
 logging.basicConfig(
@@ -193,16 +193,16 @@ def run_sklearn_cart(dataset: Bunch, log_results: Callable):
             memory=tmpdir)  # cache the preprocessing
 
         logger.info("sklearn_seco: cross-validate dtree")
-        # start_time = perf_counter_ns()
+        # start_time = perf_counter()
         cv_result = sklearn_cross_validate(estimator=pipeline,
                                            X=dataset.data,
                                            y=dataset.target)
-        # runtime_cv = perf_counter_ns() - start_time
+        # runtime_cv = perf_counter() - start_time
         logger.debug(cv_result)
 
     log_results(algorithm='sklearn.dtree',
                 runtime_single=None,
-                runtime_cv=cv_result['fit_time'].sum(), # runtime_cv / 10 ** 9,
+                runtime_cv=cv_result['fit_time'].sum(), # runtime_cv,
                 n_rules=None,
                 metrics=[
                     cv_result['accuracy'].mean(),
@@ -219,11 +219,11 @@ def run_sklearn_seco_ripper(dataset: Bunch, log_results: Callable):
     logger.info("sklearn_seco: build single Ripper")
     try:
         simple_rip: RipperEstimator = clone(estimator)
-        start_time = perf_counter_ns()
+        start_time = perf_counter()
         simple_rip.fit(
             dataset.data, dataset.target,
             categorical_features=categorical)
-        runtime_single = (perf_counter_ns() - start_time) / 10 ** 9
+        runtime_single = (perf_counter() - start_time)
         sksrip_theory_logger.info(
             [base.export_text(dataset.feature_names)
              for base in simple_rip.get_seco_estimators()])
@@ -232,11 +232,11 @@ def run_sklearn_seco_ripper(dataset: Bunch, log_results: Callable):
         simple_rip = runtime_single = None
 
     logger.info("sklearn_seco: cross-validate Ripper")
-    # start_time = perf_counter_ns()
+    # start_time = perf_counter()
     cv_result = sklearn_cross_validate(
         estimator=estimator, X=dataset.data, y=dataset.target,
         fit_params=dict(categorical_features=categorical))
-    # runtime_cv = perf_counter_ns() - start_time
+    # runtime_cv = perf_counter() - start_time
     logger.debug(cv_result)
     for est in cv_result['estimator']:
         sksrip_theory_logger.debug([base.export_text(dataset.feature_names)
@@ -299,7 +299,7 @@ def _run_weka(name: str, extra_args: List[str],
                            # todo: hardcode metrics
                            ] + extra_args
         logger.debug(_cmd)
-        weka_process = subprocess.run(_cmd, capture_output=True, text=True)
+        weka_process = subprocess.run(_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     logger.info('weka.{} returned with {}'
                 .format(name, weka_process.returncode))
     if weka_process.stdout:
