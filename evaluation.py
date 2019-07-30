@@ -167,6 +167,15 @@ sklearn_cross_validate = functools.partial(
 )
 
 
+def _get_sklearn_metrics(cv_result: Bunch):
+    return [
+        cv_result['test_accuracy'].mean(),
+        cv_result['test_precision_weighted'].mean(),
+        cv_result['test_recall_weighted'].mean(),
+        cv_result['test_f1_weighted'].mean(),
+    ]
+
+
 def _categorical_mask(dataset: Bunch):
     return np.array([ft in dataset.categories
                      for ft in dataset.feature_names], dtype=bool)
@@ -204,12 +213,7 @@ def run_sklearn_cart(dataset: Bunch, log_results: Callable):
                 runtime_single=None,
                 runtime_cv=cv_result['fit_time'].sum(), # runtime_cv,
                 n_rules=None,
-                metrics=[
-                    cv_result['accuracy'].mean(),
-                    cv_result['train_precision_weighted'].mean(),
-                    cv_result['train_recall_weighted'].mean(),
-                    cv_result['train_f1_weighted'].mean(),
-                ])
+                metrics=_get_sklearn_metrics(cv_result))
 
 
 def run_sklearn_seco_ripper(dataset: Bunch, log_results: Callable):
@@ -248,12 +252,7 @@ def run_sklearn_seco_ripper(dataset: Bunch, log_results: Callable):
                 n_rules='+'.join([str(len(e.theory_))
                                   for e in simple_rip.get_seco_estimators()])
                         if simple_rip else None,
-                metrics=[
-                    cv_result['test_accuracy'].mean(),
-                    cv_result['test_precision_weighted'].mean(),
-                    cv_result['test_recall_weighted'].mean(),
-                    cv_result['test_f1_weighted'].mean(),
-                ])
+                metrics=_get_sklearn_metrics(cv_result))
 
 
 def run_weka_JRip(*args):
