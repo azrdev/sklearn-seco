@@ -17,7 +17,7 @@ Could be considered as TODO.
     - for numerical only <= and >=
 - numerical (i.e. non-categorical) features always assumed to be ordinal
 - only float data supported (due to usage of np.inf in Rules)
-- no NaN, inf, or -inf values in data
+- no inf or -inf values in data
 - no weighting
 - classification only, no regression
 """

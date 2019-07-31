@@ -15,6 +15,7 @@ setuptools.setup(
                 '*Covering*-Algorithm for scikit-learn.',
     long_description=long_description,
     long_description_content_type="text/markdown",
+    python_requires='>=3.6',
     install_requires=[
         'scikit_learn >= 0.20',
         'numpy',

@@ -5,8 +5,8 @@ import pytest
 from numpy.core.umath import NINF, PINF
 from numpy.testing import assert_array_equal
 
-from sklearn_seco.common import __match_rule_numpy, __match_rule_numba, Rule, \
-    AugmentedRule, match_rule
+from sklearn_seco.common import \
+    __match_rule_numpy, __match_rule_numba, Rule, AugmentedRule, match_rule
 from .conftest import assert_array_unequal
 
 
@@ -78,4 +78,3 @@ def test_copy_augmentedrule():
 
 
 # TODO: test _BaseSeCoEstimator.ordered_matching = True
-# TODO: test match_rule without numba
