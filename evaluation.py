@@ -59,7 +59,7 @@ class WEKA_REGEX(SimpleNamespace):
     CV_ACCURACY = re.compile(r'Correctly Classified Instances\s*\d*\s+'
                              r'(?P<value>\d+(\.\d*)?)\s*%', re.MULTILINE)
     CV_AVG_METRICS = re.compile(
-        r'^Weighted Avg.\s*(?P<values>[?\s,0-9]*[,0-9])\s*$', re.MULTILINE)
+        r'^Weighted Avg.\s*(?P<values>[?\s,\d-]*[,\d])\s*$', re.MULTILINE)
 
 
 UCI_DATASETS = [  # tuples (name, id), ordered by n_features. # comment: n_samples,n_features
@@ -308,31 +308,53 @@ def _run_weka(name: str, extra_args: List[str],
 
     weka_out: str = weka_process.stdout
     if WEKA_REGEX.FULL_MODEL.search(weka_out):  # if has successful run
-        jrip_n_rules = WEKA_REGEX.JRIP_N_RULES.search(weka_out)
-        if jrip_n_rules:
-            jrip_n_rules = int(jrip_n_rules.group('no'))
-        cv_start = weka_out.find('cross-validation')
-        # note w.r.t accuracy: weka.classifiers.evaluation.Evaluation.pctCorrect()
-        # just adds up counts over all test sets from the cross-validation splits
-        cv_accuracy = WEKA_REGEX.CV_ACCURACY.search(weka_out, cv_start).group('value')
-        weka_metrics = [
-            float('nan') if val == '?' else float(val.replace(',', '.'))
-            for val in WEKA_REGEX.CV_AVG_METRICS
-                                 .search(weka_out, cv_start)
-                                 .group('values')
-                                 .split()]
-        tp_rate, fp_rate, precision, recall, f1, mcc, roc_a, prc_a = \
-            weka_metrics
+        runtime_single, runtime_cv, jrip_n_rules, metrics = \
+            _process_weka_output(weka_out)
+
         log_results(
             algorithm='weka.' + name,
-            runtime_single=float(WEKA_REGEX.RUNTIME_TRAIN.search(weka_out)
-                                 .group('time')),
-            runtime_cv=float(WEKA_REGEX.RUNTIME_CV.search(weka_out)
-                             .group('time')),
+            runtime_single=runtime_single,
+            runtime_cv=runtime_cv,
             n_rules=jrip_n_rules,
-            metrics=[cv_accuracy, precision, recall, f1])
+            metrics=metrics)
     else:
         logger.warning('weka.{}: no successful output found')
+
+
+def _process_weka_output(weka_out):
+    jrip_n_rules = WEKA_REGEX.JRIP_N_RULES.search(weka_out)
+    if jrip_n_rules:
+        jrip_n_rules = int(jrip_n_rules.group('no'))
+    else:
+        jrip_n_rules = None
+    runtime_single = WEKA_REGEX.RUNTIME_TRAIN.search(weka_out)
+    if runtime_single:
+        runtime_single = float(runtime_single.group('time'))
+    else:
+        runtime_single = None
+    runtime_cv = WEKA_REGEX.RUNTIME_CV.search(weka_out)
+    if runtime_cv:
+        runtime_cv = float(runtime_cv.group('time'))
+    else:
+        runtime_cv = None
+    cv_start = weka_out.find('cross-validation')
+    cv_accuracy = WEKA_REGEX.CV_ACCURACY.search(weka_out, cv_start)
+    if cv_accuracy:
+        cv_accuracy = cv_accuracy.group('value')
+    else:
+        cv_accuracy = None
+    # note w.r.t accuracy: weka.classifiers.evaluation.Evaluation.pctCorrect()
+    # just adds up counts over all test sets from the cross-validation splits
+    weka_metrics = [
+        float('nan') if val == '?' else float(val.replace(',', '.'))
+        for val in WEKA_REGEX.CV_AVG_METRICS
+            .search(weka_out, cv_start)
+            .group('values')
+            .split()]
+    tp_rate, fp_rate, precision, recall, f1, mcc, roc_a, prc_a = \
+        weka_metrics
+    return (runtime_single, runtime_cv, jrip_n_rules,
+            [cv_accuracy, precision, recall, f1])
 
 
 def _log_results(algorithm: str,
