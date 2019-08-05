@@ -97,18 +97,19 @@ class Rule:
         else:
             feature_names = ['feature_{}'.format(i + 1)
                              for i in range(n_features)]
-        classification = ' => ' + str(class_names[self.head]
-                                      if class_names is not None
-                                      else self.head)
-        return ' and '.join(
-            '({ft} {op} {thresh:.3})'.format(
-                ft=feature_names[ti[1]],
-                op='==' if categorical_mask[ti[1]] else
-                '>=' if ti[0] == Rule.LOWER else '<=',
-                thresh=self.body[ti])
-            # ti has type: Tuple[int, int]
-            # where ti[0] is LOWER or UPPER and ti[1] is the feature index
-            for ti in zip(*np.isfinite(self.body).nonzero())) + classification
+        return 'if {} then {}'.format(
+            ' and '.join(
+                '({ft} {op} {thresh:.3})'.format(
+                    ft=feature_names[ti[1]],
+                    op='==' if categorical_mask[ti[1]] else
+                    '>=' if ti[0] == Rule.LOWER else '<=',
+                    thresh=self.body[ti])
+                # ti has type: Tuple[int, int]
+                # where ti[0] is LOWER or UPPER and ti[1] is the feature index
+                for ti in zip(*np.isfinite(self.body).nonzero())),
+            str(class_names[self.head]
+                if class_names is not None
+                else self.head))
 
     def __repr__(self):
         return str('Rule({!r},\n {!r}'.format(self.head, self.body))
