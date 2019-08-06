@@ -8,7 +8,7 @@ import tempfile
 from datetime import datetime
 from time import perf_counter
 from types import SimpleNamespace
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import numpy as np
 from sklearn import clone
@@ -336,7 +336,7 @@ def _process_weka_output(weka_out):
     cv_start = weka_out.find('cross-validation')
     cv_accuracy = WEKA_REGEX.CV_ACCURACY.search(weka_out, cv_start)
     if cv_accuracy:
-        cv_accuracy = cv_accuracy.group('value')
+        cv_accuracy = float(cv_accuracy.group('value')) / 100
     else:
         cv_accuracy = None
     # note w.r.t accuracy: weka.classifiers.evaluation.Evaluation.pctCorrect()
@@ -461,7 +461,15 @@ def main(args: List[str]):
 
 
 # import only: plotting
-# NOTE: don't forget seaborn style: `sns.set(); sns.set_style('talk')`
+# NOTE: don't forget seaborn style: `sns.set(context='talk')`
+
+_METRIC_STYLE = {  # define tuples (color from tudesign, marker-shape)
+    'sklearn.dtree':       ('#5D85C3', 'v'),
+    'weka.J48':            ('#EE7A34', 'X'),
+    'weka.JRip':           ('#AFCC50', 'D'),
+    'sklearn_seco.Ripper': ('#E6001A', 'o'),
+}
+
 
 def _load_results_log(results_log_file: str):
     import pandas as pd
@@ -470,30 +478,47 @@ def _load_results_log(results_log_file: str):
     aedf = pd.DataFrame(all_eval)
     aedfp = aedf.pivot_table(index=['dataset', 'n_samples', 'n_features'],
                              columns='algorithm',
-                             values=['f1', 'precision', 'recall', 'runtime_cv'],
+                             values=['accuracy', 'f1', 'precision', 'recall', 'runtime_cv'],
                              aggfunc=np.nanmean)
     t1 = aedfp.reset_index().sort_values(('runtime_cv', 'sklearn_seco.Ripper'))
     return aedf, aedfp, t1
 
 
-def plot_performance(results_log_file: str):
-    """Plot for each (f1,precision,recall): x=sklearn_seco, y=other algorithms
+def plot_performance(results_log_file: str,
+                     seaborn_style: Optional[dict] = {'style': 'whitegrid'},
+                     outfile_pattern: str = None,
+                     ):
+    """Plot for each (accuracy,f1,precision,recall): x=sklearn_seco, y=other algorithms
     """
+    _OTHER = ['sklearn.dtree', 'weka.J48', 'weka.JRip']
+
+    if seaborn_style is not None:
+        import seaborn
+        seaborn.set(**seaborn_style)
+
     import matplotlib.pyplot as plt
     aedf, aedfp, t1 = _load_results_log(results_log_file)
     lim = [-0.01, 1.01]
     figures = []
-    for metric in ('f1', 'precision', 'recall'):
-        fig = plt.figure()
+    for metric in ('accuracy', 'f1', 'precision', 'recall'):
+        fig: plt.Figure = plt.figure(figsize=(6, 6))
         figures.append(fig)
         ax = fig.gca(aspect='equal')
-        t2m = t1[metric].set_index('sklearn_seco.Ripper')
-        t2m.plot.line(marker='.', linestyle='',
-                      xlim=lim, ylim=lim,
-                      title=metric.capitalize(), ax=ax)
+
+        for other in _OTHER:
+            style = _METRIC_STYLE[other]
+            t1[metric].plot.scatter(
+                'sklearn_seco.Ripper', other,
+                color=style[0], marker=style[1], label=other,
+                xlim=lim, ylim=lim,
+                title=metric.capitalize(), ax=ax)
+
         ax.set_ylabel('other')
         ax.plot([0,1], [0,1], '-', color='black', alpha=0.3, zorder=-100)
         fig.set_tight_layout(True)
+
+        if outfile_pattern is not None:
+            fig.savefig(outfile_pattern.format(metric))
     return figures
 
 
