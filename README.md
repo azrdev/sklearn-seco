@@ -65,7 +65,8 @@ dependency sets "numba" and "tests".
   succeeds completely for SimpleSeCo and CN2
 
 - CN2 has not been thoroughly compared to
-  [original code](https://www.cs.utexas.edu/users/pclark/software/),
+  [original code](https://www.cs.utexas.edu/users/pclark/software/) or
+  [the Orange implementation](https://orange3.readthedocs.io/projects/orange-visual-programming/widgets/model/cn2ruleinduction.html),
   but should be complete
 
 - Ripper misses the original class binarization strategy and the global post-optimization,

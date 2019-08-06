@@ -29,12 +29,8 @@ CACHE_DIR = 'openml_cache/'
 RESULT_DIR = 'evaluation/'
 WEKA_CMD = ['java', '-cp', 'weka.jar', 'weka.Run']
 
+
 _logfile_prefix = RESULT_DIR + datetime.now().isoformat()
-logging.basicConfig(
-    format='%(asctime)s:' + logging.BASIC_FORMAT,
-    handlers=[logging.StreamHandler(),
-              logging.FileHandler(_logfile_prefix + '_complete.log')])
-logging.captureWarnings(True)  # warnings.*filter don't work with joblib.Parallel
 logger = logging.getLogger('evaluation')
 logger.setLevel(logging.DEBUG)
 weka_stdout_logger = logger.getChild('weka_stdout')
@@ -395,6 +391,14 @@ def _log_results(algorithm: str,
 
 
 def main(args: List[str]):
+    # setup loggers
+    logging.basicConfig(
+        format='%(asctime)s:' + logging.BASIC_FORMAT,
+        handlers=[logging.StreamHandler(),
+                  logging.FileHandler(_logfile_prefix + '_complete.log')])
+    logging.captureWarnings(True)  # warnings.*filter don't work with joblib.Parallel
+
+
     result_logger.info(','.join(["dataset",
                                  "n_samples",
                                  "n_features",
@@ -417,15 +421,16 @@ def main(args: List[str]):
         if skip_until is not None:
             if ds_id == skip_until:
                 skip_until = None
-            continue
+            else:
+                continue
 
         try:
             dataset = fetch_openml(data_id=ds_id, data_home=cache_dir)
             logger.info('dataset #{}: {}'.format(dataset.details['id'],
                                                  dataset.details['name']))
         except Exception as e:
-            logger.error('dataset #{} {} not found: {!r}'
-                         .format(ds_id, ds_name, e))
+            logger.exception('dataset #{} {} not found'
+                             .format(ds_id, ds_name))
             continue
 
         log_results = functools.partial(_log_results, dataset=dataset)
@@ -434,25 +439,25 @@ def main(args: List[str]):
             run_sklearn_cart(dataset, log_results)
         except Exception as e:
             logger.warning('sklearn.dtree failed on dataset #{} {} '
-                           'with {!r}'.format(ds_id, ds_name, e))
+                           .format(ds_id, ds_name), exc_info=e)
 
         try:
             run_sklearn_seco_ripper(dataset, log_results)
         except Exception as e:
             logger.warning('sklearn_seco.Ripper failed on dataset #{} {} '
-                           'with {!r}'.format(ds_id, ds_name, e))
+                           .format(ds_id, ds_name), exc_info=e)
 
         try:
             run_weka_JRip(dataset, log_results, cache_dir)
         except Exception as e:
             logger.warning('weka.JRip failed on dataset #{} {} '
-                           'with {!r}'.format(ds_id, ds_name, e))
+                           .format(ds_id, ds_name), exc_info=e)
 
         try:
             run_weka_J48(dataset, log_results, cache_dir)
         except Exception as e:
-            logger.warning('weka.J48 failed on dataset #{} {} '
-                           'with {!r}'.format(ds_id, ds_name, e))
+            logger.warning('weka.J48 failed on dataset #{} {}'
+                           .format(ds_id, ds_name), exc_info=e)
 
 
 # import only: plotting
