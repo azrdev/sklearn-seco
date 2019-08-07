@@ -7,7 +7,7 @@ import sys
 import tempfile
 from datetime import datetime
 from time import perf_counter
-from types import SimpleNamespace
+from types import SimpleNamespace, MappingProxyType
 from typing import Callable, List, Optional
 
 import numpy as np
@@ -463,6 +463,8 @@ def main(args: List[str]):
 # import only: plotting
 # NOTE: don't forget seaborn style: `sns.set(context='talk')`
 
+DEFAULT_SEABORN_STYLE = MappingProxyType({'style': 'whitegrid'})
+
 _OTHER_ALGO = ['sklearn.dtree', 'weka.J48', 'weka.JRip']
 _METRIC_STYLE = {  # define tuples (color from tudesign, marker-shape)
     'sklearn.dtree':       ('#5D85C3', 'v'),
@@ -486,7 +488,7 @@ def _load_results_log(results_log_file: str):
 
 
 def plot_performance(results_log_file: str,
-                     seaborn_style: Optional[dict] = {'style': 'whitegrid'},
+                     seaborn_style: Optional[dict] = DEFAULT_SEABORN_STYLE,
                      outfile_pattern: str = None,
                      ):
     """Plot for each (accuracy,f1,precision,recall): x=sklearn_seco, y=other algorithms
@@ -595,7 +597,7 @@ def _set_scale(ax: 'plt.Axes', x: np.ndarray, y: np.ndarray, *, scale=.5):
 
 # var3
 def plot_speedup(results_log_file: str,
-                 seaborn_style: Optional[dict] = {'style': 'whitegrid'},
+                 seaborn_style: Optional[dict] = DEFAULT_SEABORN_STYLE,
                  outfile_pattern: str = None,
                  ):
     t4 = _calculate_speedup(results_log_file)

@@ -7,7 +7,8 @@ import sys
 import time
 import timeit
 from itertools import chain
-from typing import Iterable
+from types import MappingProxyType
+from typing import Iterable, Optional, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,7 +16,7 @@ import numpy as np
 import sklearn_seco.concrete
 
 
-def time_seco(estimator: str, dataset_args: str):
+def time_seco(estimator: str, dataset_args: str) -> Optional[Sequence[float]]:
     setup = ';\n'.join((
         "import sklearn_seco; from sklearn_seco.tests import datasets",
         "dataset = sklearn_seco.tests.datasets.sklearn_make_classification(%s)"
@@ -32,7 +33,7 @@ def time_seco(estimator: str, dataset_args: str):
     return sorted(timing / ti_number for timing in raw_timings)
 
 
-def n_sample_gen(max=np.inf):
+def n_sample_gen(max=np.inf) -> Iterable[int]:
     mg = 1
     while mg * 50 < max:
         for t in (10, 20, 50):
@@ -55,7 +56,7 @@ def timing_for_param(estimator: str, categorical: bool,
 def plot_timings(timings, title=None, figure=None):
     from matplotlib.ticker import LogLocator, LogFormatter
     if figure is None:
-        figure = plt.figure()
+        figure: plt.Figure = plt.figure()
     axes = figure.gca(xlabel='n_features', ylabel='time[s]')
     if title is not None:
         axes.set_title(title)
