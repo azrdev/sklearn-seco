@@ -463,6 +463,7 @@ def main(args: List[str]):
 # import only: plotting
 # NOTE: don't forget seaborn style: `sns.set(context='talk')`
 
+_OTHER_ALGO = ['sklearn.dtree', 'weka.J48', 'weka.JRip']
 _METRIC_STYLE = {  # define tuples (color from tudesign, marker-shape)
     'sklearn.dtree':       ('#5D85C3', 'v'),
     'weka.J48':            ('#EE7A34', 'X'),
@@ -490,7 +491,6 @@ def plot_performance(results_log_file: str,
                      ):
     """Plot for each (accuracy,f1,precision,recall): x=sklearn_seco, y=other algorithms
     """
-    _OTHER = ['sklearn.dtree', 'weka.J48', 'weka.JRip']
 
     if seaborn_style is not None:
         import seaborn
@@ -505,7 +505,7 @@ def plot_performance(results_log_file: str,
         figures.append(fig)
         ax = fig.gca(aspect='equal')
 
-        for other in _OTHER:
+        for other in _OTHER_ALGO:
             style = _METRIC_STYLE[other]
             t1[metric].plot.scatter(
                 'sklearn_seco.Ripper', other,
@@ -573,28 +573,59 @@ def plot_runtime2(results_log_file: str):
     return fig, axs
 
 
-# var3
-def plot_speedup(results_log_file: str):
+def _calculate_speedup(results_log_file: str):
     import pandas as pd
-    import matplotlib.pyplot as plt
     aedf, aedfp, t1 = _load_results_log(results_log_file)
     t3 = t1[['dataset', 'n_samples', 'n_features', 'f1', 'runtime_cv']]
     t3_runtime_mux = t3.loc[:, ('runtime_cv', slice(None))]
     speedup = (1 / t3_runtime_mux).mul(t3['runtime_cv']['sklearn_seco.Ripper'],
                                        axis=0) \
         .rename({'runtime_cv': 'speedup'}, axis=1)
-    t4 = pd.concat((t3, speedup), axis=1).reset_index(drop=True)
-    # ax = plt.figure().gca()
-    # for algo in ['sklearn.dtree', 'weka.J48', 'weka.JRip']:
-    #     # TODO: (more) useful plot
-    #     t4.plot.line(('f1', algo), ('speedup', algo),
-    #                  linestyle='', marker='.', ax=ax)
-    ax = t4.plot.line(('runtime_cv', 'sklearn_seco.Ripper'), 'speedup',
-                      linestyle='', marker='.',
-                      logx=True, logy=True,
-                      title='speedup w.r.t. sklearn_seco.Ripper')
+    return pd.concat((t3, speedup), axis=1).reset_index(drop=True)
+
+
+def _set_scale(ax: 'plt.Axes', x: np.ndarray, y: np.ndarray, *, scale=.5):
+    """set limits because autoscale inserts huge margins, which hides minor grid
+    """
+    xmin, xmax = np.nanmin(x), np.nanmax(x)
+    ymin, ymax = np.nanmin(y), np.nanmax(y)
+    ax.set_xlim(xmin - xmin * scale, xmax + xmax * scale)
+    ax.set_ylim(ymin - ymin * scale, ymax + ymax * scale)
+
+
+# var3
+def plot_speedup(results_log_file: str,
+                 seaborn_style: Optional[dict] = {'style': 'whitegrid'},
+                 outfile_pattern: str = None,
+                 ):
+    t4 = _calculate_speedup(results_log_file)
+
+    if seaborn_style is not None:
+        import seaborn
+        seaborn.set(**seaborn_style)
+    import matplotlib.pyplot as plt
+    fig: plt.Figure = plt.figure()
+    ax: plt.Axes = fig.gca(xscale='log', yscale='log')
+
+    for other in _OTHER_ALGO:
+        style = _METRIC_STYLE[other]
+        t4.plot.scatter(
+            ('runtime_cv', 'sklearn_seco.Ripper'), ('speedup', other),
+            color=style[0], marker=style[1], label=other,
+            ax=ax, title='speedup w.r.t. sklearn_seco.Ripper', zorder=2)
     ax.set_xlabel('sklearn_seco.Ripper runtime_cv [seconds]')
-    ax.grid(True, which='both', axis='both')
+    ax.set_ylabel('runtime_cv speedup')
+    ax.legend(title="algorithm")
+    ax.grid(True, which='minor', axis='both', linewidth=0.2)
+    # mark equal runtime
+    ax.axhline(1, linestyle='solid', color='black', zorder=1)
+    _set_scale(ax,
+               t4[('runtime_cv', 'sklearn_seco.Ripper')].values,
+               t4['speedup'].values)
+
+    if outfile_pattern is not None:
+        fig.savefig(outfile_pattern)
+    return fig
 
 
 if __name__ == '__main__':
