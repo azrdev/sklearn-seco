@@ -27,7 +27,8 @@ def time_seco(estimator: str, dataset_args: str) -> Optional[Sequence[float]]:
     timer = timeit.Timer(stmt, setup)
     try:
         ti_number, raw_autorange_timing = timer.autorange()
-        raw_timings = timer.repeat(number=ti_number) + [raw_autorange_timing]
+        raw_timings = timer.repeat(repeat=1, number=ti_number) \
+            + [raw_autorange_timing]
     except ValueError:
         return None
     return sorted(timing / ti_number for timing in raw_timings)
@@ -41,11 +42,21 @@ def n_sample_gen(max=np.inf) -> Iterable[int]:
         mg *= 10
 
 
+def n_features_gen(n_samples: int) -> Iterable[int]:
+    step = int(np.log10(n_samples))
+    ranges = [range(2, 17, step)]
+    if n_samples < 1000:
+        ranges.append(range(24, 150, 16 // step))
+    if n_samples < 100:
+        ranges.append([200, 500])
+    return chain(*ranges)
+
+
 def timing_for_param(estimator: str, categorical: bool,
                      max_samples: int = np.inf) -> Iterable:
     extra_args = ['categorize=True'] if categorical else []
     for n_samples in n_sample_gen(max_samples):
-        for n_features in chain(range(2, 16), range(20, 70, 16)):
+        for n_features in n_features_gen(n_samples):
             argstr = "n_samples=%d, n_features=%d, %s" \
                      % (n_samples, n_features, ','.join(extra_args))
             timings = time_seco(estimator, argstr)
@@ -53,7 +64,14 @@ def timing_for_param(estimator: str, categorical: bool,
                 yield n_samples, n_features, timings
 
 
-def plot_timings(timings, title=None, figure=None):
+DEFAULT_SEABORN_STYLE = MappingProxyType({'style': 'whitegrid'})
+
+
+def plot_timings(timings, title=None, figure=None,
+                 seaborn_style: Optional[dict] = DEFAULT_SEABORN_STYLE):
+    if seaborn_style is not None:
+        import seaborn
+        seaborn.set(**seaborn_style)
     from matplotlib.ticker import LogLocator, LogFormatter
     if figure is None:
         figure: plt.Figure = plt.figure()
@@ -63,11 +81,11 @@ def plot_timings(timings, title=None, figure=None):
     n_samples = timings.T[0]
     n_features = timings.T[1]
     tm_min = timings.T[2]
-    for n in np.unique(n_samples):
+    for n in np.unique(n_samples)[::-1]:  # reverse so legend is in order
         mask = n_samples == n
         axes.loglog(n_features[mask], tm_min[mask], '.-', label=str(n))
     axes.legend(title='n_samples')
-    axes.grid(True)
+    axes.grid(True, which='both', axis='both')
     figure.tight_layout()
     # show more ticks
     axes.xaxis.set_major_locator(LogLocator(subs='all'))
@@ -101,4 +119,5 @@ if __name__ == "__main__":
         log("plotting")
         plot_timings(np.array(all_timings), 'runtime of %s' % estimator).show()
 
-    input('Press any key to exit.')
+    print('Now waiting for user input:')
+    breakpoint()
