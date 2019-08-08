@@ -24,16 +24,7 @@ from sklearn_seco.common import \
     AbstractSecoImplementation, RuleContext, TheoryContext
 from sklearn_seco.ripper_mdl import \
     data_description_length, relative_description_length
-from sklearn_seco.util import log2
-
-
-def pairwise(iterable):
-    """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
-    # copied from itertools docs
-    from itertools import tee
-    a, b = tee(iterable)
-    next(b, None)
-    return zip(a, b)
+from sklearn_seco.util import log2, pairwise
 
 
 def grow_prune_split(y,

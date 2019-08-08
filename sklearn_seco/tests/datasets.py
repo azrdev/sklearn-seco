@@ -20,7 +20,6 @@ from os.path import dirname
 from typing import Union
 
 import numpy as np
-import pytest
 from sklearn.datasets import make_blobs, make_classification, make_moons
 from sklearn.externals import _arff as arff
 from sklearn.utils import check_random_state, Bunch

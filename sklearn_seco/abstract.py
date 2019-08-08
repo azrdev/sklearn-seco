@@ -507,6 +507,7 @@ class SeCoEstimator(BaseEstimator, ClassifierMixin):
                 self.base_estimator_ = OneVsOneClassifier(self.base_estimator_,
                                                           n_jobs=self.n_jobs)
             elif self.multi_class_ == "direct":
+                # TODO: if self.multi_class=='direct' (not `None` auto-detect), only assertion prevents binary-only learner to silently learn on multiclass training data
                 self.base_estimator_ = wrapper_ordering_classes_by_size(
                     self.base_estimator_)
             else:

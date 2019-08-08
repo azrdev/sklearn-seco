@@ -16,6 +16,15 @@ def log2(x: float) -> float:
     return math.log2(x) if x > 0 else 0
 
 
+def pairwise(iterable):
+    """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
+    # copied from itertools docs
+    from itertools import tee
+    a, b = tee(iterable)
+    next(b, None)
+    return zip(a, b)
+
+
 def build_categorical_mask(which_features, n_features: int
                            ) -> np.ndarray or None:
     """:return: A mask array of length `n_features` based on `which_features`.

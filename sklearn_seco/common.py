@@ -371,9 +371,10 @@ class RuleContext:
     Methods & Properties provided are:
       - `PN`
       - `X` and `y`
-      - `match_rule`
       - `pn`
+      - `match_rule`
       - `evaluate_rule`
+      - `sort_key`
 
     Fields
     -----

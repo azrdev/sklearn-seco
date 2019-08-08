@@ -606,7 +606,7 @@ def plot_speedup(results_log_file: str,
         import seaborn
         seaborn.set(**seaborn_style)
     import matplotlib.pyplot as plt
-    fig: plt.Figure = plt.figure()
+    fig: plt.Figure = plt.figure(figsize=(9, 4))
     ax: plt.Axes = fig.gca(xscale='log', yscale='log')
 
     for other in _OTHER_ALGO:
@@ -625,6 +625,7 @@ def plot_speedup(results_log_file: str,
                t4[('runtime_cv', 'sklearn_seco.Ripper')].values,
                t4['speedup'].values)
 
+    fig.tight_layout()
     if outfile_pattern is not None:
         fig.savefig(outfile_pattern)
     return fig

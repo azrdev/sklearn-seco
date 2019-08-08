@@ -78,6 +78,11 @@ def plot_timings(timings, title=None, figure=None,
     axes = figure.gca(xlabel='n_features', ylabel='time[s]')
     if title is not None:
         axes.set_title(title)
+
+    timings = np.asarray(timings)
+    # sort by n_features so plot lines make sense
+    timings = timings[np.argsort(timings[:, 1])]
+
     n_samples = timings.T[0]
     n_features = timings.T[1]
     tm_min = timings.T[2]
