@@ -10,7 +10,6 @@ from itertools import chain
 from types import MappingProxyType
 from typing import Iterable, Optional, Sequence
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 import sklearn_seco.concrete
@@ -74,7 +73,8 @@ def plot_timings(timings, title=None, figure=None,
         seaborn.set(**seaborn_style)
     from matplotlib.ticker import LogLocator, LogFormatter
     if figure is None:
-        figure: plt.Figure = plt.figure()
+        import matplotlib.pyplot as plt
+        figure: plt.Figure = plt.figure(figsize=(9, 4))
     axes = figure.gca(xlabel='n_features', ylabel='time[s]')
     if title is not None:
         axes.set_title(title)
@@ -83,13 +83,13 @@ def plot_timings(timings, title=None, figure=None,
     tm_min = timings.T[2]
     for n in np.unique(n_samples)[::-1]:  # reverse so legend is in order
         mask = n_samples == n
-        axes.loglog(n_features[mask], tm_min[mask], '.-', label=str(n))
-    axes.legend(title='n_samples')
+        axes.loglog(n_features[mask], tm_min[mask], '.-', label=str(int(n)))
+    axes.legend(title='n_samples', ncol=1, handlelength=0)
     axes.grid(True, which='both', axis='both')
     figure.tight_layout()
     # show more ticks
     axes.xaxis.set_major_locator(LogLocator(subs='all'))
-    axes.xaxis.set_major_formatter(LogFormatter(minor_thresholds=(100, 99)))
+    axes.xaxis.set_major_formatter(LogFormatter(minor_thresholds=(100, 0.4)))
     axes.yaxis.set_major_locator(LogLocator(subs='all'))
     return figure
 
