@@ -2,9 +2,9 @@ import warnings
 
 from line_profiler import LineProfiler
 
-from sklearn_seco.tests import conftest
+from sklearn_seco import SimpleSeCoEstimator
 from sklearn_seco.common import match_rule, RuleContext
-from sklearn_seco.concrete import SimpleSeCoEstimator
+from sklearn_seco.tests import conftest
 
 
 def tcn2(dataset):

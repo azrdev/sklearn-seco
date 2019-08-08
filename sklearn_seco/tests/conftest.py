@@ -8,10 +8,10 @@ from numpy.testing import assert_array_equal, assert_raises
 from sklearn.utils import check_random_state
 from sklearn.utils.testing import set_random_state
 
+from sklearn_seco import \
+    SimpleSeCoEstimator, CN2Estimator, RipperEstimator, IrepEstimator
 from sklearn_seco.abstract import SeCoEstimator
 from sklearn_seco.common import Theory
-from sklearn_seco.concrete import \
-    SimpleSeCoEstimator, CN2Estimator, IrepEstimator, RipperEstimator
 
 from .datasets import Dataset, \
     binary_slight_overlap, xor_2d, checkerboard_2d, \

@@ -18,7 +18,7 @@ under supervision of Johannes Fürnkranz.
 For current test suite results, check
 [Continuous Integration](https://travis-ci.com/azrdev/sklearn-seco).
 
-To run a comparison of `sklearn_seco.concrete.RipperEstimator` with
+To run a comparison of `sklearn_seco.RipperEstimator` with
 [weka.JRip](http://weka.sourceforge.net/doc.stable/weka/classifiers/rules/JRip.html),
 [weka.J48](http://weka.sourceforge.net/doc.stable/weka/classifiers/trees/J48.html), and
 [sklearn.dtree](https://scikit-learn.org/stable/modules/tree.html)
@@ -69,7 +69,7 @@ dependency sets "numba" and "tests".
   [the Orange implementation](https://orange3.readthedocs.io/projects/orange-visual-programming/widgets/model/cn2ruleinduction.html),
   but should be complete
 
-- Ripper misses the original class binarization strategy and the global post-optimization,
+- Ripper lacks the original class binarization strategy and the global post-optimization,
   therefore results are not identical to JRip (the only other freely available implementation).
 
 - various TODOs throughout the code mark missing details

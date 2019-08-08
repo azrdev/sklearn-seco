@@ -12,7 +12,7 @@ from typing import Iterable, Optional, Sequence
 
 import numpy as np
 
-import sklearn_seco.concrete
+import sklearn_seco
 
 
 def time_seco(estimator: str, dataset_args: str) -> Optional[Sequence[float]]:
@@ -107,7 +107,7 @@ def log(message):
 if __name__ == "__main__":
     categorical = 'c' in sys.argv[1:]
 
-    estimator = sklearn_seco.concrete.RipperEstimator.__name__
+    estimator = sklearn_seco.RipperEstimator.__name__
     log("start timing of %s" % estimator)
     print("n_samples, n_features, timings...")
     all_timings = []

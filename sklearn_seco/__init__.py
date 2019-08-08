@@ -22,4 +22,10 @@ Could be considered as TODO.
 - classification only, no regression
 """
 
-__all__ = ['abstract', 'common', 'concrete', 'extra', 'tests', 'util']
+from sklearn_seco.predefined import \
+    SimpleSeCoEstimator, CN2Estimator, IrepEstimator, RipperEstimator
+
+__all__ = [
+    'abstract', 'common', 'concrete', 'extra', 'tests', 'util',
+    'SimpleSeCoEstimator', 'CN2Estimator', 'IrepEstimator', 'RipperEstimator',
+]

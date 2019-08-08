@@ -1,11 +1,11 @@
 """
 Implementation of SeCo / Covering algorithm:
-Usual building blocks & known instantiations of the abstract base algorithm.
+Usual building blocks of SeCo algorithms, implemented as Mixins.
 
-Implemented as Mixins. For __init__ parameters, they use cooperative
-multi-inheritance, each class has to declare **kwargs and forward anything it
-doesn't consume using `super().__init__(**kwargs)`. Users of mixin-composed
-classes will have to use keyword- instead of positional arguments.
+For __init__ parameters, they use cooperative multi-inheritance: Each class has
+to declare **kwargs and forward anything it doesn't consume using
+`super().__init__(**kwargs)`. Creators of mixin-composed classes will have to
+use keyword- instead of positional arguments.
 """
 
 import functools
@@ -17,10 +17,9 @@ from typing import Iterable, NamedTuple, Tuple, Any, Callable
 import numpy as np
 from scipy.special import xlogy
 
-from sklearn_seco.abstract import \
-    Theory, SeCoEstimator
+from sklearn_seco.abstract import Theory
 from sklearn_seco.common import \
-    Rule, RuleQueue, AugmentedRule, T, TGT, SeCoAlgorithmConfiguration, \
+    Rule, RuleQueue, AugmentedRule, T, TGT, \
     AbstractSecoImplementation, RuleContext, TheoryContext
 from sklearn_seco.ripper_mdl import \
     data_description_length, relative_description_length
@@ -66,9 +65,6 @@ def grow_prune_split(y,
     grow = rng.permutation(grow).astype(int)
     prune = rng.permutation(prune).astype(int)
     return grow, prune
-
-
-# Implementation facets
 
 
 class BeamSearch(AbstractSecoImplementation):
@@ -661,119 +657,6 @@ class RipperMdlRuleStopTheoryContext(TheoryContext):
         unique_values = np.unique(self.complete_X[:, feature])
         unique_values = unique_values[~np.isnan(unique_values)]
         return len(unique_values)
-
-
-# Example Algorithm configurations
-
-
-class SimpleSeCoEstimator(SeCoEstimator):
-    class algorithm_config(SeCoAlgorithmConfiguration):
-        RuleContextClass = TopDownSearchContext
-
-        class Implementation(BeamSearch,
-                             TopDownSearchImplementation,
-                             PurityHeuristic,
-                             NoNegativesStop,
-                             SkipPostPruning,
-                             CoverageRuleStop,
-                             SkipPostProcess):
-            pass
-
-
-class CN2Estimator(SeCoEstimator):
-    """CN2 as refined by (Clark and Boswell 1991)."""
-
-    class algorithm_config(SeCoAlgorithmConfiguration):
-        RuleContextClass = TopDownSearchContext
-
-        class Implementation(BeamSearch,
-                             TopDownSearchImplementation,
-                             LaplaceHeuristic,
-                             SignificanceStoppingCriterion,
-                             SkipPostPruning,
-                             PositiveThresholdRuleStop,
-                             SkipPostProcess):
-            positive_coverage_stop_threshold = 1  # → PositiveThresholdRuleStop
-            beam_width = 3  # → BeamSearch
-
-
-class RipperEstimator(SeCoEstimator):
-    """Ripper as defined by (Cohen 1995).
-
-    NOTE: The global post-optimization phase is currently not implemented
-        (that would be the `post_process` method).
-    """
-    class algorithm_config(SeCoAlgorithmConfiguration):
-        RuleClass = ConditionTracingAugmentedRule
-        TheoryContextClass = RipperMdlRuleStopTheoryContext
-
-        class Implementation(BeamSearch,
-                             TopDownSearchImplementation,
-                             InformationGainHeuristic,
-                             RipperMdlRuleStopImplementation,
-                             RipperPostPruning,
-                             SkipPostProcess
-                             ):
-            @classmethod
-            @delayed_inner_stop
-            def inner_stopping_criterion(cls, rule: AugmentedRule,
-                                         context: RuleContext) -> bool:
-                """Laplace-based criterion. Field `accuRate` in JRip.java."""
-                p, n = rule.pn(context)
-                accuracy_rate = (p + 1) / (p + n + 1)
-                return accuracy_rate >= 1
-
-        class RuleContextClass(TopDownSearchContext,
-                               GrowPruneSplitRuleContext):
-            def pruning_heuristic(self, rule: AugmentedRule,
-                                  context: RuleContext
-                                  ) -> float:
-                """Laplace heuristic, as defined by (Clark and Boswell 1991).
-
-                JRip documentation states:
-                "The pruning metric is (p-n)/(p+n) -- but it's actually
-                2p/(p+n) -1, so in this implementation we simply use p/(p+n)
-                (actually (p+1)/(p+n+2), thus if p+n is 0, it's 0.5)."
-                """
-                p, n = rule.pn(context)
-                return (p + 1) / (p + n + 2)  # laplace
-
-
-class IrepEstimator(SeCoEstimator):
-    """IREP as defined by (Cohen 1995), originally by (Fürnkranz, Widmer 1994).
-    """
-
-    class algorithm_config(SeCoAlgorithmConfiguration):
-        RuleClass = ConditionTracingAugmentedRule
-
-        class Implementation(BeamSearch,
-                             TopDownSearchImplementation,
-                             InformationGainHeuristic,
-                             NoNegativesStop,
-                             RipperPostPruning,
-                             CoverageRuleStop,
-                             SkipPostProcess):
-
-            @classmethod
-            def rule_stopping_criterion(cls, theory: Theory,
-                                        rule: AugmentedRule,
-                                        context: RuleContext) -> bool:
-                assert isinstance(context, GrowPruneSplitRuleContext)
-                context.growing = False
-                return super().rule_stopping_criterion(theory, rule, context)
-
-        class RuleContextClass(TopDownSearchContext,
-                               GrowPruneSplitRuleContext):
-            def pruning_heuristic(self, rule: AugmentedRule,
-                                  context: GrowPruneSplitRuleContext) -> float:
-                """:return: (#true positives + #true negatives) / #examples"""
-                context.growing = False
-                p, n = rule.pn(context)
-                P, N = context.PN(rule.head)
-                if P + N == 0:
-                    return 0
-                tn = N - n
-                return (p + tn) / (P + N)
 
 
 # TODO: sklearn.get/set_param setting *Implementation fields?

@@ -23,7 +23,7 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.utils import Bunch
 
-from sklearn_seco.concrete import RipperEstimator
+from sklearn_seco import RipperEstimator
 
 CACHE_DIR = 'openml_cache/'
 RESULT_DIR = 'evaluation/'
