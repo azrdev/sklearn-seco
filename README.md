@@ -72,5 +72,28 @@ dependency sets "numba" and "tests".
 - Ripper lacks the original class binarization strategy and the global post-optimization,
   therefore results are not identical to JRip (the only other freely available implementation).
 
+- testsuite has a few consistent failures (all in [test_concrete.py](sklearn_seco/tests/test_concrete.py)):
+
+    - `test_perfectly_correlated_categories_multiclass[CN2Estimator]`
+      fails because [CN2 learns only one rule when it gets to `x=[[… 2 0] [… 0 1]], y=[2 1]`
+      ](https://github.com/azrdev/sklearn-seco/blob/master/sklearn_seco/tests/conftest.py#L87..L89)
+      which is perfectly valid behavior.
+
+    - `test_sklearn_check_estimator[IrepEstimator]`
+      fails `sklearn.utils.estimator_checks.check_classifier_data_not_an_array`
+      (NOTE: maybe later tests in check_estimator fail, too) because:
+      if default rule is better than any refinement and survives
+      rule_stopping_criterion, the learned theory is `[init_rule()]`.
+      [We consider this an error and raise an exception
+      ](https://github.com/azrdev/sklearn-seco/blob/master/sklearn_seco/abstract.py#L161..L168),
+      maybe stopping criteria are buggy that they let the default rule through.
+
+    - `test_sklearn_check_estimator[RipperEstimator]`
+      fails `sklearn.utils.estimator_checks.check_classifiers_train` due to <https://github.com/scikit-learn/scikit-learn/issues/14124>
+      (NOTE: maybe later tests in check_estimator fail, too)
+
+    - pypy test runs timeout on Travis-CI after 10 minutes.
+
 - various TODOs throughout the code mark missing details
-  and/or ideas for improvement (of function or runtime performance)
+  and/or ideas for improvement (of functionality or runtime performance)
+

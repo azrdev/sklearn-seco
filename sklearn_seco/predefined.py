@@ -14,6 +14,8 @@ from sklearn_seco.concrete import TopDownSearchContext, BeamSearch, \
     InformationGainHeuristic, RipperMdlRuleStopImplementation, \
     RipperPostPruning, delayed_inner_stop, GrowPruneSplitRuleContext
 
+# TODO: create own mixins from the methods still implemented here
+
 
 class SimpleSeCoEstimator(SeCoEstimator):
     class algorithm_config(SeCoAlgorithmConfiguration):
