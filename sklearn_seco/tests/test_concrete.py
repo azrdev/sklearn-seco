@@ -10,10 +10,10 @@ from sklearn.metrics import accuracy_score, precision_score
 from sklearn.utils import check_random_state
 from sklearn.utils.estimator_checks import check_estimator
 
+from sklearn_seco import SimpleSeCoEstimator
 from sklearn_seco.abstract import _BaseSeCoEstimator
 from sklearn_seco.common import Rule
 from sklearn_seco.concrete import grow_prune_split, TopDownSearchImplementation
-from predefined import SimpleSeCoEstimator
 from sklearn_seco.util import TargetTransformingMetaEstimator, \
     BySizeLabelEncoder
 from .conftest import count_conditions
