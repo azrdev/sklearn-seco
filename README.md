@@ -10,7 +10,8 @@ sklearn_seco aims to be
 
 It was developed as a masters thesis at the
 [*Knowledge Engineering Group* at TU Darmstadt](https://www.ke.tu-darmstadt.de/),
-under supervision of Johannes Fürnkranz.
+under supervision of Prof. Johannes Fürnkranz. Check the thesis document (see the [releases page](https://github.com/azrdev/sklearn-seco/releases)) for
+additional documentation, including evaluation plots.
 
 
 ## Testing / Evaluation
